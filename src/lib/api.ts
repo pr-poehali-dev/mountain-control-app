@@ -209,6 +209,16 @@ export const ahoApi = {
     request(API.aho, "", { params: { action: "medical-status", ...params } }),
   getTemplate: () =>
     request(API.aho, "", { params: { action: "template" } }),
+  massCheckIn: (body: Record<string, unknown>) =>
+    request(API.aho, "", { method: "PUT", body, params: { action: "mass-checkin" } }),
+  massCheckOut: (body: Record<string, unknown>) =>
+    request(API.aho, "", { method: "PUT", body, params: { action: "mass-checkout" } }),
+  getMedicalItrStats: (params?: Record<string, string>) =>
+    request(API.aho, "", { params: { action: "medical-itr-stats", ...params } }),
+  getItrPositions: () =>
+    request(API.aho, "", { params: { action: "itr-positions" } }),
+  saveItrPositions: (positions: string[]) =>
+    request(API.aho, "", { method: "PUT", body: { positions }, params: { action: "itr-positions" } }),
 };
 
 export const scannerApi = {

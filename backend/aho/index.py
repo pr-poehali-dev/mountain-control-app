@@ -57,6 +57,16 @@ def handler(event, context):
         return get_medical_status(params)
     elif method == 'GET' and action == 'template':
         return get_template()
+    elif method == 'PUT' and action == 'mass-checkin':
+        return mass_check_in(body)
+    elif method == 'PUT' and action == 'mass-checkout':
+        return mass_check_out(body)
+    elif method == 'GET' and action == 'medical-itr-stats':
+        return get_medical_itr_stats(params)
+    elif method == 'GET' and action == 'itr-positions':
+        return get_itr_positions()
+    elif method == 'PUT' and action == 'itr-positions':
+        return save_itr_positions(body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -647,4 +657,206 @@ def get_template():
     return json_response(200, {
         'file': file_b64,
         'file_name': 'Шаблон_списка_въезжающих.xlsx'
+    })
+
+
+def mass_check_in(body):
+    ids = body.get('ids', [])
+    batch_id = body.get('batch_id', '')
+    if not ids and not batch_id:
+        return json_response(400, {'error': 'Укажите список ID или партию'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    if batch_id and not ids:
+        cur.execute("SELECT id FROM aho_arrivals WHERE batch_id = '%s' AND arrival_status = 'expected'" % batch_id.replace("'", "''"))
+        ids = [r[0] for r in cur.fetchall()]
+
+    count = 0
+    for aid in ids:
+        cur.execute("""
+            UPDATE aho_arrivals SET arrival_status = 'arrived', check_in_at = NOW(), updated_at = NOW()
+            WHERE id = %d AND arrival_status = 'expected' RETURNING personnel_id, full_name
+        """ % int(aid))
+        row = cur.fetchone()
+        if row:
+            count += 1
+            if row[0]:
+                cur.execute("UPDATE personnel SET status = 'arrived', updated_at = NOW() WHERE id = %d" % row[0])
+                cur.execute("""
+                    INSERT INTO events (event_type, description, personnel_id)
+                    VALUES ('check_in', '%s — массовый въезд (АХО)', %d)
+                """ % (row[1].replace("'", "''"), row[0]))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Въезд зафиксирован: %d чел.' % count, 'count': count})
+
+
+def mass_check_out(body):
+    ids = body.get('ids', [])
+    batch_id = body.get('batch_id', '')
+    if not ids and not batch_id:
+        return json_response(400, {'error': 'Укажите список ID или партию'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    if batch_id and not ids:
+        cur.execute("SELECT id FROM aho_arrivals WHERE batch_id = '%s' AND arrival_status = 'arrived'" % batch_id.replace("'", "''"))
+        ids = [r[0] for r in cur.fetchall()]
+
+    count = 0
+    for aid in ids:
+        cur.execute("""
+            UPDATE aho_arrivals SET arrival_status = 'departed', check_out_at = NOW(), updated_at = NOW()
+            WHERE id = %d AND arrival_status = 'arrived' RETURNING personnel_id, full_name
+        """ % int(aid))
+        row = cur.fetchone()
+        if row:
+            count += 1
+            if row[0]:
+                cur.execute("UPDATE personnel SET status = 'departed', updated_at = NOW() WHERE id = %d" % row[0])
+                cur.execute("""
+                    INSERT INTO events (event_type, description, personnel_id)
+                    VALUES ('check_out', '%s — массовый выезд (АХО)', %d)
+                """ % (row[1].replace("'", "''"), row[0]))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Выезд зафиксирован: %d чел.' % count, 'count': count})
+
+
+def get_itr_positions():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    positions = row[0] if row else []
+    return json_response(200, {'positions': positions})
+
+
+def save_itr_positions(body):
+    positions = body.get('positions', [])
+    if not isinstance(positions, list):
+        return json_response(400, {'error': 'positions должен быть массивом'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    positions_json = json.dumps(positions, ensure_ascii=False)
+    cur.execute("""
+        INSERT INTO settings (key, value, updated_at) VALUES ('itr_positions', '%s'::jsonb, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = '%s'::jsonb, updated_at = NOW()
+    """ % (positions_json.replace("'", "''"), positions_json.replace("'", "''")))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Список ИТР должностей сохранён', 'count': len(positions)})
+
+
+def get_medical_itr_stats(params):
+    batch_id = params.get('batch_id', '')
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
+    row = cur.fetchone()
+    itr_positions = row[0] if row else []
+
+    itr_conditions = []
+    for pos in itr_positions:
+        safe_pos = pos.replace("'", "''").lower()
+        itr_conditions.append("LOWER(COALESCE(a.position, '')) LIKE '%%%s%%'" % safe_pos)
+
+    if itr_conditions:
+        itr_where = "(%s)" % " OR ".join(itr_conditions)
+    else:
+        itr_where = "FALSE"
+
+    base_where = "a.arrival_status IN ('arrived', 'expected')"
+    if batch_id:
+        base_where += " AND a.batch_id = '%s'" % batch_id.replace("'", "''")
+
+    cur.execute("""
+        SELECT
+            COUNT(*) FILTER (WHERE %s) as itr_total,
+            COUNT(*) FILTER (WHERE NOT (%s)) as worker_total,
+            COUNT(*) FILTER (WHERE %s AND COALESCE(p.medical_status, 'pending') = 'passed') as itr_passed,
+            COUNT(*) FILTER (WHERE %s AND COALESCE(p.medical_status, 'pending') = 'failed') as itr_failed,
+            COUNT(*) FILTER (WHERE %s AND COALESCE(p.medical_status, 'pending') = 'pending') as itr_pending,
+            COUNT(*) FILTER (WHERE NOT (%s) AND COALESCE(p.medical_status, 'pending') = 'passed') as worker_passed,
+            COUNT(*) FILTER (WHERE NOT (%s) AND COALESCE(p.medical_status, 'pending') = 'failed') as worker_failed,
+            COUNT(*) FILTER (WHERE NOT (%s) AND COALESCE(p.medical_status, 'pending') = 'pending') as worker_pending,
+            COUNT(*) as total
+        FROM aho_arrivals a
+        LEFT JOIN personnel p ON a.personnel_id = p.id
+        WHERE %s
+    """ % (itr_where, itr_where, itr_where, itr_where, itr_where, itr_where, itr_where, itr_where, base_where))
+    r = cur.fetchone()
+
+    itr_list_query = """
+        SELECT a.id, a.full_name, a.personal_code, a.position, a.department, a.organization,
+               COALESCE(p.medical_status, 'pending') as medical_status,
+               mc.status as last_check, mc.checked_at, mc.blood_pressure, mc.pulse, mc.temperature, mc.alcohol_level
+        FROM aho_arrivals a
+        LEFT JOIN personnel p ON a.personnel_id = p.id
+        LEFT JOIN LATERAL (
+            SELECT status, checked_at, blood_pressure, pulse, temperature, alcohol_level
+            FROM medical_checks WHERE personnel_id = p.id ORDER BY checked_at DESC LIMIT 1
+        ) mc ON true
+        WHERE %s AND %s
+        ORDER BY p.medical_status ASC, a.full_name ASC
+    """ % (base_where, itr_where)
+    cur.execute(itr_list_query)
+    itr_rows = cur.fetchall()
+
+    worker_list_query = """
+        SELECT a.id, a.full_name, a.personal_code, a.position, a.department, a.organization,
+               COALESCE(p.medical_status, 'pending') as medical_status,
+               mc.status as last_check, mc.checked_at, mc.blood_pressure, mc.pulse, mc.temperature, mc.alcohol_level
+        FROM aho_arrivals a
+        LEFT JOIN personnel p ON a.personnel_id = p.id
+        LEFT JOIN LATERAL (
+            SELECT status, checked_at, blood_pressure, pulse, temperature, alcohol_level
+            FROM medical_checks WHERE personnel_id = p.id ORDER BY checked_at DESC LIMIT 1
+        ) mc ON true
+        WHERE %s AND NOT (%s)
+        ORDER BY p.medical_status ASC, a.full_name ASC
+    """ % (base_where, itr_where)
+    cur.execute(worker_list_query)
+    worker_rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    def map_rows(rows):
+        items = []
+        for row in rows:
+            items.append({
+                'id': row[0], 'full_name': row[1], 'personal_code': row[2],
+                'position': row[3], 'department': row[4], 'organization': row[5],
+                'medical_status': row[6],
+                'last_check': row[7], 'checked_at': row[8],
+                'blood_pressure': row[9], 'pulse': row[10],
+                'temperature': str(row[11]) if row[11] else None,
+                'alcohol_level': str(row[12]) if row[12] else None,
+            })
+        return items
+
+    return json_response(200, {
+        'summary': {
+            'itr_total': r[0], 'worker_total': r[1],
+            'itr_passed': r[2], 'itr_failed': r[3], 'itr_pending': r[4],
+            'worker_passed': r[5], 'worker_failed': r[6], 'worker_pending': r[7],
+            'total': r[8],
+        },
+        'itr_list': map_rows(itr_rows),
+        'worker_list': map_rows(worker_rows),
+        'itr_positions': itr_positions,
     })

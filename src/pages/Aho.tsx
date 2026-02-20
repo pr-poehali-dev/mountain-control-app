@@ -129,6 +129,14 @@ const Aho = () => {
   const [roomValue, setRoomValue] = useState("");
   const [buildingValue, setBuildingValue] = useState("");
 
+  const [itrStats, setItrStats] = useState<{
+    summary: Record<string, number>;
+    itr_list: Record<string, unknown>[];
+    worker_list: Record<string, unknown>[];
+    itr_positions: string[];
+  } | null>(null);
+  const [itrView, setItrView] = useState<"itr" | "worker">("itr");
+
   const [uploadDate, setUploadDate] = useState(new Date().toISOString().slice(0, 10));
   const [uploadDepDate, setUploadDepDate] = useState("");
   const [uploadOrgType, setUploadOrgType] = useState("contractor");
@@ -142,7 +150,7 @@ const Aho = () => {
   useEffect(() => {
     if (tab === "control") loadArrivals();
     if (tab === "housing") loadArrivals();
-    if (tab === "medical") loadMedicals();
+    if (tab === "medical") { loadMedicals(); loadItrStats(); }
     if (tab === "stats") loadStats();
   }, [tab]);
 
@@ -200,6 +208,15 @@ const Aho = () => {
       const data = await ahoApi.getMedicalStatus(params);
       setMedicals(data.items || []);
     } catch { /* ignore */ } finally { setLoading(false); }
+  };
+
+  const loadItrStats = async () => {
+    try {
+      const params: Record<string, string> = {};
+      if (filterBatch !== "all") params.batch_id = filterBatch;
+      const data = await ahoApi.getMedicalItrStats(params);
+      setItrStats(data);
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -286,6 +303,34 @@ const Aho = () => {
       setRoomValue("");
       setBuildingValue("");
       loadArrivals();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleMassCheckIn = async () => {
+    const ids = arrivals.filter(a => a.arrival_status === "expected").map(a => a.id);
+    if (!ids.length) { toast({ title: "Нет ожидающих для въезда" }); return; }
+    try {
+      const body: Record<string, unknown> = filterBatch !== "all" ? { batch_id: filterBatch } : { ids };
+      const res = await ahoApi.massCheckIn(body);
+      toast({ title: res.message });
+      loadArrivals();
+      loadStats();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleMassCheckOut = async () => {
+    const ids = arrivals.filter(a => a.arrival_status === "arrived").map(a => a.id);
+    if (!ids.length) { toast({ title: "Нет людей на территории" }); return; }
+    try {
+      const body: Record<string, unknown> = filterBatch !== "all" ? { batch_id: filterBatch } : { ids };
+      const res = await ahoApi.massCheckOut(body);
+      toast({ title: res.message });
+      loadArrivals();
+      loadStats();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -438,6 +483,19 @@ const Aho = () => {
               <Icon name="RefreshCw" size={14} className={loading ? "animate-spin" : ""} />
               Обновить
             </Button>
+            <div className="flex-1" />
+            {arrivals.some(a => a.arrival_status === "expected") && (
+              <Button size="sm" className="gap-1.5 h-9 bg-mine-green text-white hover:bg-mine-green/90" onClick={handleMassCheckIn}>
+                <Icon name="LogIn" size={14} />
+                Въезд всех ожидающих ({arrivals.filter(a => a.arrival_status === "expected").length})
+              </Button>
+            )}
+            {arrivals.some(a => a.arrival_status === "arrived") && (
+              <Button size="sm" variant="outline" className="gap-1.5 h-9 text-mine-red border-mine-red/30 hover:bg-mine-red/10" onClick={handleMassCheckOut}>
+                <Icon name="LogOut" size={14} />
+                Выезд всех ({arrivals.filter(a => a.arrival_status === "arrived").length})
+              </Button>
+            )}
           </div>
 
           <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -598,17 +656,6 @@ const Aho = () => {
         {/* === МЕДОСМОТР === */}
         <TabsContent value="medical" className="space-y-4">
           <div className="flex gap-3 flex-wrap">
-            <Select value={medFilter} onValueChange={setMedFilter}>
-              <SelectTrigger className="w-[180px] bg-secondary/50 h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все</SelectItem>
-                <SelectItem value="pending">Не пройден</SelectItem>
-                <SelectItem value="passed">Пройден</SelectItem>
-                <SelectItem value="failed">Отстранён</SelectItem>
-              </SelectContent>
-            </Select>
             <Select value={filterBatch} onValueChange={setFilterBatch}>
               <SelectTrigger className="w-[220px] bg-secondary/50 h-9 text-sm">
                 <SelectValue />
@@ -622,71 +669,169 @@ const Aho = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={loadMedicals} disabled={loading}>
+            <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={() => { loadItrStats(); }} disabled={loading}>
               <Icon name="RefreshCw" size={14} className={loading ? "animate-spin" : ""} />
               Обновить
             </Button>
           </div>
 
+          {itrStats && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div
+                onClick={() => setItrView("itr")}
+                className={`rounded-xl border-2 p-5 cursor-pointer transition-all ${itrView === "itr" ? "border-mine-amber bg-mine-amber/5" : "border-border bg-card hover:border-mine-amber/30"}`}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-mine-amber/10 flex items-center justify-center">
+                    <Icon name="Briefcase" size={20} className="text-mine-amber" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">ИТР работники</h3>
+                    <p className="text-xs text-muted-foreground">{itrStats.summary.itr_total} чел.</p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="text-2xl font-bold text-mine-amber">
+                      {itrStats.summary.itr_total > 0 ? Math.round((itrStats.summary.itr_passed / itrStats.summary.itr_total) * 100) : 0}%
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">прошли</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-center p-2 rounded-lg bg-mine-green/10">
+                    <div className="text-lg font-bold text-mine-green">{itrStats.summary.itr_passed}</div>
+                    <div className="text-[10px] text-muted-foreground">Пройден</div>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-mine-amber/10">
+                    <div className="text-lg font-bold text-mine-amber">{itrStats.summary.itr_pending}</div>
+                    <div className="text-[10px] text-muted-foreground">Ожидание</div>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-mine-red/10">
+                    <div className="text-lg font-bold text-mine-red">{itrStats.summary.itr_failed}</div>
+                    <div className="text-[10px] text-muted-foreground">Отстранён</div>
+                  </div>
+                </div>
+                <div className="mt-3 w-full bg-secondary rounded-full h-2 overflow-hidden flex">
+                  {itrStats.summary.itr_total > 0 && (
+                    <>
+                      <div className="bg-mine-green h-2" style={{ width: `${(itrStats.summary.itr_passed / itrStats.summary.itr_total) * 100}%` }} />
+                      <div className="bg-mine-amber h-2" style={{ width: `${(itrStats.summary.itr_pending / itrStats.summary.itr_total) * 100}%` }} />
+                      <div className="bg-mine-red h-2" style={{ width: `${(itrStats.summary.itr_failed / itrStats.summary.itr_total) * 100}%` }} />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setItrView("worker")}
+                className={`rounded-xl border-2 p-5 cursor-pointer transition-all ${itrView === "worker" ? "border-mine-cyan bg-mine-cyan/5" : "border-border bg-card hover:border-mine-cyan/30"}`}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-mine-cyan/10 flex items-center justify-center">
+                    <Icon name="HardHat" size={20} className="text-mine-cyan" fallback="Users" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">Рабочие</h3>
+                    <p className="text-xs text-muted-foreground">{itrStats.summary.worker_total} чел.</p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="text-2xl font-bold text-mine-cyan">
+                      {itrStats.summary.worker_total > 0 ? Math.round((itrStats.summary.worker_passed / itrStats.summary.worker_total) * 100) : 0}%
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">прошли</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-center p-2 rounded-lg bg-mine-green/10">
+                    <div className="text-lg font-bold text-mine-green">{itrStats.summary.worker_passed}</div>
+                    <div className="text-[10px] text-muted-foreground">Пройден</div>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-mine-amber/10">
+                    <div className="text-lg font-bold text-mine-amber">{itrStats.summary.worker_pending}</div>
+                    <div className="text-[10px] text-muted-foreground">Ожидание</div>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-mine-red/10">
+                    <div className="text-lg font-bold text-mine-red">{itrStats.summary.worker_failed}</div>
+                    <div className="text-[10px] text-muted-foreground">Отстранён</div>
+                  </div>
+                </div>
+                <div className="mt-3 w-full bg-secondary rounded-full h-2 overflow-hidden flex">
+                  {itrStats.summary.worker_total > 0 && (
+                    <>
+                      <div className="bg-mine-green h-2" style={{ width: `${(itrStats.summary.worker_passed / itrStats.summary.worker_total) * 100}%` }} />
+                      <div className="bg-mine-amber h-2" style={{ width: `${(itrStats.summary.worker_pending / itrStats.summary.worker_total) * 100}%` }} />
+                      <div className="bg-mine-red h-2" style={{ width: `${(itrStats.summary.worker_failed / itrStats.summary.worker_total) * 100}%` }} />
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-xl border border-border bg-card overflow-hidden">
-            {loading ? (
-              <div className="p-12 flex items-center justify-center gap-3">
-                <Icon name="Loader2" size={20} className="animate-spin text-mine-cyan" />
-              </div>
-            ) : medicals.length === 0 ? (
-              <div className="p-12 text-center">
-                <Icon name="HeartPulse" size={32} className="text-muted-foreground/20 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Нет данных</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-secondary/30">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Комната</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Медосмотр</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Посл. осмотр</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Давл.</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Пульс</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Темп.</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Алк.</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Примечание</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {medicals.map(item => {
-                      const med = MED_MAP[item.medical_status] || MED_MAP.pending;
-                      return (
-                        <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20">
-                          <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
-                          <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
-                          <td className="px-3 py-2 text-xs">{item.room || "—"}</td>
-                          <td className="px-3 py-2">
-                            <span className={`text-xs font-semibold ${med.color}`}>{med.label}</span>
-                          </td>
-                          <td className="px-3 py-2 text-xs">{item.last_check_time ? formatDateTime(item.last_check_time) : "—"}</td>
-                          <td className="px-3 py-2 text-xs">{item.blood_pressure || "—"}</td>
-                          <td className="px-3 py-2 text-xs">{item.pulse || "—"}</td>
-                          <td className="px-3 py-2 text-xs">{item.temperature || "—"}</td>
-                          <td className="px-3 py-2 text-xs">
-                            {item.alcohol_level ? (
-                              <span className={parseFloat(item.alcohol_level) > 0 ? "text-mine-red font-semibold" : ""}>
-                                {item.alcohol_level}
-                              </span>
-                            ) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground max-w-[200px] truncate">{item.check_notes || "—"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <div className="p-3 border-b border-border flex items-center gap-2">
+              <Icon name={itrView === "itr" ? "Briefcase" : "HardHat"} size={16} className={itrView === "itr" ? "text-mine-amber" : "text-mine-cyan"} fallback="Users" />
+              <span className="text-sm font-semibold">
+                {itrView === "itr" ? "ИТР работники" : "Рабочие"} — медосмотр
+              </span>
+              <span className="text-xs text-muted-foreground ml-1">
+                ({(itrView === "itr" ? itrStats?.itr_list : itrStats?.worker_list)?.length || 0} чел.)
+              </span>
+            </div>
+            {(() => {
+              const list = (itrView === "itr" ? itrStats?.itr_list : itrStats?.worker_list) || [];
+              if (list.length === 0) return (
+                <div className="p-12 text-center">
+                  <Icon name="HeartPulse" size={32} className="text-muted-foreground/20 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Нет данных</p>
+                </div>
+              );
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/30">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Должность</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Медосмотр</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Давл.</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Пульс</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Темп.</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Алк.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((item: Record<string, unknown>) => {
+                        const ms = String(item.medical_status || "pending");
+                        const med = MED_MAP[ms] || MED_MAP.pending;
+                        return (
+                          <tr key={String(item.id)} className="border-b border-border/50 hover:bg-secondary/20">
+                            <td className="px-3 py-2 text-xs font-medium">{String(item.full_name)}</td>
+                            <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{String(item.personal_code)}</td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{String(item.position || "—")}</td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{String(item.organization || "—")}</td>
+                            <td className="px-3 py-2">
+                              <span className={`text-xs font-semibold ${med.color}`}>{med.label}</span>
+                            </td>
+                            <td className="px-3 py-2 text-xs">{String(item.blood_pressure || "—")}</td>
+                            <td className="px-3 py-2 text-xs">{String(item.pulse || "—")}</td>
+                            <td className="px-3 py-2 text-xs">{String(item.temperature || "—")}</td>
+                            <td className="px-3 py-2 text-xs">
+                              {item.alcohol_level ? (
+                                <span className={parseFloat(String(item.alcohol_level)) > 0 ? "text-mine-red font-semibold" : ""}>
+                                  {String(item.alcohol_level)}
+                                </span>
+                              ) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         </TabsContent>
 
