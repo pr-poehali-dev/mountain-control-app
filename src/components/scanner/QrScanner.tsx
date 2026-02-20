@@ -103,7 +103,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
       await scannerRef.current.start(
         cameraConfig,
         {
-          fps: 20,
+          fps: 25,
           qrbox: { width: boxSize, height: boxSize },
           aspectRatio: 1,
           disableFlip: false,
@@ -122,6 +122,31 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
         },
         () => {}
       );
+
+      try {
+        const videoEl = el.querySelector("video");
+        if (videoEl && videoEl.srcObject) {
+          const track = (videoEl.srcObject as MediaStream).getVideoTracks()[0];
+          if (track) {
+            const caps = track.getCapabilities?.() as Record<string, unknown> | undefined;
+            const focusModes = (caps?.focusMode ?? []) as string[];
+            const constraints: Record<string, unknown> = {};
+
+            if (focusModes.includes("continuous")) {
+              constraints.focusMode = "continuous";
+            }
+            if (caps?.zoom) {
+              constraints.zoom = 1;
+            }
+
+            if (Object.keys(constraints).length > 0) {
+              await track.applyConstraints({ advanced: [constraints] } as MediaTrackConstraints);
+            }
+          }
+        }
+      } catch {
+        // focus constraints not supported — ignore
+      }
     } catch (err) {
       if (!mountedRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
