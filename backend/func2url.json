@@ -1,4 +1,5 @@
 {
+  "scanner": "https://functions.poehali.dev/58bc1a4c-940f-4d64-ba57-f78ad93367b1",
   "events": "https://functions.poehali.dev/7ddc9847-facb-4e59-8cfe-6b535f9fa0cd",
   "auth": "https://functions.poehali.dev/9ef13688-d7fb-45f4-8fd3-cdf77d286250",
   "dispatcher": "https://functions.poehali.dev/fe833e96-793f-499d-9191-cf6b56d5664e",

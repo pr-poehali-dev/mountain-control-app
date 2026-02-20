@@ -6,6 +6,7 @@ const API = {
   dispatcher: urls.dispatcher,
   medical: urls.medical,
   events: urls.events,
+  scanner: urls.scanner,
 };
 
 function getToken(): string | null {
@@ -127,6 +128,17 @@ export const eventsApi = {
   getEvents: (limit = 20) =>
     request(API.events, "/", { params: { limit: String(limit) } }),
   getDashboard: () => request(API.events, "/dashboard"),
+};
+
+export const scannerApi = {
+  identify: (code: string) =>
+    request(API.scanner, "/identify", { method: "POST", body: { code } }),
+  checkin: (code: string, action = "checkin") =>
+    request(API.scanner, "/checkin", {
+      method: "POST",
+      body: { code, action },
+    }),
+  getRecent: () => request(API.scanner, "/recent"),
 };
 
 export default API;

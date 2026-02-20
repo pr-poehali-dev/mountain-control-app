@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Icon from "@/components/ui/icon";
+import QrScanner from "@/components/scanner/QrScanner";
 
 const Login = () => {
   const { login, loginByCode, register } = useAuth();
@@ -12,6 +13,7 @@ const Login = () => {
   const [tab, setTab] = useState("login");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,10 +41,15 @@ const Login = () => {
 
   const handleCodeLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!code.trim()) return;
+    await doCodeLogin(code.trim());
+  };
+
+  const doCodeLogin = async (loginCode: string) => {
     setError("");
     setLoading(true);
     try {
-      await loginByCode(code);
+      await loginByCode(loginCode);
       navigate("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Код не найден");
@@ -50,6 +57,16 @@ const Login = () => {
       setLoading(false);
     }
   };
+
+  const handleQrScan = useCallback(
+    (scannedCode: string) => {
+      if (loading) return;
+      setCode(scannedCode);
+      setScanning(false);
+      doCodeLogin(scannedCode);
+    },
+    [loading]
+  );
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,11 +155,38 @@ const Login = () => {
             </TabsContent>
 
             <TabsContent value="code">
-              <form onSubmit={handleCodeLogin} className="space-y-4">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
-                    Личный код или QR-код
-                  </label>
+              <div className="space-y-4">
+                {scanning ? (
+                  <div className="rounded-lg overflow-hidden">
+                    <QrScanner
+                      onScan={handleQrScan}
+                      active={scanning}
+                      onToggle={setScanning}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={() => setScanning(true)}
+                      variant="outline"
+                      className="w-full gap-2 h-20 border-dashed border-mine-cyan/30 hover:bg-mine-cyan/5 hover:border-mine-cyan/50 flex-col"
+                    >
+                      <Icon name="Camera" size={24} className="text-mine-cyan" />
+                      <span className="text-sm text-mine-cyan">
+                        Сканировать QR камерой
+                      </span>
+                    </Button>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-xs text-muted-foreground">или введите код</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                  </>
+                )}
+
+                <form onSubmit={handleCodeLogin} className="space-y-3">
                   <Input
                     placeholder="Например: ADM-001"
                     value={code}
@@ -150,16 +194,16 @@ const Login = () => {
                     className="bg-secondary/50 font-mono text-lg text-center tracking-widest h-14"
                     required
                   />
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full bg-mine-cyan text-white hover:bg-mine-cyan/90"
-                  disabled={loading}
-                >
-                  <Icon name="ScanLine" size={16} className="mr-2" />
-                  {loading ? "Проверяем..." : "Войти по коду"}
-                </Button>
-              </form>
+                  <Button
+                    type="submit"
+                    className="w-full bg-mine-cyan text-white hover:bg-mine-cyan/90"
+                    disabled={loading || !code.trim()}
+                  >
+                    <Icon name="ScanLine" size={16} className="mr-2" />
+                    {loading ? "Проверяем..." : "Войти по коду"}
+                  </Button>
+                </form>
+              </div>
             </TabsContent>
 
             <TabsContent value="register">
