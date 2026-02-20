@@ -4,6 +4,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 
@@ -24,6 +31,8 @@ const Login = () => {
   const [regPassword, setRegPassword] = useState("");
   const [regPosition, setRegPosition] = useState("");
   const [regDept, setRegDept] = useState("");
+  const [regOrg, setRegOrg] = useState("");
+  const [regOrgType, setRegOrgType] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +88,8 @@ const Login = () => {
         full_name: regName,
         position: regPosition,
         department: regDept,
+        organization: regOrg,
+        organization_type: regOrgType,
       });
       navigate("/");
     } catch (err: unknown) {
@@ -269,6 +280,33 @@ const Login = () => {
                       className="bg-secondary/50"
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Наименование предприятия
+                  </label>
+                  <Input
+                    placeholder="ООО «Рудник Бадран»"
+                    value={regOrg}
+                    onChange={(e) => setRegOrg(e.target.value)}
+                    className="bg-secondary/50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Тип организации
+                  </label>
+                  <Select value={regOrgType} onValueChange={setRegOrgType}>
+                    <SelectTrigger className="bg-secondary/50">
+                      <SelectValue placeholder="Выберите тип" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="rudnik">Рудник</SelectItem>
+                      <SelectItem value="guest">Гость</SelectItem>
+                      <SelectItem value="contractor">Подрядная организация</SelectItem>
+                      <SelectItem value="gov">Гос.органы</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <Button
                   type="submit"

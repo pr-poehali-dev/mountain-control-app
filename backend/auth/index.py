@@ -52,6 +52,8 @@ def register(body):
     full_name = body.get('full_name', '').strip()
     position = body.get('position', '').strip()
     department = body.get('department', '').strip()
+    organization = body.get('organization', '').strip()
+    organization_type = body.get('organization_type', '').strip()
 
     if not email or not password or not full_name:
         return json_response(400, {'error': 'Email, пароль и ФИО обязательны'})
@@ -72,8 +74,8 @@ def register(body):
     password_hash = hash_password(password)
 
     cur.execute("""
-        INSERT INTO users (email, password_hash, full_name, position, department, personal_code, qr_code, role)
-        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'operator')
+        INSERT INTO users (email, password_hash, full_name, position, department, personal_code, qr_code, role, organization, organization_type)
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'operator', '%s', '%s')
         RETURNING id, personal_code, qr_code
     """ % (
         email.replace("'", "''"),
@@ -82,7 +84,9 @@ def register(body):
         position.replace("'", "''"),
         department.replace("'", "''"),
         personal_code,
-        qr_code
+        qr_code,
+        organization.replace("'", "''"),
+        organization_type.replace("'", "''")
     ))
     row = cur.fetchone()
     user_id = row[0]
@@ -104,9 +108,13 @@ def register(body):
             'id': user_id,
             'email': email,
             'full_name': full_name,
+            'position': position,
+            'department': department,
             'personal_code': personal_code,
             'qr_code': qr_code,
-            'role': 'operator'
+            'role': 'operator',
+            'organization': organization,
+            'organization_type': organization_type
         }
     })
 
@@ -122,7 +130,7 @@ def login(body):
 
     password_hash = hash_password(password)
     cur.execute("""
-        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active
+        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type
         FROM users WHERE email = '%s' AND password_hash = '%s'
     """ % (email.replace("'", "''"), password_hash))
     row = cur.fetchone()
@@ -153,7 +161,8 @@ def login(body):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': row[7]
+            'personal_code': row[5], 'qr_code': row[6], 'role': row[7],
+            'organization': row[9] or '', 'organization_type': row[10] or ''
         }
     })
 
@@ -175,7 +184,7 @@ def login_by_code(body):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active
+        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type
         FROM users WHERE personal_code = '%s' OR qr_code = '%s'
     """ % (code.replace("'", "''"), code.replace("'", "''")))
     row = cur.fetchone()
@@ -206,7 +215,8 @@ def login_by_code(body):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': row[7]
+            'personal_code': row[5], 'qr_code': row[6], 'role': row[7],
+            'organization': row[9] or '', 'organization_type': row[10] or ''
         }
     })
 
@@ -222,7 +232,7 @@ def get_me(event):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role
+        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role, u.organization, u.organization_type
         FROM users u
         JOIN sessions s ON s.user_id = u.id
         WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE
@@ -238,7 +248,8 @@ def get_me(event):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': row[7]
+            'personal_code': row[5], 'qr_code': row[6], 'role': row[7],
+            'organization': row[8] or '', 'organization_type': row[9] or ''
         }
     })
 
