@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 import { scannerApi } from "@/lib/api";
+import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 
 interface PersonResult {
   id: number;
@@ -58,6 +59,7 @@ const Scanner = () => {
 
   const handleScan = useCallback(async (code: string) => {
     if (loading) return;
+    playScan();
     setError("");
     setLoading(true);
     setPerson(null);
@@ -69,8 +71,16 @@ const Scanner = () => {
 
       const checkData = await scannerApi.checkin(code);
       setCheckinResult(checkData);
+
+      if (checkData.result === "allowed") {
+        playSuccess();
+      } else {
+        playDenied();
+      }
+
       loadRecent();
     } catch (err: unknown) {
+      playDenied();
       setError(err instanceof Error ? err.message : "Ошибка сканирования");
     } finally {
       setLoading(false);
