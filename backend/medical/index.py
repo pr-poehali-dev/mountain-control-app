@@ -116,6 +116,11 @@ def auto_reset_if_needed():
                     VALUES ('medical_reset', 'Автосброс медосмотров: %s смена %s — %d чел.')
                 """ % (shift_label, shift_date, reset_count))
 
+                cur.execute("""
+                    INSERT INTO notifications (type, title, message)
+                    VALUES ('medical_reset', 'Автосброс медосмотров', '%s смена %s — сброшено %d чел. Требуется повторный медосмотр.')
+                """ % (shift_label, shift_date, reset_count))
+
             conn.commit()
     except Exception:
         conn.rollback()
@@ -411,6 +416,11 @@ def deny_medical(body):
         INSERT INTO events (event_type, description, personnel_id)
         VALUES ('medical_fail', '%s — отказ в медосмотре: %s (%s, %s)', %d)
     """ % (person_name.replace("'", "''"), safe_reason, shift_label, dir_label, person_id))
+
+    cur.execute("""
+        INSERT INTO notifications (type, title, message, person_name, person_code)
+        VALUES ('medical_deny', 'Отказ в медосмотре', '%s — %s (%s, %s)', '%s', '%s')
+    """ % (person_name.replace("'", "''"), safe_reason, shift_label, dir_label, person_name.replace("'", "''"), person_code.replace("'", "''")))
 
     conn.commit()
     cur.close()

@@ -346,6 +346,14 @@ def edit_person(body):
             VALUES ('%s', '%s — медосмотр изменён: %s → %s', %d)
         """ % (event_type, person_name.replace("'", "''"), old_label, new_label, int(person_id)))
 
+        n_type = 'medical_deny' if new_medical == 'failed' else ('medical_pass' if new_medical == 'passed' else 'medical_change')
+        n_title = 'Медосмотр изменён' if new_medical == 'passed' else ('Отказ в медосмотре' if new_medical == 'failed' else 'Статус медосмотра сброшен')
+        safe_pname = person_name.replace("'", "''")
+        cur.execute("""
+            INSERT INTO notifications (type, title, message, person_name, person_code)
+            VALUES ('%s', '%s', '%s — %s → %s (ручное изменение)', '%s', '%s')
+        """ % (n_type, n_title, safe_pname, old_label, new_label, safe_pname, ''))
+
     changed = ', '.join(fields.keys())
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)

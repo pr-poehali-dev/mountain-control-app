@@ -21,27 +21,90 @@ def json_response(status, body):
         'headers': {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
 def handler(event, context):
-    """Лента событий и общая статистика дашборда"""
+    """Лента событий, дашборд, уведомления диспетчеру"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
 
     method = event.get('httpMethod', 'GET')
     params = event.get('queryStringParameters') or {}
     action = params.get('action', '')
+    body = json.loads(event.get('body', '{}') or '{}')
 
     if method == 'GET' and action in ('list', ''):
         return get_events(params)
     elif method == 'GET' and action == 'dashboard':
         return get_dashboard()
+    elif method == 'GET' and action == 'notifications':
+        return get_notifications(params)
+    elif method == 'PUT' and action == 'read':
+        return mark_read(body)
+    elif method == 'PUT' and action == 'read-all':
+        return mark_all_read()
 
     return json_response(404, {'error': 'Маршрут не найден'})
+
+def get_notifications(params):
+    limit = int(params.get('limit', '30'))
+    unread_only = params.get('unread', '') == '1'
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    where = "WHERE is_read = FALSE" if unread_only else ""
+    cur.execute("""
+        SELECT id, type, title, message, person_name, person_code, is_read, created_at
+        FROM notifications %s
+        ORDER BY created_at DESC LIMIT %d
+    """ % (where, min(limit, 100)))
+    rows = cur.fetchall()
+
+    cur.execute("SELECT COUNT(*) FROM notifications WHERE is_read = FALSE")
+    unread_count = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+
+    items = []
+    for r in rows:
+        items.append({
+            'id': r[0], 'type': r[1], 'title': r[2], 'message': r[3],
+            'person_name': r[4], 'person_code': r[5],
+            'is_read': r[6], 'created_at': r[7]
+        })
+
+    return json_response(200, {'notifications': items, 'unread': unread_count})
+
+def mark_read(body):
+    nid = body.get('id')
+    if not nid:
+        return json_response(400, {'error': 'ID обязателен'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE notifications SET is_read = TRUE WHERE id = %d" % int(nid))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Прочитано'})
+
+def mark_all_read():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE notifications SET is_read = TRUE WHERE is_read = FALSE")
+    count = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Все прочитаны', 'count': count})
 
 def get_events(params):
     limit = int(params.get('limit', '20'))

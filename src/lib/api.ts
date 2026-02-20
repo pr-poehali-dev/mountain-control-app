@@ -154,6 +154,12 @@ export const eventsApi = {
   getEvents: (limit = 20) =>
     request(API.events, "", { params: { action: "list", limit: String(limit) } }),
   getDashboard: () => request(API.events, "", { params: { action: "dashboard" } }),
+  getNotifications: (limit = 30) =>
+    request(API.events, "", { params: { action: "notifications", limit: String(limit) } }),
+  markRead: (id: number) =>
+    request(API.events, "", { method: "PUT", body: { id }, params: { action: "read" } }),
+  markAllRead: () =>
+    request(API.events, "", { method: "PUT", body: {}, params: { action: "read-all" } }),
 };
 
 export const scannerApi = {
