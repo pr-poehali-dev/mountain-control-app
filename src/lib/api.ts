@@ -133,8 +133,15 @@ export const dispatcherApi = {
 };
 
 export const medicalApi = {
-  getChecks: () => request(API.medical, "", { params: { action: "list" } }),
-  getStats: () => request(API.medical, "", { params: { action: "stats" } }),
+  getChecks: (params?: Record<string, string>) =>
+    request(API.medical, "", { params: { action: "list", ...params } }),
+  getStats: (params?: Record<string, string>) =>
+    request(API.medical, "", { params: { action: "stats", ...params } }),
+  getShift: () => request(API.medical, "", { params: { action: "shift" } }),
+  getExportUrl: (params?: Record<string, string>) => {
+    const qs = new URLSearchParams({ action: "export", ...params }).toString();
+    return `${API.medical}?${qs}`;
+  },
   addCheck: (body: Record<string, unknown>) =>
     request(API.medical, "", { method: "POST", body, params: { action: "add" } }),
   scan: (code: string) =>
