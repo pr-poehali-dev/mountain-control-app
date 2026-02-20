@@ -73,8 +73,49 @@ def detect_shift():
 SHIFT_LABELS = {'day': 'Дневная', 'night': 'Ночная'}
 DIRECTION_LABELS = {'to_shift': 'На смену', 'from_shift': 'Со смены'}
 
+def auto_reset_if_needed():
+    """Сбрасывает medical_status всех сотрудников в pending при начале новой смены"""
+    shift_type, check_direction, shift_date = detect_shift()
+    if check_direction != 'to_shift':
+        return
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id FROM medical_reset_log
+            WHERE shift_type = '%s' AND shift_date = '%s'
+        """ % (shift_type, shift_date))
+        exists = cur.fetchone()
+
+        if not exists:
+            cur.execute("""
+                UPDATE personnel SET medical_status = 'pending', updated_at = NOW()
+                WHERE status != 'archived' AND medical_status != 'pending'
+            """)
+            reset_count = cur.rowcount
+
+            cur.execute("""
+                INSERT INTO medical_reset_log (shift_type, shift_date, reset_count)
+                VALUES ('%s', '%s', %d)
+            """ % (shift_type, shift_date, reset_count))
+
+            if reset_count > 0:
+                shift_label = SHIFT_LABELS.get(shift_type, shift_type)
+                cur.execute("""
+                    INSERT INTO events (event_type, description)
+                    VALUES ('medical_reset', 'Автосброс медосмотров: %s смена %s — %d чел.')
+                """ % (shift_label, shift_date, reset_count))
+
+            conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
 def handler(event, context):
-    """Медицинский контроль — предсменные/послесменные осмотры, смены, история, экспорт"""
+    """Медицинский контроль — предсменные/послесменные осмотры, смены, история, экспорт, автосброс"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
 
@@ -82,6 +123,8 @@ def handler(event, context):
     params = event.get('queryStringParameters') or {}
     action = params.get('action', '')
     body = json.loads(event.get('body', '{}') or '{}')
+
+    auto_reset_if_needed()
 
     if method == 'GET' and action in ('list', ''):
         return get_checks(params)
