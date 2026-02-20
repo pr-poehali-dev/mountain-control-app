@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "name": "Get AHO stats",
+      "method": "GET",
+      "path": "/?action=stats",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get arrivals list",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get batches",
+      "method": "GET",
+      "path": "/?action=batches",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get medical status",
+      "method": "GET",
+      "path": "/?action=medical-status",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Upload without file returns error",
+      "method": "POST",
+      "path": "/?action=upload",
+      "body": {},
+      "expectedStatus": 400
+    }
+  ]
+}

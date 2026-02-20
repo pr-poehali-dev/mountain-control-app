@@ -9,6 +9,7 @@ const navItems = [
   { path: "/dispatcher", icon: "Radio", label: "Диспетчерская" },
   { path: "/medical", icon: "HeartPulse", label: "Медконтроль" },
   { path: "/scanner", icon: "ScanLine", label: "Сканирование" },
+  { path: "/aho", icon: "Building2", label: "АХО" },
   { path: "/reports", icon: "BarChart3", label: "Отчёты" },
   { path: "/profile", icon: "UserCircle", label: "Кабинет" },
   { path: "/admin", icon: "Shield", label: "Админ" },

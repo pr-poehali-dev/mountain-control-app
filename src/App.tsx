@@ -10,6 +10,7 @@ import Dispatcher from "./pages/Dispatcher";
 import Medical from "./pages/Medical";
 import Scanner from "./pages/Scanner";
 import Reports from "./pages/Reports";
+import Aho from "./pages/Aho";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
@@ -46,6 +47,7 @@ const AppRoutes = () => (
     <Route path="/dispatcher" element={<ProtectedRoute><Dispatcher /></ProtectedRoute>} />
     <Route path="/medical" element={<ProtectedRoute><Medical /></ProtectedRoute>} />
     <Route path="/scanner" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
+    <Route path="/aho" element={<ProtectedRoute><Aho /></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
     <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />

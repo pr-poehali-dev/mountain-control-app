@@ -6,6 +6,7 @@ const API = {
   events: "https://functions.poehali.dev/7ddc9847-facb-4e59-8cfe-6b535f9fa0cd",
   scanner: "https://functions.poehali.dev/58bc1a4c-940f-4d64-ba57-f78ad93367b1",
   reports: "https://functions.poehali.dev/fdbae00e-f203-48ec-97ae-6e89fc47a5cf",
+  aho: "https://functions.poehali.dev/4fe7a896-fe95-4550-81d3-a5412844f65e",
 };
 
 function getToken(): string | null {
@@ -187,6 +188,25 @@ export const reportsApi = {
     const qs = new URLSearchParams({ action: "export", report_type: reportType, ...params }).toString();
     return `${API.reports}?${qs}`;
   },
+};
+
+export const ahoApi = {
+  upload: (body: Record<string, unknown>) =>
+    request(API.aho, "", { method: "POST", body, params: { action: "upload" } }),
+  getList: (params?: Record<string, string>) =>
+    request(API.aho, "", { params: { action: "list", ...params } }),
+  getBatches: () =>
+    request(API.aho, "", { params: { action: "batches" } }),
+  checkIn: (id: number) =>
+    request(API.aho, "", { method: "PUT", body: { id }, params: { action: "checkin" } }),
+  checkOut: (id: number) =>
+    request(API.aho, "", { method: "PUT", body: { id }, params: { action: "checkout" } }),
+  assignRoom: (id: number, room: string, building: string) =>
+    request(API.aho, "", { method: "PUT", body: { id, room, building }, params: { action: "assign-room" } }),
+  getStats: () =>
+    request(API.aho, "", { params: { action: "stats" } }),
+  getMedicalStatus: (params?: Record<string, string>) =>
+    request(API.aho, "", { params: { action: "medical-status", ...params } }),
 };
 
 export const scannerApi = {
