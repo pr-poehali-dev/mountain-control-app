@@ -52,9 +52,12 @@ def get_personnel(params):
     status = params.get('status', '')
     shift = params.get('shift', '')
 
+    org_type = params.get('organization_type', '')
+
     query = """
         SELECT id, personal_code, full_name, position, department, category, 
-               phone, room, status, qr_code, medical_status, shift, created_at
+               phone, room, status, qr_code, medical_status, shift, created_at,
+               organization, organization_type
         FROM personnel WHERE status != 'archived'
     """
     if category:
@@ -63,6 +66,8 @@ def get_personnel(params):
         query += " AND status = '%s'" % status.replace("'", "''")
     if shift:
         query += " AND shift = '%s'" % shift.replace("'", "''")
+    if org_type:
+        query += " AND organization_type = '%s'" % org_type.replace("'", "''")
     query += " ORDER BY full_name"
 
     cur.execute(query)
@@ -77,7 +82,8 @@ def get_personnel(params):
             'position': r[3], 'department': r[4], 'category': r[5],
             'phone': r[6], 'room': r[7], 'status': r[8],
             'qr_code': r[9], 'medical_status': r[10], 'shift': r[11],
-            'created_at': r[12]
+            'created_at': r[12], 'organization': r[13] or '',
+            'organization_type': r[14] or ''
         })
 
     return json_response(200, {'personnel': personnel, 'total': len(personnel)})
@@ -98,6 +104,15 @@ def get_stats():
     cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY medical_status")
     by_medical = {r[0]: r[1] for r in cur.fetchall()}
 
+    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY COALESCE(organization_type, '')")
+    by_org_type = {}
+    for r in cur.fetchall():
+        key = r[0] if r[0] else 'unknown'
+        by_org_type[key] = r[1]
+
+    cur.execute("SELECT COALESCE(organization, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND organization != '' GROUP BY organization ORDER BY COUNT(*) DESC LIMIT 20")
+    by_org = {r[0]: r[1] for r in cur.fetchall()}
+
     cur.execute("SELECT COUNT(*) FROM rooms")
     total_rooms = cur.fetchone()[0]
     cur.execute("SELECT COUNT(*) FROM rooms WHERE occupied > 0")
@@ -115,6 +130,8 @@ def get_stats():
         'by_category': by_category,
         'by_status': by_status,
         'by_medical': by_medical,
+        'by_org_type': by_org_type,
+        'by_organization': by_org,
         'housing': {
             'total_rooms': total_rooms,
             'occupied_rooms': occupied_rooms,
@@ -131,6 +148,8 @@ def add_person(body):
     phone = body.get('phone', '').strip()
     room = body.get('room', '')
     shift = body.get('shift', '')
+    organization = body.get('organization', '').strip()
+    organization_type = body.get('organization_type', '').strip()
 
     if not full_name:
         return json_response(400, {'error': 'ФИО обязательно'})
@@ -144,8 +163,8 @@ def add_person(body):
     qr_code = 'QR-MK-%03d' % next_id
 
     cur.execute("""
-        INSERT INTO personnel (personal_code, full_name, position, department, category, phone, room, status, qr_code, shift)
-        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'arrived', '%s', '%s')
+        INSERT INTO personnel (personal_code, full_name, position, department, category, phone, room, status, qr_code, shift, organization, organization_type)
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'arrived', '%s', '%s', '%s', '%s')
         RETURNING id, personal_code, qr_code
     """ % (
         personal_code,
@@ -156,7 +175,9 @@ def add_person(body):
         phone.replace("'", "''"),
         str(room).replace("'", "''"),
         qr_code,
-        str(shift).replace("'", "''")
+        str(shift).replace("'", "''"),
+        organization.replace("'", "''"),
+        organization_type.replace("'", "''")
     ))
     row = cur.fetchone()
 
@@ -227,12 +248,13 @@ def search_personnel(params):
     safe_q = query_str.replace("'", "''")
     cur.execute("""
         SELECT id, personal_code, full_name, position, department, category, 
-               room, status, qr_code, medical_status
+               room, status, qr_code, medical_status, organization, organization_type
         FROM personnel
         WHERE status != 'archived' AND (full_name ILIKE '%%%s%%' OR personal_code ILIKE '%%%s%%' 
-              OR department ILIKE '%%%s%%' OR qr_code ILIKE '%%%s%%')
+              OR department ILIKE '%%%s%%' OR qr_code ILIKE '%%%s%%'
+              OR organization ILIKE '%%%s%%')
         ORDER BY full_name LIMIT 20
-    """ % (safe_q, safe_q, safe_q, safe_q))
+    """ % (safe_q, safe_q, safe_q, safe_q, safe_q))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -242,7 +264,8 @@ def search_personnel(params):
         results.append({
             'id': r[0], 'personal_code': r[1], 'full_name': r[2],
             'position': r[3], 'department': r[4], 'category': r[5],
-            'room': r[6], 'status': r[7], 'qr_code': r[8], 'medical_status': r[9]
+            'room': r[6], 'status': r[7], 'qr_code': r[8], 'medical_status': r[9],
+            'organization': r[10] or '', 'organization_type': r[11] or ''
         })
 
     return json_response(200, {'results': results, 'total': len(results)})
@@ -253,7 +276,7 @@ def edit_person(body):
         return json_response(400, {'error': 'ID обязателен'})
 
     fields = {}
-    for key in ('full_name', 'position', 'department', 'category', 'phone', 'room', 'shift', 'status', 'medical_status'):
+    for key in ('full_name', 'position', 'department', 'category', 'phone', 'room', 'shift', 'status', 'medical_status', 'organization', 'organization_type'):
         if key in body:
             fields[key] = str(body[key]).strip()
 

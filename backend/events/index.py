@@ -88,6 +88,18 @@ def get_dashboard():
     cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived' GROUP BY category")
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
+    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY COALESCE(organization_type, '')")
+    by_org_type = {}
+    for r in cur.fetchall():
+        key = r[0] if r[0] else 'unknown'
+        by_org_type[key] = r[1]
+
+    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY medical_status")
+    by_medical = {r[0]: r[1] for r in cur.fetchall()}
+
+    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY status")
+    by_status = {r[0]: r[1] for r in cur.fetchall()}
+
     cur.close()
     conn.close()
 
@@ -96,6 +108,7 @@ def get_dashboard():
 
     return json_response(200, {
         'on_site': on_site,
+        'total_personnel': total_personnel,
         'lanterns_issued': lanterns_issued,
         'lanterns_total': lanterns_total,
         'medical_passed_pct': medical_pct,
@@ -103,5 +116,8 @@ def get_dashboard():
         'housing_pct': housing_pct,
         'housing_occupied': housing_occupied,
         'housing_total': housing_total,
-        'by_category': by_category
+        'by_category': by_category,
+        'by_org_type': by_org_type,
+        'by_medical': by_medical,
+        'by_status': by_status
     })

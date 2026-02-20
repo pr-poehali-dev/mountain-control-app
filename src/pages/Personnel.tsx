@@ -62,6 +62,20 @@ const medicalColors: Record<string, string> = {
   expiring: "bg-orange-500/20 text-orange-400 border-orange-500/30",
 };
 
+const orgTypeLabels: Record<string, string> = {
+  rudnik: "Рудник",
+  guest: "Гость",
+  contractor: "Подрядная организация",
+  gov: "Гос.органы",
+};
+
+const orgTypeColors: Record<string, string> = {
+  rudnik: "bg-mine-amber/15 text-mine-amber border-mine-amber/25",
+  guest: "bg-secondary text-muted-foreground border-border",
+  contractor: "bg-mine-cyan/15 text-mine-cyan border-mine-cyan/25",
+  gov: "bg-purple-500/15 text-purple-400 border-purple-500/25",
+};
+
 interface PersonnelItem {
   id: number;
   personal_code: string;
@@ -75,6 +89,8 @@ interface PersonnelItem {
   qr_code?: string;
   medical_status?: string;
   shift?: string;
+  organization?: string;
+  organization_type?: string;
 }
 
 interface HistoryEvent {
@@ -90,6 +106,7 @@ interface StatsData {
   contractor?: number;
   business_trip?: number;
   guest?: number;
+  by_org_type?: Record<string, number>;
 }
 
 function buildQrPayload(p: PersonnelItem) {
@@ -101,6 +118,8 @@ function buildQrPayload(p: PersonnelItem) {
     cat: p.category,
     med: p.medical_status || "pending",
     status: p.status,
+    org: p.organization || "",
+    orgType: p.organization_type || "",
   });
 }
 
@@ -139,6 +158,8 @@ const Personnel = () => {
   const [formPhone, setFormPhone] = useState("");
   const [formRoom, setFormRoom] = useState("");
   const [formShift, setFormShift] = useState("");
+  const [formOrg, setFormOrg] = useState("");
+  const [formOrgType, setFormOrgType] = useState("");
 
   const [editName, setEditName] = useState("");
   const [editPosition, setEditPosition] = useState("");
@@ -149,6 +170,8 @@ const Personnel = () => {
   const [editShift, setEditShift] = useState("");
   const [editStatus, setEditStatus] = useState("");
   const [editMedical, setEditMedical] = useState("");
+  const [editOrg, setEditOrg] = useState("");
+  const [editOrgType, setEditOrgType] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
@@ -165,6 +188,7 @@ const Personnel = () => {
         contractor: byCat.contractor || 0,
         business_trip: byCat.business_trip || 0,
         guest: byCat.guest || 0,
+        by_org_type: statsRes.by_org_type || {},
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
@@ -204,6 +228,8 @@ const Personnel = () => {
     setFormPhone("");
     setFormRoom("");
     setFormShift("");
+    setFormOrg("");
+    setFormOrgType("");
     setAddError("");
     setAddSuccess(null);
   };
@@ -227,6 +253,8 @@ const Personnel = () => {
         phone: formPhone.trim(),
         room: formRoom.trim(),
         shift: formShift,
+        organization: formOrg.trim(),
+        organization_type: formOrgType,
       });
       setAddSuccess({
         personal_code: res.personal_code,
@@ -268,6 +296,8 @@ const Personnel = () => {
     setEditShift(selectedPerson.shift || "");
     setEditStatus(selectedPerson.status);
     setEditMedical(selectedPerson.medical_status || "pending");
+    setEditOrg(selectedPerson.organization || "");
+    setEditOrgType(selectedPerson.organization_type || "");
     setEditError("");
     setEditing(true);
   };
@@ -288,6 +318,8 @@ const Personnel = () => {
         shift: editShift,
         status: editStatus,
         medical_status: editMedical,
+        organization: editOrg.trim(),
+        organization_type: editOrgType,
       });
       const updated = {
         ...selectedPerson,
@@ -300,6 +332,8 @@ const Personnel = () => {
         shift: editShift,
         status: editStatus,
         medical_status: editMedical,
+        organization: editOrg.trim(),
+        organization_type: editOrgType,
       };
       setSelectedPerson(updated);
       setEditing(false);
@@ -354,7 +388,7 @@ const Personnel = () => {
           <div class="badge-position">${person.position || "—"}</div>
           <div class="badge-qr">${svgData}</div>
           <div class="badge-code">${person.personal_code}</div>
-          <div class="badge-dept">${person.department || ""}</div>
+          <div class="badge-dept">${person.department || ""}${person.organization ? " — " + person.organization : ""}</div>
           <div class="badge-info">Сканируйте QR для проверки данных</div>
         </div>
         <script>setTimeout(function(){ window.print(); }, 300);<${"/"}>script>
@@ -441,6 +475,17 @@ const Personnel = () => {
           </div>
         </div>
 
+        {stats.by_org_type && Object.keys(stats.by_org_type).length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {Object.entries(stats.by_org_type).map(([key, count]) => (
+              <div key={key} className={`rounded-lg border p-3 text-center ${orgTypeColors[key] || "border-border bg-secondary/30"}`}>
+                <p className="text-2xl font-bold">{count}</p>
+                <p className="text-xs opacity-80">{orgTypeLabels[key] || key}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {error && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-mine-red/10 border border-mine-red/20">
             <Icon name="AlertTriangle" size={16} className="text-mine-red" />
@@ -458,7 +503,7 @@ const Personnel = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Код", "QR", "ФИО", "Должность", "Подразделение", "Категория", "Медосмотр", "Статус", ""].map((h) => (
+                    {["Код", "QR", "ФИО", "Организация", "Должность", "Подразделение", "Категория", "Медосмотр", "Статус", ""].map((h) => (
                       <th
                         key={h || "actions"}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
@@ -503,6 +548,20 @@ const Personnel = () => {
                         <td className="px-4 py-3 text-sm font-medium text-foreground">
                           {p.full_name}
                         </td>
+                        <td className="px-4 py-3">
+                          {p.organization ? (
+                            <div>
+                              <p className="text-sm text-foreground truncate max-w-[140px]">{p.organization}</p>
+                              {p.organization_type && (
+                                <Badge variant="outline" className={`text-[10px] mt-0.5 ${orgTypeColors[p.organization_type] || ""}`}>
+                                  {orgTypeLabels[p.organization_type] || p.organization_type}
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">
                           {p.position}
                         </td>
@@ -542,7 +601,7 @@ const Personnel = () => {
                   })}
                   {personnel.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет данных
                       </td>
                     </tr>
@@ -619,10 +678,27 @@ const Personnel = () => {
                       </p>
                     </div>
                   </div>
-                  {selectedPerson.phone && (
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">Телефон</p>
-                      <p className="text-sm font-medium text-foreground">{selectedPerson.phone}</p>
+                  {(selectedPerson.organization || selectedPerson.phone) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {selectedPerson.organization && (
+                        <div className="rounded-lg border border-border bg-background/50 px-3 py-2 col-span-2">
+                          <p className="text-[10px] text-muted-foreground">Организация</p>
+                          <p className="text-sm font-medium text-foreground">
+                            {selectedPerson.organization}
+                            {selectedPerson.organization_type && (
+                              <Badge variant="outline" className={`text-[10px] ml-2 ${orgTypeColors[selectedPerson.organization_type] || ""}`}>
+                                {orgTypeLabels[selectedPerson.organization_type] || selectedPerson.organization_type}
+                              </Badge>
+                            )}
+                          </p>
+                        </div>
+                      )}
+                      {selectedPerson.phone && (
+                        <div className="rounded-lg border border-border bg-background/50 px-3 py-2 col-span-2">
+                          <p className="text-[10px] text-muted-foreground">Телефон</p>
+                          <p className="text-sm font-medium text-foreground">{selectedPerson.phone}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -750,11 +826,30 @@ const Personnel = () => {
                   </Select>
                 </div>
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Организация</label>
+                <Input value={editOrg} onChange={(e) => setEditOrg(e.target.value)} className="bg-secondary/50" placeholder="ООО «Рудник Бадран»" />
+              </div>
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Тип организации</label>
+                  <Select value={editOrgType || "none"} onValueChange={(v) => setEditOrgType(v === "none" ? "" : v)}>
+                    <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="rudnik">Рудник</SelectItem>
+                      <SelectItem value="guest">Гость</SelectItem>
+                      <SelectItem value="contractor">Подрядная организация</SelectItem>
+                      <SelectItem value="gov">Гос.органы</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Телефон</label>
                   <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="bg-secondary/50" />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Комната</label>
                   <Input value={editRoom} onChange={(e) => setEditRoom(e.target.value)} className="bg-secondary/50" />
@@ -819,6 +914,12 @@ const Personnel = () => {
                   </span>
                   <span className="text-muted-foreground">Статус:</span>
                   <span className="text-foreground">{statusLabels[qrPerson.status] || qrPerson.status}</span>
+                  {qrPerson.organization && (
+                    <>
+                      <span className="text-muted-foreground">Организация:</span>
+                      <span className="text-foreground">{qrPerson.organization}</span>
+                    </>
+                  )}
                 </div>
               </div>
               <Button className="w-full gap-2 bg-mine-cyan text-white hover:bg-mine-cyan/90" onClick={handlePrint}>
@@ -926,11 +1027,30 @@ const Personnel = () => {
                   </Select>
                 </div>
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Наименование предприятия</label>
+                <Input placeholder="ООО «Рудник Бадран»" value={formOrg} onChange={(e) => setFormOrg(e.target.value)} className="bg-secondary/50" />
+              </div>
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Тип организации</label>
+                  <Select value={formOrgType || "none"} onValueChange={(v) => setFormOrgType(v === "none" ? "" : v)}>
+                    <SelectTrigger className="bg-secondary/50"><SelectValue placeholder="Выберите тип" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="rudnik">Рудник</SelectItem>
+                      <SelectItem value="guest">Гость</SelectItem>
+                      <SelectItem value="contractor">Подрядная организация</SelectItem>
+                      <SelectItem value="gov">Гос.органы</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Телефон</label>
                   <Input placeholder="+7 900 111-22-33" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} className="bg-secondary/50" />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Комната</label>
                   <Input placeholder="301" value={formRoom} onChange={(e) => setFormRoom(e.target.value)} className="bg-secondary/50" />

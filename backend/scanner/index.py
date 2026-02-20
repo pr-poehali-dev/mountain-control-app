@@ -56,7 +56,8 @@ def identify(body):
     safe_code = code.replace("'", "''")
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
-               p.category, p.status, p.medical_status, p.room, p.shift
+               p.category, p.status, p.medical_status, p.room, p.shift,
+               p.organization, p.organization_type
         FROM personnel p
         WHERE p.personal_code = '%s' OR p.qr_code = '%s'
         LIMIT 1
@@ -66,7 +67,8 @@ def identify(body):
     if not row:
         cur.execute("""
             SELECT u.id, u.personal_code, u.full_name, u.position, u.department,
-                   'user' as category, 'active' as status, 'passed' as medical_status, '' as room, '' as shift
+                   'user' as category, 'active' as status, 'passed' as medical_status, '' as room, '' as shift,
+                   u.organization, u.organization_type
             FROM users u
             WHERE u.personal_code = '%s' OR u.qr_code = '%s'
             LIMIT 1
@@ -94,6 +96,11 @@ def identify(body):
 
     medical_ok = row[7] in ('passed', 'expiring')
 
+    org_type_labels = {
+        'rudnik': 'Рудник', 'guest': 'Гость',
+        'contractor': 'Подрядная организация', 'gov': 'Гос.органы'
+    }
+
     return json_response(200, {
         'person': {
             'id': row[0],
@@ -106,7 +113,9 @@ def identify(body):
             'medical_status': medical_labels.get(row[7], row[7]),
             'medical_ok': medical_ok,
             'room': row[8] or '—',
-            'shift': row[9] or '—'
+            'shift': row[9] or '—',
+            'organization': row[10] or '',
+            'organization_type': org_type_labels.get(row[11] or '', row[11] or '')
         }
     })
 

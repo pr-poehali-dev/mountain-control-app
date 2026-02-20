@@ -19,6 +19,8 @@ interface PersonResult {
   medical_ok: boolean;
   room: string;
   shift: string;
+  organization: string;
+  organization_type: string;
 }
 
 interface ScanRecord {
@@ -235,6 +237,8 @@ const Scanner = () => {
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { label: "Код", value: person.personal_code },
+                    { label: "Организация", value: person.organization || "—" },
+                    { label: "Тип", value: person.organization_type || "—" },
                     { label: "Должность", value: person.position },
                     { label: "Подразделение", value: person.department },
                     { label: "Категория", value: person.category },

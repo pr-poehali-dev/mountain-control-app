@@ -10,6 +10,7 @@ import { eventsApi, personnelApi } from "@/lib/api";
 
 interface DashboardData {
   on_site: number;
+  total_personnel: number;
   lanterns_issued: number;
   lanterns_total: number;
   medical_passed_pct: number;
@@ -18,6 +19,9 @@ interface DashboardData {
   housing_occupied: number;
   housing_total: number;
   by_category: Record<string, number>;
+  by_org_type: Record<string, number>;
+  by_medical: Record<string, number>;
+  by_status: Record<string, number>;
 }
 
 interface EventItem {
@@ -137,6 +141,28 @@ const Index = () => {
                 color="red"
               />
             </div>
+
+            {dashboard?.by_org_type && Object.keys(dashboard.by_org_type).length > 0 && (
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Icon name="Building2" size={18} className="text-mine-cyan" />
+                  <h3 className="text-sm font-semibold text-foreground">По типу организации</h3>
+                  <span className="text-xs text-muted-foreground ml-auto">Всего: {dashboard.total_personnel ?? 0}</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {Object.entries(dashboard.by_org_type).map(([key, count]) => {
+                    const labels: Record<string, string> = { rudnik: "Рудник", guest: "Гости", contractor: "Подрядчики", gov: "Гос.органы", unknown: "Не указано" };
+                    const colors: Record<string, string> = { rudnik: "text-mine-amber", guest: "text-muted-foreground", contractor: "text-mine-cyan", gov: "text-purple-400", unknown: "text-muted-foreground" };
+                    return (
+                      <div key={key} className="rounded-lg border border-border bg-secondary/30 p-3 text-center">
+                        <p className={`text-xl font-bold ${colors[key] || "text-foreground"}`}>{count}</p>
+                        <p className="text-xs text-muted-foreground">{labels[key] || key}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
