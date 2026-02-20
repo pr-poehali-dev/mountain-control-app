@@ -1,13 +1,64 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import AppLayout from "@/components/layout/AppLayout";
+import StatCard from "@/components/dashboard/StatCard";
+import PersonnelTable from "@/components/dashboard/PersonnelTable";
+import ActivityFeed from "@/components/dashboard/ActivityFeed";
+import ShiftOverview from "@/components/dashboard/ShiftOverview";
+import LanternStatus from "@/components/dashboard/LanternStatus";
 
 const Index = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4 color-black text-black">Добро пожаловать!</h1>
-        <p className="text-xl text-gray-600">тут будет отображаться ваш проект</p>
+    <AppLayout title="Дашборд" subtitle="Общая сводка по руднику — 20.02.2026">
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="На объекте"
+            value={52}
+            change="+5 за сегодня"
+            changeType="up"
+            icon="Users"
+            color="amber"
+          />
+          <StatCard
+            title="Фонари выданы"
+            value={115}
+            change="из 200 доступных"
+            changeType="neutral"
+            icon="Flashlight"
+            color="cyan"
+          />
+          <StatCard
+            title="Медосмотр пройден"
+            value="94%"
+            change="3 не прошли"
+            changeType="down"
+            icon="HeartPulse"
+            color="green"
+          />
+          <StatCard
+            title="Жилой фонд"
+            value="78%"
+            change="занято 156 из 200"
+            changeType="neutral"
+            icon="Home"
+            color="red"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <PersonnelTable />
+          </div>
+          <div>
+            <ActivityFeed />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ShiftOverview />
+          <LanternStatus />
+        </div>
       </div>
-    </div>
+    </AppLayout>
   );
 };
 
