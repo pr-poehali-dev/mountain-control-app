@@ -2,9 +2,23 @@ import AppLayout from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
 import { useState, useEffect, useCallback } from "react";
 import { personnelApi } from "@/lib/api";
+import { QRCodeSVG } from "qrcode.react";
 
 const statusLabels: Record<string, string> = {
   on_shift: "на смене",
@@ -44,6 +58,7 @@ interface PersonnelItem {
   room?: string;
   status: string;
   phone?: string;
+  qr_code?: string;
 }
 
 interface StatsData {
@@ -60,6 +75,22 @@ const Personnel = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [showAdd, setShowAdd] = useState(false);
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [addSuccess, setAddSuccess] = useState<{
+    personal_code: string;
+    qr_code: string;
+  } | null>(null);
+
+  const [formName, setFormName] = useState("");
+  const [formPosition, setFormPosition] = useState("");
+  const [formDept, setFormDept] = useState("");
+  const [formCategory, setFormCategory] = useState("mine");
+  const [formPhone, setFormPhone] = useState("");
+  const [formRoom, setFormRoom] = useState("");
+  const [formShift, setFormShift] = useState("");
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -69,10 +100,15 @@ const Personnel = () => {
         personnelApi.getStats(),
       ]);
       setPersonnel(listRes.personnel || []);
-      setStats(statsRes);
+      const byCat = statsRes.by_category || {};
+      setStats({
+        mine: byCat.mine || 0,
+        contractor: byCat.contractor || 0,
+        business_trip: byCat.business_trip || 0,
+        guest: byCat.guest || 0,
+      });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Ошибка загрузки данных";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
       setLoading(false);
     }
@@ -82,29 +118,69 @@ const Personnel = () => {
     fetchData();
   }, [fetchData]);
 
-  // Debounced search
   useEffect(() => {
     if (!search.trim()) {
-      // If search is cleared, refetch all
-      personnelApi.getAll().then((res) => {
-        setPersonnel(res.personnel || []);
-      }).catch(() => {});
+      personnelApi
+        .getAll()
+        .then((res) => setPersonnel(res.personnel || []))
+        .catch(() => {});
       return;
     }
-
     const timeout = setTimeout(async () => {
       try {
         const res = await personnelApi.search(search);
-        setPersonnel(res.personnel || []);
+        setPersonnel(res.results || []);
       } catch {
-        // Keep current data on search error
+        // keep current
       }
     }, 400);
-
     return () => clearTimeout(timeout);
   }, [search]);
 
-  const filtered = personnel;
+  const resetForm = () => {
+    setFormName("");
+    setFormPosition("");
+    setFormDept("");
+    setFormCategory("mine");
+    setFormPhone("");
+    setFormRoom("");
+    setFormShift("");
+    setAddError("");
+    setAddSuccess(null);
+  };
+
+  const handleOpenAdd = () => {
+    resetForm();
+    setShowAdd(true);
+  };
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) return;
+
+    setAddLoading(true);
+    setAddError("");
+    try {
+      const res = await personnelApi.add({
+        full_name: formName.trim(),
+        position: formPosition.trim(),
+        department: formDept.trim(),
+        category: formCategory,
+        phone: formPhone.trim(),
+        room: formRoom.trim(),
+        shift: formShift,
+      });
+      setAddSuccess({
+        personal_code: res.personal_code,
+        qr_code: res.qr_code,
+      });
+      fetchData();
+    } catch (err: unknown) {
+      setAddError(err instanceof Error ? err.message : "Ошибка добавления");
+    } finally {
+      setAddLoading(false);
+    }
+  };
 
   return (
     <AppLayout title="Персонал" subtitle="Учёт и контроль сотрудников рудника">
@@ -123,16 +199,14 @@ const Personnel = () => {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
-              <Icon name="Filter" size={14} />
-              Фильтр
-            </Button>
-            <Button size="sm" className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-              <Icon name="UserPlus" size={14} />
-              Добавить
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={handleOpenAdd}
+          >
+            <Icon name="UserPlus" size={14} />
+            Добавить
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -182,7 +256,7 @@ const Personnel = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p, i) => {
+                  {personnel.map((p, i) => {
                     const statusText = statusLabels[p.status] || p.status;
                     const categoryText = categoryLabels[p.category] || p.category;
                     return (
@@ -227,7 +301,7 @@ const Personnel = () => {
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && !loading && (
+                  {personnel.length === 0 && !loading && (
                     <tr>
                       <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет данных
@@ -240,6 +314,212 @@ const Personnel = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="sm:max-w-lg bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Icon name="UserPlus" size={20} className="text-primary" />
+              {addSuccess ? "Сотрудник добавлен" : "Новый сотрудник"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {addSuccess ? (
+            <div className="space-y-5 animate-fade-in">
+              <div className="rounded-xl border border-mine-green/20 bg-mine-green/5 p-5 glow-green">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-mine-green/20 flex items-center justify-center">
+                    <Icon name="CheckCircle2" size={20} className="text-mine-green" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{formName}</p>
+                    <p className="text-xs text-mine-green">Успешно зарегистрирован</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-[10px] text-muted-foreground mb-1">Личный код</p>
+                    <code className="text-lg font-mono font-bold text-mine-cyan">
+                      {addSuccess.personal_code}
+                    </code>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-[10px] text-muted-foreground mb-1">QR-код</p>
+                    <code className="text-lg font-mono font-bold text-mine-amber">
+                      {addSuccess.qr_code}
+                    </code>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center gap-3">
+                <div className="bg-white rounded-lg p-4">
+                  <QRCodeSVG
+                    value={addSuccess.qr_code}
+                    size={180}
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                    level="M"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Распечатайте QR-код для сотрудника
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={() => {
+                    resetForm();
+                  }}
+                >
+                  <Icon name="UserPlus" size={14} />
+                  Ещё одного
+                </Button>
+                <Button
+                  className="flex-1 bg-primary text-primary-foreground"
+                  onClick={() => setShowAdd(false)}
+                >
+                  Готово
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleAdd} className="space-y-4">
+              {addError && (
+                <div className="p-3 rounded-lg bg-mine-red/10 border border-mine-red/20 text-mine-red text-sm flex items-center gap-2">
+                  <Icon name="AlertCircle" size={14} />
+                  {addError}
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">
+                  ФИО *
+                </label>
+                <Input
+                  placeholder="Иванов Иван Иванович"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  className="bg-secondary/50"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Должность
+                  </label>
+                  <Input
+                    placeholder="Горнорабочий"
+                    value={formPosition}
+                    onChange={(e) => setFormPosition(e.target.value)}
+                    className="bg-secondary/50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Подразделение
+                  </label>
+                  <Input
+                    placeholder="Участок №1"
+                    value={formDept}
+                    onChange={(e) => setFormDept(e.target.value)}
+                    className="bg-secondary/50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Категория *
+                  </label>
+                  <Select value={formCategory} onValueChange={setFormCategory}>
+                    <SelectTrigger className="bg-secondary/50">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mine">Рудничный</SelectItem>
+                      <SelectItem value="contractor">Подрядчик</SelectItem>
+                      <SelectItem value="business_trip">Командированный</SelectItem>
+                      <SelectItem value="guest">Гость</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Смена
+                  </label>
+                  <Select value={formShift} onValueChange={setFormShift}>
+                    <SelectTrigger className="bg-secondary/50">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="A">Смена А</SelectItem>
+                      <SelectItem value="B">Смена Б</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Телефон
+                  </label>
+                  <Input
+                    placeholder="+7 900 111-22-33"
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value)}
+                    className="bg-secondary/50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Комната
+                  </label>
+                  <Input
+                    placeholder="301"
+                    value={formRoom}
+                    onChange={(e) => setFormRoom(e.target.value)}
+                    className="bg-secondary/50"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-mine-cyan/20 bg-mine-cyan/5 p-3 flex items-start gap-2">
+                <Icon name="Info" size={14} className="text-mine-cyan mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-muted-foreground">
+                  Личный код и QR-код будут присвоены автоматически после добавления
+                </p>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                disabled={addLoading || !formName.trim()}
+              >
+                {addLoading ? (
+                  <>
+                    <Icon name="Loader2" size={14} className="animate-spin" />
+                    Добавление...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="UserPlus" size={14} />
+                    Добавить сотрудника
+                  </>
+                )}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 };
