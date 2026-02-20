@@ -1,0 +1,7 @@
+{
+  "events": "https://functions.poehali.dev/7ddc9847-facb-4e59-8cfe-6b535f9fa0cd",
+  "auth": "https://functions.poehali.dev/9ef13688-d7fb-45f4-8fd3-cdf77d286250",
+  "dispatcher": "https://functions.poehali.dev/fe833e96-793f-499d-9191-cf6b56d5664e",
+  "medical": "https://functions.poehali.dev/18f5df53-3ffc-4e98-b0e9-f4c07a9ba918",
+  "personnel": "https://functions.poehali.dev/19d28244-fece-4d02-a90e-264fa78b5256"
+}

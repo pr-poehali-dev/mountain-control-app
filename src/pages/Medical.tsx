@@ -4,36 +4,90 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import Icon from "@/components/ui/icon";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { medicalApi } from "@/lib/api";
 
-const medicalRecords = [
-  { id: "МК-001", name: "Иванов А.С.", status: "пройден", time: "08:42", bp: "120/80", pulse: 72, alcohol: "0.0", temp: "36.6", doctor: "Смирнова Е.В." },
-  { id: "МК-002", name: "Петров В.И.", status: "пройден", time: "08:38", bp: "130/85", pulse: 78, alcohol: "0.0", temp: "36.4", doctor: "Смирнова Е.В." },
-  { id: "МК-003", name: "Сидоров К.Н.", status: "не пройден", time: "08:35", bp: "155/95", pulse: 92, alcohol: "0.12", temp: "37.2", doctor: "Смирнова Е.В." },
-  { id: "МК-006", name: "Фёдоров Г.А.", status: "пройден", time: "08:30", bp: "125/82", pulse: 68, alcohol: "0.0", temp: "36.5", doctor: "Козлова И.А." },
-  { id: "МК-007", name: "Волков А.П.", status: "пройден", time: "08:25", bp: "118/76", pulse: 65, alcohol: "0.0", temp: "36.7", doctor: "Козлова И.А." },
-  { id: "МК-008", name: "Морозов С.Д.", status: "ожидает", time: "—", bp: "—", pulse: 0, alcohol: "—", temp: "—", doctor: "—" },
-  { id: "МК-009", name: "Лебедев И.В.", status: "ожидает", time: "—", bp: "—", pulse: 0, alcohol: "—", temp: "—", doctor: "—" },
-];
+const medicalStatusLabels: Record<string, string> = {
+  passed: "пройден",
+  failed: "не пройден",
+  pending: "ожидает",
+  expiring: "истекает",
+};
 
 const statusColors: Record<string, string> = {
   "пройден": "bg-mine-green/20 text-mine-green border-mine-green/30",
   "не пройден": "bg-mine-red/20 text-mine-red border-mine-red/30",
   "ожидает": "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
+  "истекает": "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
 };
+
+interface MedicalRecord {
+  id?: number;
+  personal_code: string;
+  full_name: string;
+  status: string;
+  checked_at?: string;
+  blood_pressure?: string;
+  pulse?: number;
+  alcohol?: string;
+  temperature?: string;
+  doctor_name?: string;
+}
+
+interface MedicalStats {
+  passed?: number;
+  failed?: number;
+  pending?: number;
+  total?: number;
+}
+
+function formatTime(dateStr?: string): string {
+  if (!dateStr) return "—";
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
 
 const Medical = () => {
   const [search, setSearch] = useState("");
+  const [records, setRecords] = useState<MedicalRecord[]>([]);
+  const [stats, setStats] = useState<MedicalStats>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const passed = medicalRecords.filter((r) => r.status === "пройден").length;
-  const failed = medicalRecords.filter((r) => r.status === "не пройден").length;
-  const waiting = medicalRecords.filter((r) => r.status === "ожидает").length;
-  const total = medicalRecords.length;
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const [checksRes, statsRes] = await Promise.all([
+          medicalApi.getChecks(),
+          medicalApi.getStats(),
+        ]);
+        setRecords(checksRes.checks || []);
+        setStats(statsRes);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Ошибка загрузки данных";
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
 
-  const filtered = medicalRecords.filter(
+  const passed = stats.passed ?? 0;
+  const failed = stats.failed ?? 0;
+  const waiting = stats.pending ?? 0;
+  const total = stats.total || (passed + failed + waiting) || 1;
+
+  const filtered = records.filter(
     (r) =>
-      r.name.toLowerCase().includes(search.toLowerCase()) ||
-      r.id.toLowerCase().includes(search.toLowerCase())
+      r.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      r.personal_code?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -112,76 +166,99 @@ const Medical = () => {
           </div>
         </div>
 
+        {error && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-mine-red/10 border border-mine-red/20">
+            <Icon name="AlertTriangle" size={16} className="text-mine-red" />
+            <p className="text-sm text-mine-red">{error}</p>
+          </div>
+        )}
+
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  {["Код", "ФИО", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Врач"].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    className={`border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in ${
-                      r.status === "не пройден" ? "bg-mine-red/5" : ""
-                    }`}
-                    style={{ animationDelay: `${i * 40}ms` }}
-                  >
-                    <td className="px-4 py-3">
-                      <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
-                        {r.id}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3 text-sm font-medium text-foreground">
-                      {r.name}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={`text-[11px] ${statusColors[r.status] || ""}`}
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Icon name="Loader2" size={28} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    {["Код", "ФИО", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Врач"].map((h) => (
+                      <th
+                        key={h}
+                        className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
                       >
-                        {r.status}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {r.time}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground font-mono">
-                      {r.bp}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground font-mono">
-                      {r.pulse || "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`text-sm font-mono ${
-                          r.alcohol !== "0.0" && r.alcohol !== "—"
-                            ? "text-mine-red font-semibold"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        {r.alcohol}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground font-mono">
-                      {r.temp}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {r.doctor}
-                    </td>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtered.map((r, i) => {
+                    const statusText = medicalStatusLabels[r.status] || r.status;
+                    return (
+                      <tr
+                        key={r.personal_code || i}
+                        className={`border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in ${
+                          statusText === "не пройден" ? "bg-mine-red/5" : ""
+                        }`}
+                        style={{ animationDelay: `${i * 40}ms` }}
+                      >
+                        <td className="px-4 py-3">
+                          <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                            {r.personal_code}
+                          </code>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-foreground">
+                          {r.full_name}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            className={`text-[11px] ${statusColors[statusText] || ""}`}
+                          >
+                            {statusText}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {formatTime(r.checked_at)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-foreground font-mono">
+                          {r.blood_pressure || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-foreground font-mono">
+                          {r.pulse || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`text-sm font-mono ${
+                              r.alcohol && r.alcohol !== "0.0" && r.alcohol !== "—"
+                                ? "text-mine-red font-semibold"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {r.alcohol || "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-foreground font-mono">
+                          {r.temperature || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {r.doctor_name || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filtered.length === 0 && !loading && (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                        Нет данных
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>

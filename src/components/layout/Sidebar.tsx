@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Icon from "@/components/ui/icon";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { path: "/", icon: "LayoutDashboard", label: "Дашборд" },
@@ -17,6 +18,12 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
     <aside
@@ -62,7 +69,14 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="p-2 border-t border-border">
+      <div className="p-2 border-t border-border space-y-1">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-mine-red hover:bg-mine-red/10 transition-all text-sm"
+        >
+          <Icon name="LogOut" size={18} />
+          {!collapsed && <span>Выйти</span>}
+        </button>
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-sm"

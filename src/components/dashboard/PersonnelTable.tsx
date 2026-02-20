@@ -1,14 +1,19 @@
 import { Badge } from "@/components/ui/badge";
 import Icon from "@/components/ui/icon";
 
-const personnel = [
-  { id: "МК-001", name: "Иванов А.С.", role: "Горнорабочий", dept: "Участок №3", status: "на смене", medical: "пройден" },
-  { id: "МК-002", name: "Петров В.И.", role: "Электрослесарь", dept: "Участок №1", status: "на смене", medical: "пройден" },
-  { id: "МК-003", name: "Сидоров К.Н.", role: "Маркшейдер", dept: "Геология", status: "прибыл", medical: "не пройден" },
-  { id: "МК-004", name: "Козлов Д.М.", role: "Подрядчик", dept: "СтройМонтаж", status: "командировка", medical: "пройден" },
-  { id: "МК-005", name: "Николаев Е.П.", role: "Взрывник", dept: "Участок №2", status: "убыл", medical: "пройден" },
-  { id: "МК-006", name: "Фёдоров Г.А.", role: "Механик", dept: "Мех.цех", status: "на смене", medical: "истекает" },
-];
+const statusLabels: Record<string, string> = {
+  on_shift: "на смене",
+  arrived: "прибыл",
+  departed: "убыл",
+  business_trip: "командировка",
+};
+
+const medicalLabels: Record<string, string> = {
+  passed: "пройден",
+  failed: "не пройден",
+  pending: "ожидает",
+  expiring: "истекает",
+};
 
 const statusColors: Record<string, string> = {
   "на смене": "bg-mine-green/20 text-mine-green border-mine-green/30",
@@ -20,10 +25,28 @@ const statusColors: Record<string, string> = {
 const medicalColors: Record<string, string> = {
   "пройден": "text-mine-green",
   "не пройден": "text-mine-red",
+  "ожидает": "text-mine-amber",
   "истекает": "text-mine-amber",
 };
 
-export default function PersonnelTable() {
+interface PersonnelItem {
+  id?: number;
+  personal_code: string;
+  full_name: string;
+  position: string;
+  department: string;
+  status: string;
+  medical_status?: string;
+}
+
+interface PersonnelTableProps {
+  data?: PersonnelItem[];
+  loading?: boolean;
+}
+
+export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
+  const personnel = (data || []).slice(0, 6);
+
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-border">
@@ -39,82 +62,99 @@ export default function PersonnelTable() {
         </button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
-                Код
-              </th>
-              <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
-                ФИО
-              </th>
-              <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
-                Должность
-              </th>
-              <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
-                Подразделение
-              </th>
-              <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
-                Статус
-              </th>
-              <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
-                Медосмотр
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {personnel.map((p, i) => (
-              <tr
-                key={p.id}
-                className="border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in"
-                style={{ animationDelay: `${i * 50}ms` }}
-              >
-                <td className="px-4 py-3">
-                  <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
-                    {p.id}
-                  </code>
-                </td>
-                <td className="px-4 py-3 text-sm font-medium text-foreground">
-                  {p.name}
-                </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
-                  {p.role}
-                </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
-                  {p.dept}
-                </td>
-                <td className="px-4 py-3">
-                  <Badge
-                    variant="outline"
-                    className={`text-[11px] ${statusColors[p.status] || ""}`}
-                  >
-                    {p.status}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <Icon
-                      name={
-                        p.medical === "пройден"
-                          ? "CheckCircle2"
-                          : p.medical === "не пройден"
-                          ? "XCircle"
-                          : "AlertCircle"
-                      }
-                      size={14}
-                      className={medicalColors[p.medical] || ""}
-                    />
-                    <span
-                      className={`text-xs ${medicalColors[p.medical] || ""}`}
-                    >
-                      {p.medical}
-                    </span>
-                  </div>
-                </td>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Icon name="Loader2" size={24} className="animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                  Код
+                </th>
+                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                  ФИО
+                </th>
+                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                  Должность
+                </th>
+                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                  Подразделение
+                </th>
+                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                  Статус
+                </th>
+                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                  Медосмотр
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {personnel.map((p, i) => {
+                const statusText = statusLabels[p.status] || p.status;
+                const medicalText = medicalLabels[p.medical_status || ""] || p.medical_status || "—";
+                return (
+                  <tr
+                    key={p.personal_code || i}
+                    className="border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in"
+                    style={{ animationDelay: `${i * 50}ms` }}
+                  >
+                    <td className="px-4 py-3">
+                      <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                        {p.personal_code}
+                      </code>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-foreground">
+                      {p.full_name}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {p.position}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {p.department}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        variant="outline"
+                        className={`text-[11px] ${statusColors[statusText] || ""}`}
+                      >
+                        {statusText}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Icon
+                          name={
+                            medicalText === "пройден"
+                              ? "CheckCircle2"
+                              : medicalText === "не пройден"
+                              ? "XCircle"
+                              : "AlertCircle"
+                          }
+                          size={14}
+                          className={medicalColors[medicalText] || ""}
+                        />
+                        <span
+                          className={`text-xs ${medicalColors[medicalText] || ""}`}
+                        >
+                          {medicalText}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {personnel.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Нет данных
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

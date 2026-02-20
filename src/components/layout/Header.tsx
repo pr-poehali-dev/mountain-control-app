@@ -1,12 +1,26 @@
 import Icon from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
 }
 
+const roleLabels: Record<string, string> = {
+  admin: "Администратор",
+  operator: "Оператор",
+  medic: "Медик",
+  dispatcher: "Диспетчер",
+  worker: "Сотрудник",
+};
+
 export default function Header({ title, subtitle }: HeaderProps) {
+  const { user } = useAuth();
+
+  const displayName = user?.full_name || user?.email || "Оператор";
+  const displayRole = user?.role ? (roleLabels[user.role] || user.role) : "Смена А";
+
   return (
     <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between px-6 sticky top-0 z-40">
       <div>
@@ -36,9 +50,9 @@ export default function Header({ title, subtitle }: HeaderProps) {
             <Icon name="User" size={16} className="text-primary" />
           </div>
           <div className="hidden md:block">
-            <p className="text-sm font-medium text-foreground">Оператор</p>
+            <p className="text-sm font-medium text-foreground">{displayName}</p>
             <p className="text-[10px] text-muted-foreground">
-              Смена А — 08:00–20:00
+              {displayRole}
             </p>
           </div>
         </div>
