@@ -97,20 +97,27 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
         return;
       }
 
+      const containerWidth = el.clientWidth || 320;
+      const boxSize = Math.min(Math.floor(containerWidth * 0.85), 400);
+
       await scannerRef.current.start(
         cameraConfig,
         {
-          fps: 10,
-          qrbox: { width: 220, height: 220 },
+          fps: 20,
+          qrbox: { width: boxSize, height: boxSize },
           aspectRatio: 1,
-        },
+          disableFlip: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
+        } as Parameters<typeof scannerRef.current.start>[1],
         (decodedText) => {
           if (decodedText !== lastScanRef.current) {
             lastScanRef.current = decodedText;
             onScan(decodedText);
             setTimeout(() => {
               lastScanRef.current = "";
-            }, 3000);
+            }, 2000);
           }
         },
         () => {}
