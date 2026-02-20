@@ -42,6 +42,8 @@ def handler(event, context):
         return add_check(body)
     elif method == 'POST' and action == 'scan':
         return scan_medical(body)
+    elif method == 'POST' and action == 'deny':
+        return deny_medical(body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -247,4 +249,76 @@ def add_check(body):
         'id': check_id,
         'status': status,
         'message': 'Медосмотр записан. Результат: %s' % ('допущен' if status == 'passed' else 'не допущен')
+    })
+
+def deny_medical(body):
+    raw_code = body.get('code', '').strip()
+    reason = body.get('reason', '').strip()
+    if not raw_code:
+        return json_response(400, {'error': 'Код не указан'})
+
+    code = parse_qr_code(raw_code)
+    safe_code = code.replace("'", "''")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, full_name, personal_code, position, department, medical_status, organization
+        FROM personnel
+        WHERE (personal_code = '%s' OR qr_code = '%s') AND status != 'archived'
+        LIMIT 1
+    """ % (safe_code, safe_code))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник с кодом %s не найден' % code})
+
+    person_id = row[0]
+    person_name = row[1]
+    person_code = row[2]
+    position = row[3]
+    department = row[4]
+    old_medical = row[5]
+    organization = row[6] or ''
+
+    notes = reason if reason else 'Отказ при медосмотре'
+
+    cur.execute("""
+        INSERT INTO medical_checks (personnel_id, check_type, status, blood_pressure, pulse, alcohol_level, temperature, doctor_name, notes)
+        VALUES (%d, 'pre_shift', 'failed', '', 0, 0, 0, 'QR-скан', '%s')
+        RETURNING id
+    """ % (person_id, notes.replace("'", "''")))
+    check_id = cur.fetchone()[0]
+
+    cur.execute("""
+        UPDATE personnel SET medical_status = 'failed', updated_at = NOW() WHERE id = %d
+    """ % person_id)
+
+    event_desc = '%s — не прошёл медосмотр (%s)' % (person_name.replace("'", "''"), notes.replace("'", "''"))
+    cur.execute("""
+        INSERT INTO events (event_type, description, personnel_id)
+        VALUES ('medical_fail', '%s', %d)
+    """ % (event_desc, person_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'result': 'denied',
+        'check_id': check_id,
+        'person': {
+            'id': person_id,
+            'full_name': person_name,
+            'personal_code': person_code,
+            'position': position,
+            'department': department,
+            'organization': organization,
+            'old_medical': old_medical,
+            'new_medical': 'failed'
+        },
+        'message': '%s — медосмотр НЕ пройден: %s' % (person_name, notes)
     })

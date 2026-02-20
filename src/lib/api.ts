@@ -139,6 +139,8 @@ export const medicalApi = {
     request(API.medical, "", { method: "POST", body, params: { action: "add" } }),
   scan: (code: string) =>
     request(API.medical, "", { method: "POST", body: { code }, params: { action: "scan" } }),
+  deny: (code: string, reason: string) =>
+    request(API.medical, "", { method: "POST", body: { code, reason }, params: { action: "deny" } }),
 };
 
 export const eventsApi = {

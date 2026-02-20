@@ -83,6 +83,11 @@ const Medical = () => {
   const [scanLoading, setScanLoading] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanError, setScanError] = useState("");
+  const [showDeny, setShowDeny] = useState(false);
+  const [denyCode, setDenyCode] = useState("");
+  const [denyReason, setDenyReason] = useState("");
+  const [denyLoading, setDenyLoading] = useState(false);
+  const [denyResult, setDenyResult] = useState<ScanResult | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -138,6 +143,32 @@ const Medical = () => {
     setScanResult(null);
     setScanError("");
     setManualCode("");
+    setDenyResult(null);
+  };
+
+  const openDeny = (code?: string) => {
+    setDenyCode(code || "");
+    setDenyReason("");
+    setDenyResult(null);
+    setShowDeny(true);
+  };
+
+  const handleDeny = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!denyCode.trim()) return;
+    setDenyLoading(true);
+    setScanError("");
+    try {
+      const data = await medicalApi.deny(denyCode.trim(), denyReason.trim());
+      setDenyResult(data);
+      playDenied();
+      fetchData();
+    } catch (err: unknown) {
+      playDenied();
+      setScanError(err instanceof Error ? err.message : "Ошибка");
+    } finally {
+      setDenyLoading(false);
+    }
   };
 
   const passed = stats.passed ?? 0;
@@ -230,14 +261,25 @@ const Medical = () => {
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                   />
-                  <Button
-                    type="submit"
-                    className="w-full gap-2 bg-mine-green hover:bg-mine-green/90 text-white font-semibold"
-                    disabled={!manualCode.trim() || scanLoading}
-                  >
-                    <Icon name="HeartPulse" size={16} />
-                    {scanLoading ? "Проверка..." : "Отметить медосмотр"}
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="submit"
+                      className="gap-2 bg-mine-green hover:bg-mine-green/90 text-white font-semibold"
+                      disabled={!manualCode.trim() || scanLoading}
+                    >
+                      <Icon name="CheckCircle2" size={16} />
+                      {scanLoading ? "..." : "Допустить"}
+                    </Button>
+                    <Button
+                      type="button"
+                      className="gap-2 bg-mine-red hover:bg-mine-red/90 text-white font-semibold"
+                      disabled={!manualCode.trim() || scanLoading}
+                      onClick={() => openDeny(manualCode.trim())}
+                    >
+                      <Icon name="XCircle" size={16} />
+                      Отказ
+                    </Button>
+                  </div>
                 </form>
               </>
             )}
@@ -319,7 +361,91 @@ const Medical = () => {
               </div>
             )}
 
-            {!scanLoading && !scanError && !scanResult && (
+            {denyResult && (
+              <div className="rounded-xl border border-mine-red/20 bg-mine-red/5 p-5 animate-fade-in glow-red">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-mine-red/20 flex items-center justify-center">
+                    <Icon name="ShieldAlert" size={24} className="text-mine-red" />
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold text-foreground">
+                      {denyResult.person.full_name}
+                    </p>
+                    <p className="text-sm font-medium text-mine-red">
+                      {denyResult.message}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Код", value: denyResult.person.personal_code },
+                    { label: "Подразделение", value: denyResult.person.department },
+                    { label: "Было", value: medicalStatusLabels[denyResult.person.old_medical] || denyResult.person.old_medical },
+                    { label: "Стало", value: "не пройден" },
+                  ].map((f) => (
+                    <div key={f.label} className="rounded-lg border border-border/50 bg-background/50 px-3 py-2">
+                      <p className="text-[10px] text-muted-foreground">{f.label}</p>
+                      <p className="text-xs font-medium text-foreground">{f.value || "—"}</p>
+                    </div>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" className="w-full mt-3 border-border" onClick={() => { setDenyResult(null); setShowDeny(false); }}>
+                  Следующий
+                </Button>
+              </div>
+            )}
+
+            {showDeny && !denyResult && (
+              <div className="rounded-xl border border-mine-red/20 bg-card p-5 animate-fade-in">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-mine-red/10 flex items-center justify-center">
+                    <Icon name="ShieldAlert" size={20} className="text-mine-red" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Отказ в допуске</h3>
+                    <p className="text-xs text-muted-foreground">Укажите код сотрудника и причину</p>
+                  </div>
+                </div>
+                <form onSubmit={handleDeny} className="space-y-3">
+                  <Input
+                    placeholder="Код: МК-001"
+                    className="bg-secondary/50 font-mono text-center h-12 tracking-widest"
+                    value={denyCode}
+                    onChange={(e) => setDenyCode(e.target.value.toUpperCase())}
+                    required
+                  />
+                  <Input
+                    placeholder="Причина отказа (алкоголь, давление, температура...)"
+                    className="bg-secondary/50"
+                    value={denyReason}
+                    onChange={(e) => setDenyReason(e.target.value)}
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {["Алкоголь", "Высокое давление", "Температура", "Плохое самочувствие", "Отказ от осмотра"].map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setDenyReason(r)}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${denyReason === r ? "bg-mine-red/20 border-mine-red/40 text-mine-red" : "border-border text-muted-foreground hover:border-mine-red/30 hover:text-mine-red"}`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" onClick={() => setShowDeny(false)} disabled={denyLoading}>
+                      Отмена
+                    </Button>
+                    <Button type="submit" className="gap-2 bg-mine-red hover:bg-mine-red/90 text-white" disabled={!denyCode.trim() || denyLoading}>
+                      <Icon name="XCircle" size={14} />
+                      {denyLoading ? "..." : "Отказать"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {!scanLoading && !scanError && !scanResult && !showDeny && !denyResult && (
               <div className="rounded-xl border border-border bg-card p-6 flex flex-col items-center justify-center gap-3 text-center min-h-[200px]">
                 <div className="w-16 h-16 rounded-2xl bg-mine-green/10 flex items-center justify-center">
                   <Icon name="HeartPulse" size={32} className="text-mine-green/40" />
@@ -327,9 +453,12 @@ const Medical = () => {
                 <p className="text-sm text-muted-foreground">
                   Сканируйте QR-код сотрудника для отметки медосмотра
                 </p>
-                <p className="text-xs text-muted-foreground/60">
-                  После сканирования статус автоматически изменится на «пройден»
-                </p>
+                <div className="flex gap-2 mt-2">
+                  <Button size="sm" variant="outline" className="gap-1.5 text-mine-red border-mine-red/30 hover:bg-mine-red/10" onClick={() => openDeny()}>
+                    <Icon name="XCircle" size={14} />
+                    Отказ вручную
+                  </Button>
+                </div>
               </div>
             )}
           </div>
