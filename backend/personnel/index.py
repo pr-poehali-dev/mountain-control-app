@@ -51,7 +51,7 @@ def get_personnel(params):
     query = """
         SELECT id, personal_code, full_name, position, department, category, 
                phone, room, status, qr_code, medical_status, shift, created_at
-        FROM personnel WHERE 1=1
+        FROM personnel WHERE status != 'archived'
     """
     if category:
         query += " AND category = '%s'" % category.replace("'", "''")
@@ -82,16 +82,16 @@ def get_stats():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM personnel")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived'")
     total = cur.fetchone()[0]
 
-    cur.execute("SELECT category, COUNT(*) FROM personnel GROUP BY category")
+    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY category")
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT status, COUNT(*) FROM personnel GROUP BY status")
+    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY status")
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT medical_status, COUNT(*) FROM personnel GROUP BY medical_status")
+    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY medical_status")
     by_medical = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("SELECT COUNT(*) FROM rooms")
@@ -225,8 +225,8 @@ def search_personnel(params):
         SELECT id, personal_code, full_name, position, department, category, 
                room, status, qr_code, medical_status
         FROM personnel
-        WHERE full_name ILIKE '%%%s%%' OR personal_code ILIKE '%%%s%%' 
-              OR department ILIKE '%%%s%%' OR qr_code ILIKE '%%%s%%'
+        WHERE status != 'archived' AND (full_name ILIKE '%%%s%%' OR personal_code ILIKE '%%%s%%' 
+              OR department ILIKE '%%%s%%' OR qr_code ILIKE '%%%s%%')
         ORDER BY full_name LIMIT 20
     """ % (safe_q, safe_q, safe_q, safe_q))
     rows = cur.fetchall()

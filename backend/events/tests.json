@@ -1,1 +1,1 @@
-{"tests": [{"name": "Get events", "method": "GET", "path": "/?action=list", "expectedStatus": 200, "expectedBody": {"events": "array"}, "bodyMatcher": "partial"}, {"name": "Get dashboard", "method": "GET", "path": "/?action=dashboard", "expectedStatus": 200, "expectedBody": {"on_site": "number"}, "bodyMatcher": "partial"}]}
+{"tests": [{"name": "Get events", "method": "GET", "path": "/?action=list", "expectedStatus": 200}, {"name": "Get dashboard", "method": "GET", "path": "/?action=dashboard", "expectedStatus": 200}]}

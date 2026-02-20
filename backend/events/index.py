@@ -63,7 +63,7 @@ def get_dashboard():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip')")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived'")
     on_site = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM lanterns WHERE status = 'issued'")
@@ -77,7 +77,7 @@ def get_dashboard():
     """)
     medical_passed = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM personnel")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived'")
     total_personnel = cur.fetchone()[0]
 
     cur.execute("SELECT COALESCE(SUM(capacity), 0), COALESCE(SUM(occupied), 0) FROM rooms")
@@ -85,7 +85,7 @@ def get_dashboard():
     housing_total = room_row[0]
     housing_occupied = room_row[1]
 
-    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') GROUP BY category")
+    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived' GROUP BY category")
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.close()
