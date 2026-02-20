@@ -302,10 +302,18 @@ const Personnel = () => {
     setEditing(true);
   };
 
+  const handleMedicalChange = (val: string) => {
+    setEditMedical(val);
+    if (val === "failed" || val === "pending") {
+      setEditShift("");
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!selectedPerson) return;
     setEditLoading(true);
     setEditError("");
+    const finalShift = (editMedical === "failed" || editMedical === "pending") ? "" : editShift;
     try {
       await personnelApi.edit({
         id: selectedPerson.id,
@@ -315,7 +323,7 @@ const Personnel = () => {
         category: editCategory,
         phone: editPhone.trim(),
         room: editRoom.trim(),
-        shift: editShift,
+        shift: finalShift,
         status: editStatus,
         medical_status: editMedical,
         organization: editOrg.trim(),
@@ -329,7 +337,7 @@ const Personnel = () => {
         category: editCategory,
         phone: editPhone.trim(),
         room: editRoom.trim(),
-        shift: editShift,
+        shift: finalShift,
         status: editStatus,
         medical_status: editMedical,
         organization: editOrg.trim(),
@@ -790,14 +798,21 @@ const Personnel = () => {
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Смена</label>
-                  <Select value={editShift || "none"} onValueChange={(v) => setEditShift(v === "none" ? "" : v)}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
+                  <Select
+                    value={editShift || "none"}
+                    onValueChange={(v) => setEditShift(v === "none" ? "" : v)}
+                    disabled={editMedical === "failed" || editMedical === "pending"}
+                  >
+                    <SelectTrigger className={`bg-secondary/50 ${(editMedical === "failed" || editMedical === "pending") ? "opacity-50" : ""}`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">—</SelectItem>
                       <SelectItem value="A">Смена А</SelectItem>
                       <SelectItem value="B">Смена Б</SelectItem>
                     </SelectContent>
                   </Select>
+                  {(editMedical === "failed" || editMedical === "pending") && (
+                    <p className="text-[10px] text-mine-red mt-1">Смена снята — медосмотр не пройден</p>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -815,7 +830,7 @@ const Personnel = () => {
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Медосмотр</label>
-                  <Select value={editMedical} onValueChange={setEditMedical}>
+                  <Select value={editMedical} onValueChange={handleMedicalChange}>
                     <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="passed">Пройден</SelectItem>

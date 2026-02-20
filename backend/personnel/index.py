@@ -296,26 +296,61 @@ def edit_person(body):
     conn = get_db()
     cur = conn.cursor()
 
+    new_medical = fields.get('medical_status', '')
+
+    cur.execute("SELECT full_name, medical_status FROM personnel WHERE id = %d AND status != 'archived'" % int(person_id))
+    old_row = cur.fetchone()
+    if not old_row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник не найден'})
+
+    person_name = old_row[0]
+    old_medical = old_row[1] or 'pending'
+
     set_parts = []
     for key, val in fields.items():
         set_parts.append("%s = '%s'" % (key, val.replace("'", "''")))
     set_parts.append("updated_at = NOW()")
 
     cur.execute("""
-        UPDATE personnel SET %s WHERE id = %d RETURNING full_name
+        UPDATE personnel SET %s WHERE id = %d
     """ % (', '.join(set_parts), int(person_id)))
-    row = cur.fetchone()
 
-    if not row:
-        cur.close()
-        conn.close()
-        return json_response(404, {'error': 'Сотрудник не найден'})
+    if new_medical and new_medical != old_medical:
+        medical_labels = {'passed': 'пройден', 'failed': 'не пройден', 'pending': 'ожидает'}
+        old_label = medical_labels.get(old_medical, old_medical)
+        new_label = medical_labels.get(new_medical, new_medical)
+
+        if new_medical == 'passed':
+            check_status = 'passed'
+            event_type = 'medical_pass'
+            notes = 'Ручное изменение: %s -> %s' % (old_label, new_label)
+            cur.execute("""
+                INSERT INTO medical_checks (personnel_id, check_type, status, blood_pressure, pulse, alcohol_level, temperature, doctor_name, notes, shift_type, check_direction, shift_date)
+                VALUES (%d, 'manual', 'passed', '', 0, 0, 0, 'Редактирование', '%s', '', '', CURRENT_DATE)
+            """ % (int(person_id), notes.replace("'", "''")))
+        elif new_medical == 'failed':
+            check_status = 'failed'
+            event_type = 'medical_fail'
+            notes = 'Ручное изменение: %s -> %s' % (old_label, new_label)
+            cur.execute("""
+                INSERT INTO medical_checks (personnel_id, check_type, status, blood_pressure, pulse, alcohol_level, temperature, doctor_name, notes, shift_type, check_direction, shift_date)
+                VALUES (%d, 'manual', 'failed', '', 0, 0, 0, 'Редактирование', '%s', '', '', CURRENT_DATE)
+            """ % (int(person_id), notes.replace("'", "''")))
+        else:
+            event_type = 'medical_reset'
+
+        cur.execute("""
+            INSERT INTO events (event_type, description, personnel_id)
+            VALUES ('%s', '%s — медосмотр изменён: %s → %s', %d)
+        """ % (event_type, person_name.replace("'", "''"), old_label, new_label, int(person_id)))
 
     changed = ', '.join(fields.keys())
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
         VALUES ('edit', '%s — изменены данные (%s)', %d)
-    """ % (row[0].replace("'", "''"), changed, int(person_id)))
+    """ % (person_name.replace("'", "''"), changed, int(person_id)))
 
     conn.commit()
     cur.close()
