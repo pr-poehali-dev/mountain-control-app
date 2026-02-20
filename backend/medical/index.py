@@ -17,8 +17,15 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=str)
     }
 
+def parse_qr_code(raw):
+    try:
+        data = json.loads(raw)
+        return data.get('code', raw)
+    except (json.JSONDecodeError, AttributeError):
+        return raw.strip()
+
 def handler(event, context):
-    """Медицинский контроль — предсменные и послесменные осмотры"""
+    """Медицинский контроль — предсменные и послесменные осмотры, сканирование QR"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
 
@@ -33,6 +40,8 @@ def handler(event, context):
         return get_medical_stats()
     elif method == 'POST' and action == 'add':
         return add_check(body)
+    elif method == 'POST' and action == 'scan':
+        return scan_medical(body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -45,6 +54,7 @@ def get_checks():
                p.full_name, p.personal_code, p.department
         FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
+        WHERE p.status != 'archived'
         ORDER BY mc.checked_at DESC
         LIMIT 50
     """)
@@ -76,23 +86,98 @@ def get_medical_stats():
     """)
     today = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COUNT(*) FROM personnel")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived'")
     total_personnel = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND medical_status = 'passed'")
+    med_passed = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND medical_status = 'failed'")
+    med_failed = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND medical_status IN ('pending', '')")
+    med_pending = cur.fetchone()[0]
 
     cur.close()
     conn.close()
 
-    passed = today.get('passed', 0)
-    failed = today.get('failed', 0)
-    pending = total_personnel - passed - failed
-
     return json_response(200, {
         'today': {
-            'passed': passed,
-            'failed': failed,
-            'pending': max(0, pending),
-            'total': total_personnel
-        }
+            'passed': today.get('passed', 0),
+            'failed': today.get('failed', 0),
+        },
+        'passed': med_passed,
+        'failed': med_failed,
+        'pending': med_pending,
+        'total': total_personnel
+    })
+
+def scan_medical(body):
+    raw_code = body.get('code', '').strip()
+    if not raw_code:
+        return json_response(400, {'error': 'Код не указан'})
+
+    code = parse_qr_code(raw_code)
+    safe_code = code.replace("'", "''")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, full_name, personal_code, position, department, medical_status, organization
+        FROM personnel
+        WHERE (personal_code = '%s' OR qr_code = '%s') AND status != 'archived'
+        LIMIT 1
+    """ % (safe_code, safe_code))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник с кодом %s не найден' % code})
+
+    person_id = row[0]
+    person_name = row[1]
+    person_code = row[2]
+    position = row[3]
+    department = row[4]
+    old_medical = row[5]
+    organization = row[6] or ''
+
+    cur.execute("""
+        INSERT INTO medical_checks (personnel_id, check_type, status, blood_pressure, pulse, alcohol_level, temperature, doctor_name, notes)
+        VALUES (%d, 'pre_shift', 'passed', '', 0, 0, 0, 'QR-скан', 'Автоматическая отметка через QR')
+        RETURNING id
+    """ % person_id)
+    check_id = cur.fetchone()[0]
+
+    cur.execute("""
+        UPDATE personnel SET medical_status = 'passed', updated_at = NOW() WHERE id = %d
+    """ % person_id)
+
+    cur.execute("""
+        INSERT INTO events (event_type, description, personnel_id)
+        VALUES ('medical_pass', '%s — прошёл медосмотр (QR-скан)', %d)
+    """ % (person_name.replace("'", "''"), person_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'result': 'passed',
+        'check_id': check_id,
+        'person': {
+            'id': person_id,
+            'full_name': person_name,
+            'personal_code': person_code,
+            'position': position,
+            'department': department,
+            'organization': organization,
+            'old_medical': old_medical,
+            'new_medical': 'passed'
+        },
+        'message': '%s — медосмотр пройден' % person_name
     })
 
 def add_check(body):

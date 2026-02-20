@@ -137,6 +137,8 @@ export const medicalApi = {
   getStats: () => request(API.medical, "", { params: { action: "stats" } }),
   addCheck: (body: Record<string, unknown>) =>
     request(API.medical, "", { method: "POST", body, params: { action: "add" } }),
+  scan: (code: string) =>
+    request(API.medical, "", { method: "POST", body: { code }, params: { action: "scan" } }),
 };
 
 export const eventsApi = {

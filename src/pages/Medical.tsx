@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import Icon from "@/components/ui/icon";
-import { useState, useEffect } from "react";
+import QrScanner from "@/components/scanner/QrScanner";
+import { useState, useEffect, useCallback } from "react";
 import { medicalApi } from "@/lib/api";
+import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 
 const medicalStatusLabels: Record<string, string> = {
   passed: "пройден",
@@ -15,23 +17,41 @@ const medicalStatusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  "пройден": "bg-mine-green/20 text-mine-green border-mine-green/30",
+  пройден: "bg-mine-green/20 text-mine-green border-mine-green/30",
   "не пройден": "bg-mine-red/20 text-mine-red border-mine-red/30",
-  "ожидает": "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
-  "истекает": "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
+  ожидает: "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
+  истекает: "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
 };
 
 interface MedicalRecord {
   id?: number;
-  personal_code: string;
-  full_name: string;
+  personal_code?: string;
+  person_code?: string;
+  person_name?: string;
+  full_name?: string;
   status: string;
   checked_at?: string;
   blood_pressure?: string;
   pulse?: number;
-  alcohol?: string;
-  temperature?: string;
+  alcohol_level?: number;
+  temperature?: number;
   doctor_name?: string;
+  department?: string;
+}
+
+interface ScanResult {
+  result: string;
+  message: string;
+  person: {
+    id: number;
+    full_name: string;
+    personal_code: string;
+    position: string;
+    department: string;
+    organization: string;
+    old_medical: string;
+    new_medical: string;
+  };
 }
 
 interface MedicalStats {
@@ -58,36 +78,77 @@ const Medical = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        setError(null);
-        const [checksRes, statsRes] = await Promise.all([
-          medicalApi.getChecks(),
-          medicalApi.getStats(),
-        ]);
-        setRecords(checksRes.checks || []);
-        setStats(statsRes);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Ошибка загрузки данных";
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
+  const [scanning, setScanning] = useState(false);
+  const [manualCode, setManualCode] = useState("");
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanError, setScanError] = useState("");
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [checksRes, statsRes] = await Promise.all([
+        medicalApi.getChecks(),
+        medicalApi.getStats(),
+      ]);
+      setRecords(checksRes.checks || []);
+      setStats(statsRes);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ошибка загрузки данных");
+    } finally {
+      setLoading(false);
     }
-    fetchData();
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleScan = useCallback(
+    async (code: string) => {
+      if (scanLoading) return;
+      playScan();
+      setScanLoading(true);
+      setScanError("");
+      setScanResult(null);
+
+      try {
+        const data = await medicalApi.scan(code);
+        setScanResult(data);
+        playSuccess();
+        fetchData();
+      } catch (err: unknown) {
+        playDenied();
+        setScanError(err instanceof Error ? err.message : "Ошибка сканирования");
+      } finally {
+        setScanLoading(false);
+      }
+    },
+    [scanLoading, fetchData]
+  );
+
+  const handleManualScan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualCode.trim()) return;
+    await handleScan(manualCode.trim());
+  };
+
+  const clearScanResult = () => {
+    setScanResult(null);
+    setScanError("");
+    setManualCode("");
+  };
 
   const passed = stats.passed ?? 0;
   const failed = stats.failed ?? 0;
   const waiting = stats.pending ?? 0;
-  const total = stats.total || (passed + failed + waiting) || 1;
+  const total = stats.total || passed + failed + waiting || 1;
 
   const filtered = records.filter(
     (r) =>
-      r.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      r.personal_code?.toLowerCase().includes(search.toLowerCase())
+      (r.person_name || r.full_name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (r.person_code || r.personal_code || "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -140,6 +201,140 @@ const Medical = () => {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-mine-green/10 flex items-center justify-center">
+                <Icon name="ScanLine" size={20} className="text-mine-green" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Отметить медосмотр</h3>
+                <p className="text-xs text-muted-foreground">Сканируйте QR-код или введите личный код сотрудника</p>
+              </div>
+            </div>
+
+            <QrScanner onScan={handleScan} active={scanning} onToggle={setScanning} />
+
+            {!scanning && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs text-muted-foreground">или введите код</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+
+                <form onSubmit={handleManualScan} className="space-y-3">
+                  <Input
+                    placeholder="Например: МК-001"
+                    className="bg-secondary/50 border-border text-lg font-mono text-center h-14 tracking-widest"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                  />
+                  <Button
+                    type="submit"
+                    className="w-full gap-2 bg-mine-green hover:bg-mine-green/90 text-white font-semibold"
+                    disabled={!manualCode.trim() || scanLoading}
+                  >
+                    <Icon name="HeartPulse" size={16} />
+                    {scanLoading ? "Проверка..." : "Отметить медосмотр"}
+                  </Button>
+                </form>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {scanLoading && (
+              <div className="rounded-xl border border-mine-cyan/20 bg-mine-cyan/5 p-6 flex items-center justify-center gap-3 animate-fade-in">
+                <Icon name="Loader2" size={20} className="animate-spin text-mine-cyan" />
+                <span className="text-sm text-mine-cyan">Обработка медосмотра...</span>
+              </div>
+            )}
+
+            {scanError && (
+              <div className="rounded-xl border border-mine-red/20 bg-mine-red/5 p-5 animate-fade-in">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-mine-red/10 flex items-center justify-center flex-shrink-0">
+                    <Icon name="XCircle" size={20} className="text-mine-red" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-mine-red">Ошибка</p>
+                    <p className="text-xs text-mine-red/80">{scanError}</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-2 border-mine-red/20 text-mine-red hover:bg-mine-red/10"
+                  onClick={clearScanResult}
+                >
+                  Попробовать снова
+                </Button>
+              </div>
+            )}
+
+            {scanResult && (
+              <div className="rounded-xl border border-mine-green/20 bg-mine-green/5 p-5 animate-fade-in glow-green">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-mine-green/20 flex items-center justify-center">
+                    <Icon name="CheckCircle2" size={24} className="text-mine-green" />
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold text-foreground">
+                      {scanResult.person.full_name}
+                    </p>
+                    <p className="text-sm font-medium text-mine-green">
+                      {scanResult.message}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Код", value: scanResult.person.personal_code },
+                    { label: "Должность", value: scanResult.person.position },
+                    { label: "Подразделение", value: scanResult.person.department },
+                    { label: "Организация", value: scanResult.person.organization || "—" },
+                    { label: "Было", value: medicalStatusLabels[scanResult.person.old_medical] || scanResult.person.old_medical },
+                    { label: "Стало", value: "пройден" },
+                  ].map((f) => (
+                    <div
+                      key={f.label}
+                      className="rounded-lg border border-border/50 bg-background/50 px-3 py-2"
+                    >
+                      <p className="text-[10px] text-muted-foreground">{f.label}</p>
+                      <p className="text-xs font-medium text-foreground">{f.value || "—"}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-3 border-border"
+                  onClick={clearScanResult}
+                >
+                  Следующий
+                </Button>
+              </div>
+            )}
+
+            {!scanLoading && !scanError && !scanResult && (
+              <div className="rounded-xl border border-border bg-card p-6 flex flex-col items-center justify-center gap-3 text-center min-h-[200px]">
+                <div className="w-16 h-16 rounded-2xl bg-mine-green/10 flex items-center justify-center">
+                  <Icon name="HeartPulse" size={32} className="text-mine-green/40" />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Сканируйте QR-код сотрудника для отметки медосмотра
+                </p>
+                <p className="text-xs text-muted-foreground/60">
+                  После сканирования статус автоматически изменится на «пройден»
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex items-center justify-between gap-4">
           <div className="relative flex-1 max-w-md">
             <Icon
@@ -154,16 +349,10 @@ const Medical = () => {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-              <Icon name="ScanLine" size={14} />
-              Сканировать QR
-            </Button>
-            <Button size="sm" variant="outline" className="gap-2">
-              <Icon name="Download" size={14} />
-              Экспорт
-            </Button>
-          </div>
+          <Button size="sm" variant="outline" className="gap-2" onClick={fetchData}>
+            <Icon name="RefreshCw" size={14} />
+            Обновить
+          </Button>
         </div>
 
         {error && (
@@ -196,21 +385,23 @@ const Medical = () => {
                 <tbody>
                   {filtered.map((r, i) => {
                     const statusText = medicalStatusLabels[r.status] || r.status;
+                    const code = r.person_code || r.personal_code || "";
+                    const name = r.person_name || r.full_name || "";
                     return (
                       <tr
-                        key={r.personal_code || i}
-                        className={`border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in ${
+                        key={(r.id || i)}
+                        className={`border-b border-border/50 hover:bg-secondary/50 transition-colors animate-fade-in ${
                           statusText === "не пройден" ? "bg-mine-red/5" : ""
                         }`}
                         style={{ animationDelay: `${i * 40}ms` }}
                       >
                         <td className="px-4 py-3">
                           <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
-                            {r.personal_code}
+                            {code}
                           </code>
                         </td>
                         <td className="px-4 py-3 text-sm font-medium text-foreground">
-                          {r.full_name}
+                          {name}
                         </td>
                         <td className="px-4 py-3">
                           <Badge
@@ -220,30 +411,28 @@ const Medical = () => {
                             {statusText}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                        <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
                           {formatTime(r.checked_at)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-foreground font-mono">
+                        <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
                           {r.blood_pressure || "—"}
                         </td>
-                        <td className="px-4 py-3 text-sm text-foreground font-mono">
+                        <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
                           {r.pulse || "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <span
-                            className={`text-sm font-mono ${
-                              r.alcohol && r.alcohol !== "0.0" && r.alcohol !== "—"
-                                ? "text-mine-red font-semibold"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {r.alcohol || "—"}
-                          </span>
+                          {(r.alcohol_level ?? 0) > 0 ? (
+                            <Badge variant="outline" className="text-[11px] bg-mine-red/20 text-mine-red border-mine-red/30">
+                              {r.alcohol_level}‰
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-mine-green">0</span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-foreground font-mono">
-                          {r.temperature || "—"}
+                        <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
+                          {r.temperature ? `${r.temperature}°` : "—"}
                         </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
                           {r.doctor_name || "—"}
                         </td>
                       </tr>
@@ -252,7 +441,7 @@ const Medical = () => {
                   {filtered.length === 0 && !loading && (
                     <tr>
                       <td colSpan={9} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                        Нет данных
+                        Нет записей о медосмотрах
                       </td>
                     </tr>
                   )}

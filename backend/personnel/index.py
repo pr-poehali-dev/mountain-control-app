@@ -163,8 +163,8 @@ def add_person(body):
     qr_code = 'QR-MK-%03d' % next_id
 
     cur.execute("""
-        INSERT INTO personnel (personal_code, full_name, position, department, category, phone, room, status, qr_code, shift, organization, organization_type)
-        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'arrived', '%s', '%s', '%s', '%s')
+        INSERT INTO personnel (personal_code, full_name, position, department, category, phone, room, status, qr_code, shift, organization, organization_type, medical_status)
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'arrived', '%s', '%s', '%s', '%s', 'pending')
         RETURNING id, personal_code, qr_code
     """ % (
         personal_code,
