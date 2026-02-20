@@ -1,12 +1,10 @@
-import urls from "../../backend/func2url.json";
-
 const API = {
-  auth: urls.auth,
-  personnel: urls.personnel,
-  dispatcher: urls.dispatcher,
-  medical: urls.medical,
-  events: urls.events,
-  scanner: urls.scanner,
+  auth: "https://functions.poehali.dev/9ef13688-d7fb-45f4-8fd3-cdf77d286250",
+  personnel: "https://functions.poehali.dev/19d28244-fece-4d02-a90e-264fa78b5256",
+  dispatcher: "https://functions.poehali.dev/fe833e96-793f-499d-9191-cf6b56d5664e",
+  medical: "https://functions.poehali.dev/18f5df53-3ffc-4e98-b0e9-f4c07a9ba918",
+  events: "https://functions.poehali.dev/7ddc9847-facb-4e59-8cfe-6b535f9fa0cd",
+  scanner: "https://functions.poehali.dev/58bc1a4c-940f-4d64-ba57-f78ad93367b1",
 };
 
 function getToken(): string | null {
@@ -61,16 +59,26 @@ async function request(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error("Нет связи с сервером. Проверьте интернет-соединение.");
+  }
 
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error("Ошибка ответа сервера");
+  }
 
   if (!res.ok) {
-    throw new Error(data.error || "Ошибка сервера");
+    throw new Error(data.error || data.errorMessage || "Ошибка сервера");
   }
 
   return data;
