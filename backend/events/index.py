@@ -23,12 +23,12 @@ def handler(event, context):
         return json_response(200, '')
 
     method = event.get('httpMethod', 'GET')
-    path = event.get('path', '/')
     params = event.get('queryStringParameters') or {}
+    action = params.get('action', '')
 
-    if method == 'GET' and path == '/':
+    if method == 'GET' and action in ('list', ''):
         return get_events(params)
-    elif method == 'GET' and path == '/dashboard':
+    elif method == 'GET' and action == 'dashboard':
         return get_dashboard()
 
     return json_response(404, {'error': 'Маршрут не найден'})

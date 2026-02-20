@@ -29,18 +29,19 @@ def handler(event, context):
         return json_response(200, '')
 
     method = event.get('httpMethod', 'GET')
-    path = event.get('path', '/')
+    params = event.get('queryStringParameters') or {}
+    action = params.get('action', '')
     body = json.loads(event.get('body', '{}') or '{}')
 
-    if method == 'POST' and path == '/register':
+    if method == 'POST' and action == 'register':
         return register(body)
-    elif method == 'POST' and path == '/login':
+    elif method == 'POST' and action == 'login':
         return login(body)
-    elif method == 'POST' and path == '/login-code':
+    elif method == 'POST' and action == 'login-code':
         return login_by_code(body)
-    elif method == 'GET' and path == '/me':
+    elif method == 'GET' and action == 'me':
         return get_me(event)
-    elif method == 'POST' and path == '/logout':
+    elif method == 'POST' and action == 'logout':
         return logout(event)
 
     return json_response(404, {'error': 'Маршрут не найден'})

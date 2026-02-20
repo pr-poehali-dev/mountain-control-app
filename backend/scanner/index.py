@@ -23,14 +23,15 @@ def handler(event, context):
         return json_response(200, '')
 
     method = event.get('httpMethod', 'GET')
-    path = event.get('path', '/')
+    params = event.get('queryStringParameters') or {}
+    action = params.get('action', '')
     body = json.loads(event.get('body', '{}') or '{}')
 
-    if method == 'POST' and path == '/identify':
+    if method == 'POST' and action == 'identify':
         return identify(body)
-    elif method == 'POST' and path == '/checkin':
+    elif method == 'POST' and action == 'checkin':
         return checkin(body)
-    elif method == 'GET' and path == '/recent':
+    elif method == 'GET' and action == 'recent':
         return get_recent()
 
     return json_response(404, {'error': 'Маршрут не найден'})

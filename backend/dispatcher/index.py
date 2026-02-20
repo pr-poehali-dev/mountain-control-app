@@ -23,16 +23,17 @@ def handler(event, context):
         return json_response(200, '')
 
     method = event.get('httpMethod', 'GET')
-    path = event.get('path', '/')
+    params = event.get('queryStringParameters') or {}
+    action = params.get('action', '')
     body = json.loads(event.get('body', '{}') or '{}')
 
-    if method == 'GET' and path == '/':
+    if method == 'GET' and action in ('list', ''):
         return get_lanterns()
-    elif method == 'GET' and path == '/stats':
+    elif method == 'GET' and action == 'stats':
         return get_lantern_stats()
-    elif method == 'POST' and path == '/issue':
+    elif method == 'POST' and action == 'issue':
         return issue_lantern(body)
-    elif method == 'POST' and path == '/return':
+    elif method == 'POST' and action == 'return':
         return return_lantern(body)
 
     return json_response(404, {'error': 'Маршрут не найден'})

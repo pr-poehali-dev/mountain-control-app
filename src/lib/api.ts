@@ -86,67 +86,71 @@ async function request(
 
 export const authApi = {
   register: (body: Record<string, unknown>) =>
-    request(API.auth, "/register", { method: "POST", body }),
+    request(API.auth, "", { method: "POST", body, params: { action: "register" } }),
   login: (body: Record<string, unknown>) =>
-    request(API.auth, "/login", { method: "POST", body }),
+    request(API.auth, "", { method: "POST", body, params: { action: "login" } }),
   loginByCode: (code: string) =>
-    request(API.auth, "/login-code", { method: "POST", body: { code } }),
-  me: () => request(API.auth, "/me"),
-  logout: () => request(API.auth, "/logout", { method: "POST" }),
+    request(API.auth, "", { method: "POST", body: { code }, params: { action: "login-code" } }),
+  me: () => request(API.auth, "", { params: { action: "me" } }),
+  logout: () => request(API.auth, "", { method: "POST", params: { action: "logout" } }),
 };
 
 export const personnelApi = {
   getAll: (params?: Record<string, string>) =>
-    request(API.personnel, "/", { params }),
-  getStats: () => request(API.personnel, "/stats"),
+    request(API.personnel, "", { params: { action: "list", ...params } }),
+  getStats: () => request(API.personnel, "", { params: { action: "stats" } }),
   add: (body: Record<string, unknown>) =>
-    request(API.personnel, "/", { method: "POST", body }),
+    request(API.personnel, "", { method: "POST", body, params: { action: "add" } }),
   updateStatus: (id: number, status: string) =>
-    request(API.personnel, "/status", {
+    request(API.personnel, "", {
       method: "PUT",
       body: { id, status },
+      params: { action: "status" },
     }),
   search: (q: string) =>
-    request(API.personnel, "/search", { params: { q } }),
+    request(API.personnel, "", { params: { action: "search", q } }),
 };
 
 export const dispatcherApi = {
-  getLanterns: () => request(API.dispatcher, "/"),
-  getStats: () => request(API.dispatcher, "/stats"),
+  getLanterns: () => request(API.dispatcher, "", { params: { action: "list" } }),
+  getStats: () => request(API.dispatcher, "", { params: { action: "stats" } }),
   issue: (lantern_id: number, person_id: number) =>
-    request(API.dispatcher, "/issue", {
+    request(API.dispatcher, "", {
       method: "POST",
       body: { lantern_id, person_id },
+      params: { action: "issue" },
     }),
   returnLantern: (lantern_id: number, condition?: string) =>
-    request(API.dispatcher, "/return", {
+    request(API.dispatcher, "", {
       method: "POST",
       body: { lantern_id, condition: condition || "normal" },
+      params: { action: "return" },
     }),
 };
 
 export const medicalApi = {
-  getChecks: () => request(API.medical, "/"),
-  getStats: () => request(API.medical, "/stats"),
+  getChecks: () => request(API.medical, "", { params: { action: "list" } }),
+  getStats: () => request(API.medical, "", { params: { action: "stats" } }),
   addCheck: (body: Record<string, unknown>) =>
-    request(API.medical, "/", { method: "POST", body }),
+    request(API.medical, "", { method: "POST", body, params: { action: "add" } }),
 };
 
 export const eventsApi = {
   getEvents: (limit = 20) =>
-    request(API.events, "/", { params: { limit: String(limit) } }),
-  getDashboard: () => request(API.events, "/dashboard"),
+    request(API.events, "", { params: { action: "list", limit: String(limit) } }),
+  getDashboard: () => request(API.events, "", { params: { action: "dashboard" } }),
 };
 
 export const scannerApi = {
   identify: (code: string) =>
-    request(API.scanner, "/identify", { method: "POST", body: { code } }),
-  checkin: (code: string, action = "checkin") =>
-    request(API.scanner, "/checkin", {
+    request(API.scanner, "", { method: "POST", body: { code }, params: { action: "identify" } }),
+  checkin: (code: string, checkinAction = "checkin") =>
+    request(API.scanner, "", {
       method: "POST",
-      body: { code, action },
+      body: { code, action: checkinAction },
+      params: { action: "checkin" },
     }),
-  getRecent: () => request(API.scanner, "/recent"),
+  getRecent: () => request(API.scanner, "", { params: { action: "recent" } }),
 };
 
 export default API;
