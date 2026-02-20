@@ -116,19 +116,36 @@ export const personnelApi = {
 };
 
 export const dispatcherApi = {
-  getLanterns: () => request(API.dispatcher, "", { params: { action: "list" } }),
+  getLanterns: (params?: Record<string, string>) =>
+    request(API.dispatcher, "", { params: { action: "list", ...params } }),
   getStats: () => request(API.dispatcher, "", { params: { action: "stats" } }),
+  getAvailable: () => request(API.dispatcher, "", { params: { action: "available" } }),
+  searchPerson: (q: string) =>
+    request(API.dispatcher, "", { params: { action: "search", q } }),
   issue: (lantern_id: number, person_id: number) =>
     request(API.dispatcher, "", {
       method: "POST",
       body: { lantern_id, person_id },
       params: { action: "issue" },
     }),
+  issueByCode: (code: string, lantern_id: number) =>
+    request(API.dispatcher, "", {
+      method: "POST",
+      body: { code, lantern_id },
+      params: { action: "issue-by-code" },
+    }),
   returnLantern: (lantern_id: number, condition?: string) =>
     request(API.dispatcher, "", {
       method: "POST",
       body: { lantern_id, condition: condition || "normal" },
       params: { action: "return" },
+    }),
+  getMessages: () => request(API.dispatcher, "", { params: { action: "messages" } }),
+  sendMessage: (sender_name: string, message: string, is_urgent = false) =>
+    request(API.dispatcher, "", {
+      method: "POST",
+      body: { sender_name, message, is_urgent },
+      params: { action: "message" },
     }),
 };
 
