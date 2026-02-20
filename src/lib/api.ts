@@ -5,6 +5,7 @@ const API = {
   medical: "https://functions.poehali.dev/18f5df53-3ffc-4e98-b0e9-f4c07a9ba918",
   events: "https://functions.poehali.dev/7ddc9847-facb-4e59-8cfe-6b535f9fa0cd",
   scanner: "https://functions.poehali.dev/58bc1a4c-940f-4d64-ba57-f78ad93367b1",
+  reports: "https://functions.poehali.dev/fdbae00e-f203-48ec-97ae-6e89fc47a5cf",
 };
 
 function getToken(): string | null {
@@ -177,6 +178,15 @@ export const eventsApi = {
     request(API.events, "", { method: "PUT", body: { id }, params: { action: "read" } }),
   markAllRead: () =>
     request(API.events, "", { method: "PUT", body: {}, params: { action: "read-all" } }),
+};
+
+export const reportsApi = {
+  getReport: (reportType: string, params?: Record<string, string>) =>
+    request(API.reports, "", { params: { action: reportType, ...params } }),
+  getExportUrl: (reportType: string, params?: Record<string, string>) => {
+    const qs = new URLSearchParams({ action: "export", report_type: reportType, ...params }).toString();
+    return `${API.reports}?${qs}`;
+  },
 };
 
 export const scannerApi = {

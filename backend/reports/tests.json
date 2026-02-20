@@ -1,0 +1,11 @@
+{"tests": [
+  {"name": "OPTIONS CORS", "method": "OPTIONS", "path": "/", "expectedStatus": 200},
+  {"name": "Attendance report", "method": "GET", "path": "/?action=attendance", "expectedStatus": 200},
+  {"name": "Medical report", "method": "GET", "path": "/?action=medical", "expectedStatus": 200},
+  {"name": "Equipment report", "method": "GET", "path": "/?action=equipment", "expectedStatus": 200},
+  {"name": "Housing report", "method": "GET", "path": "/?action=housing", "expectedStatus": 200},
+  {"name": "Personnel summary", "method": "GET", "path": "/?action=personnel-summary", "expectedStatus": 200},
+  {"name": "Events log", "method": "GET", "path": "/?action=events-log", "expectedStatus": 200},
+  {"name": "Export CSV", "method": "GET", "path": "/?action=export&report_type=attendance", "expectedStatus": 200},
+  {"name": "Unknown route", "method": "GET", "path": "/?action=unknown", "expectedStatus": 404}
+]}
