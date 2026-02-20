@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,8 +16,32 @@ const roleLabels: Record<string, string> = {
   worker: "Сотрудник",
 };
 
+function useLiveClock() {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const time = now.toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const date = now.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "long",
+    weekday: "short",
+  });
+
+  return { time, date };
+}
+
 export default function Header({ title, subtitle }: HeaderProps) {
   const { user } = useAuth();
+  const { time, date } = useLiveClock();
 
   const displayName = user?.full_name || user?.email || "Оператор";
   const displayRole = user?.role ? (roleLabels[user.role] || user.role) : "Смена А";
@@ -31,6 +56,12 @@ export default function Header({ title, subtitle }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 border border-border">
+          <Icon name="Clock" size={14} className="text-mine-cyan" />
+          <span className="text-sm font-mono font-semibold text-foreground tabular-nums">{time}</span>
+          <span className="text-[10px] text-muted-foreground hidden sm:inline">{date}</span>
+        </div>
+
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-mine-green/10 border border-mine-green/20">
           <span className="w-2 h-2 rounded-full bg-mine-green animate-pulse-glow" />
           <span className="text-xs text-mine-green font-medium">
