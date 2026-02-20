@@ -55,6 +55,8 @@ def handler(event, context):
         return get_stats()
     elif method == 'GET' and action == 'medical-status':
         return get_medical_status(params)
+    elif method == 'GET' and action == 'template':
+        return get_template()
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -545,3 +547,104 @@ def get_medical_status(params):
         })
 
     return json_response(200, {'items': items, 'total': len(items)})
+
+
+def get_template():
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from io import BytesIO
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Список въезжающих"
+
+    headers = ["ФИО", "Должность", "Подразделение", "Организация", "Телефон", "Дата прибытия", "Дата отъезда", "Примечание"]
+    col_widths = [35, 25, 25, 30, 18, 16, 16, 30]
+
+    header_font = Font(name="Arial", bold=True, size=11, color="FFFFFF")
+    header_fill = PatternFill(start_color="2D5A27", end_color="2D5A27", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style="thin", color="CCCCCC"),
+        right=Side(style="thin", color="CCCCCC"),
+        top=Side(style="thin", color="CCCCCC"),
+        bottom=Side(style="thin", color="CCCCCC"),
+    )
+    data_font = Font(name="Arial", size=10)
+    data_align = Alignment(vertical="center", wrap_text=True)
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[1].height = 30
+
+    examples = [
+        ["Иванов Иван Иванович", "Горный мастер", "Участок №1", "ООО Рудник", "+7 900 123-45-67", "2026-03-01", "2026-03-15", ""],
+        ["Петров Пётр Петрович", "Электрослесарь", "Энергоцех", "ООО Рудник", "+7 900 765-43-21", "2026-03-01", "2026-03-15", ""],
+        ["Сидорова Анна Сергеевна", "Инженер ОТ", "ОТиПБ", "ООО Подрядчик", "+7 900 111-22-33", "2026-03-01", "2026-03-08", "Командировка"],
+    ]
+
+    example_fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+    for row_idx, row_data in enumerate(examples, 2):
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.font = Font(name="Arial", size=10, color="999999", italic=True)
+            cell.fill = example_fill
+            cell.alignment = data_align
+            cell.border = thin_border
+
+    for row_idx in range(5, 55):
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value="")
+            cell.font = data_font
+            cell.alignment = data_align
+            cell.border = thin_border
+
+    ws_help = wb.create_sheet("Инструкция")
+    ws_help.column_dimensions["A"].width = 80
+
+    instructions = [
+        "ИНСТРУКЦИЯ ПО ЗАПОЛНЕНИЮ",
+        "",
+        "1. Заполните список на листе «Список въезжающих»",
+        "2. Первая строка (зелёная) — заголовки, НЕ удаляйте и НЕ меняйте их",
+        "3. Строки 2-4 (серые) — примеры, можно удалить или заменить",
+        "4. Начинайте заполнение с 5 строки",
+        "",
+        "ОБЯЗАТЕЛЬНЫЕ ПОЛЯ:",
+        "• ФИО — полное имя сотрудника",
+        "",
+        "НЕОБЯЗАТЕЛЬНЫЕ ПОЛЯ:",
+        "• Должность, Подразделение, Организация, Телефон",
+        "• Дата прибытия/отъезда — формат ГГГГ-ММ-ДД (можно указать при загрузке)",
+        "• Примечание — любая дополнительная информация",
+        "",
+        "ПОСЛЕ ЗАГРУЗКИ:",
+        "• Каждому сотруднику автоматически присваивается личный код (МК-XXX)",
+        "• Автоматически генерируется QR-код",
+        "• Сотрудник появляется в разделе «Персонал»",
+        "• Можно отслеживать въезд/выезд и медосмотр в разделе «АХО»",
+    ]
+    for i, text in enumerate(instructions, 1):
+        cell = ws_help.cell(row=i, column=1, value=text)
+        if i == 1:
+            cell.font = Font(name="Arial", bold=True, size=14)
+        elif text.startswith("ОБЯЗАТЕЛЬНЫЕ") or text.startswith("НЕОБЯЗАТЕЛЬНЫЕ") or text.startswith("ПОСЛЕ"):
+            cell.font = Font(name="Arial", bold=True, size=11)
+        else:
+            cell.font = Font(name="Arial", size=10)
+
+    buf = BytesIO()
+    wb.save(buf)
+    wb.close()
+    file_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return json_response(200, {
+        'file': file_b64,
+        'file_name': 'Шаблон_списка_въезжающих.xlsx'
+    })

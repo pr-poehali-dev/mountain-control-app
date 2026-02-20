@@ -146,6 +146,26 @@ const Aho = () => {
     if (tab === "stats") loadStats();
   }, [tab]);
 
+  const downloadTemplate = async () => {
+    try {
+      const data = await ahoApi.getTemplate();
+      const byteChars = atob(data.file);
+      const byteArray = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteArray[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = data.file_name || "Шаблон.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Ошибка скачивания шаблона", variant: "destructive" });
+    }
+  };
+
   const loadArrivals = async () => {
     setLoading(true);
     try {
@@ -304,6 +324,11 @@ const Aho = () => {
                 <p className="text-xs text-muted-foreground">Excel файл с колонками: ФИО, Должность, Подразделение, Организация, Телефон</p>
               </div>
             </div>
+
+            <Button variant="outline" size="sm" className="gap-2 text-mine-cyan border-mine-cyan/30 hover:bg-mine-cyan/10" onClick={downloadTemplate}>
+              <Icon name="Download" size={14} />
+              Скачать шаблон Excel
+            </Button>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>

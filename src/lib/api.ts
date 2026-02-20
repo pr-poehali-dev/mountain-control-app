@@ -207,6 +207,8 @@ export const ahoApi = {
     request(API.aho, "", { params: { action: "stats" } }),
   getMedicalStatus: (params?: Record<string, string>) =>
     request(API.aho, "", { params: { action: "medical-status", ...params } }),
+  getTemplate: () =>
+    request(API.aho, "", { params: { action: "template" } }),
 };
 
 export const scannerApi = {
