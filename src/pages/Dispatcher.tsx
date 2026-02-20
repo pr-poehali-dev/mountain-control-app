@@ -16,10 +16,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
+import QrScanner from "@/components/scanner/QrScanner";
 import { useState, useEffect, useCallback } from "react";
 import { dispatcherApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { playSuccess, playDenied } from "@/lib/sounds";
+import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 
 const statusLabels: Record<string, string> = {
   issued: "выдан",
@@ -121,6 +122,7 @@ const Dispatcher = () => {
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueMsg, setIssueMsg] = useState("");
   const [issueError, setIssueError] = useState("");
+  const [qrScanning, setQrScanning] = useState(false);
 
   const [showReturn, setShowReturn] = useState<LanternItem | null>(null);
   const [returnCondition, setReturnCondition] = useState("normal");
@@ -203,6 +205,36 @@ const Dispatcher = () => {
       setIssueLoading(false);
     }
   };
+
+  const handleQrScan = useCallback(async (code: string) => {
+    if (issueLoading) return;
+    playScan();
+    setQrScanning(false);
+    setIssueError("");
+    setIssueMsg("");
+
+    if (!selectedLantern) {
+      setIssueError("Сначала выберите комплект (фонарь + самоспасатель)");
+      playDenied();
+      return;
+    }
+
+    setIssueLoading(true);
+    try {
+      const data = await dispatcherApi.issueByCode(code, selectedLantern);
+      setIssueMsg(data.message);
+      playSuccess();
+      fetchData();
+      const avData = await dispatcherApi.getAvailable();
+      setAvailableLanterns(avData.lanterns || []);
+      setSelectedLantern(null);
+    } catch (err: unknown) {
+      playDenied();
+      setIssueError(err instanceof Error ? err.message : "Ошибка выдачи");
+    } finally {
+      setIssueLoading(false);
+    }
+  }, [issueLoading, selectedLantern, fetchData]);
 
   const handleReturn = async () => {
     if (!showReturn) return;
@@ -436,8 +468,8 @@ const Dispatcher = () => {
         </div>
       </div>
 
-      <Dialog open={showIssue} onOpenChange={setShowIssue}>
-        <DialogContent className="max-w-md">
+      <Dialog open={showIssue} onOpenChange={(v) => { setShowIssue(v); if (!v) setQrScanning(false); }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Icon name="ArrowDownToLine" size={18} className="text-mine-green" />
@@ -446,54 +478,7 @@ const Dispatcher = () => {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Найти сотрудника</label>
-              <Input
-                placeholder="ФИО или код..."
-                className="bg-secondary/50"
-                value={personSearch}
-                onChange={(e) => handleSearchPerson(e.target.value)}
-              />
-              {personResults.length > 0 && !selectedPerson && (
-                <div className="mt-2 rounded-lg border border-border divide-y divide-border/50 max-h-40 overflow-y-auto">
-                  {personResults.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => { setSelectedPerson(p); setPersonResults([]); }}
-                      className="w-full text-left px-3 py-2 hover:bg-secondary/50 transition-colors"
-                    >
-                      <p className="text-sm font-medium text-foreground">{p.full_name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <code className="text-[10px] text-mine-cyan font-mono">{p.personal_code}</code>
-                        <span className="text-[10px] text-muted-foreground">{p.department}</span>
-                        {p.medical_status !== "passed" && (
-                          <Badge variant="outline" className="text-[9px] bg-mine-red/20 text-mine-red border-mine-red/30 py-0">
-                            медосмотр не пройден
-                          </Badge>
-                        )}
-                        {p.current_lantern && (
-                          <Badge variant="outline" className="text-[9px] bg-mine-amber/20 text-mine-amber border-mine-amber/30 py-0">
-                            уже есть: {p.current_lantern}
-                          </Badge>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {selectedPerson && (
-                <div className="mt-2 rounded-lg border border-mine-green/20 bg-mine-green/5 p-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{selectedPerson.full_name}</p>
-                    <code className="text-[10px] text-mine-cyan font-mono">{selectedPerson.personal_code}</code>
-                  </div>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setSelectedPerson(null); setPersonSearch(""); }}>
-                    <Icon name="X" size={14} />
-                  </Button>
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Комплект (фонарь + самоспасатель)</label>
+              <label className="text-xs text-muted-foreground mb-1 block">1. Выберите комплект</label>
               <Select value={selectedLantern ? String(selectedLantern) : ""} onValueChange={(v) => setSelectedLantern(Number(v))}>
                 <SelectTrigger className="bg-secondary/50">
                   <SelectValue placeholder="Выберите комплект" />
@@ -511,6 +496,65 @@ const Dispatcher = () => {
               )}
             </div>
 
+            <div className="rounded-xl border border-border bg-secondary/20 p-4">
+              <label className="text-xs text-muted-foreground mb-2 block">2. Сканируйте QR сотрудника или найдите вручную</label>
+              <QrScanner onScan={handleQrScan} active={qrScanning} onToggle={setQrScanning} />
+            </div>
+
+            {!qrScanning && (
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-[10px] text-muted-foreground">или найдите вручную</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                <Input
+                  placeholder="ФИО или код..."
+                  className="bg-secondary/50"
+                  value={personSearch}
+                  onChange={(e) => handleSearchPerson(e.target.value)}
+                />
+                {personResults.length > 0 && !selectedPerson && (
+                  <div className="mt-2 rounded-lg border border-border divide-y divide-border/50 max-h-40 overflow-y-auto">
+                    {personResults.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => { setSelectedPerson(p); setPersonResults([]); }}
+                        className="w-full text-left px-3 py-2 hover:bg-secondary/50 transition-colors"
+                      >
+                        <p className="text-sm font-medium text-foreground">{p.full_name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <code className="text-[10px] text-mine-cyan font-mono">{p.personal_code}</code>
+                          <span className="text-[10px] text-muted-foreground">{p.department}</span>
+                          {p.medical_status !== "passed" && (
+                            <Badge variant="outline" className="text-[9px] bg-mine-red/20 text-mine-red border-mine-red/30 py-0">
+                              медосмотр не пройден
+                            </Badge>
+                          )}
+                          {p.current_lantern && (
+                            <Badge variant="outline" className="text-[9px] bg-mine-amber/20 text-mine-amber border-mine-amber/30 py-0">
+                              уже есть: {p.current_lantern}
+                            </Badge>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedPerson && (
+                  <div className="mt-2 rounded-lg border border-mine-green/20 bg-mine-green/5 p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{selectedPerson.full_name}</p>
+                      <code className="text-[10px] text-mine-cyan font-mono">{selectedPerson.personal_code}</code>
+                    </div>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setSelectedPerson(null); setPersonSearch(""); }}>
+                      <Icon name="X" size={14} />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {issueMsg && (
               <div className="rounded-lg bg-mine-green/10 border border-mine-green/20 p-3">
                 <p className="text-sm text-mine-green font-medium">{issueMsg}</p>
@@ -523,15 +567,17 @@ const Dispatcher = () => {
             )}
 
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowIssue(false)}>Закрыть</Button>
-              <Button
-                className="flex-1 gap-2 bg-mine-green hover:bg-mine-green/90 text-white"
-                disabled={!selectedPerson || !selectedLantern || issueLoading}
-                onClick={handleIssue}
-              >
-                <Icon name="CheckCircle2" size={14} />
-                {issueLoading ? "Выдаю..." : "Выдать"}
-              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setShowIssue(false); setQrScanning(false); }}>Закрыть</Button>
+              {!qrScanning && selectedPerson && (
+                <Button
+                  className="flex-1 gap-2 bg-mine-green hover:bg-mine-green/90 text-white"
+                  disabled={!selectedPerson || !selectedLantern || issueLoading}
+                  onClick={handleIssue}
+                >
+                  <Icon name="CheckCircle2" size={14} />
+                  {issueLoading ? "Выдаю..." : "Выдать"}
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
