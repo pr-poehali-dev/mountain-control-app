@@ -9,41 +9,22 @@ interface QrScannerProps {
   onToggle: (active: boolean) => void;
 }
 
+const isMobile = () =>
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [error, setError] = useState("");
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [cameraIndex, setCameraIndex] = useState(0);
-  const [useFacingMode, setUseFacingMode] = useState(false);
   const lastScanRef = useRef("");
   const mountedRef = useRef(true);
+  const startingRef = useRef(false);
   const uniqueId = useId().replace(/:/g, "");
   const readerId = `qr-reader-${uniqueId}`;
 
   useEffect(() => {
     mountedRef.current = true;
-
-    Html5Qrcode.getCameras()
-      .then((devices) => {
-        if (!mountedRef.current) return;
-        const cams = devices.map((d) => ({ id: d.id, label: d.label }));
-        setCameras(cams);
-        if (cams.length > 0) {
-          const backIdx = cams.findIndex(
-            (c) =>
-              c.label.toLowerCase().includes("back") ||
-              c.label.toLowerCase().includes("задн") ||
-              c.label.toLowerCase().includes("rear") ||
-              c.label.toLowerCase().includes("environment")
-          );
-          setCameraIndex(backIdx >= 0 ? backIdx : cams.length - 1);
-        }
-      })
-      .catch(() => {
-        if (!mountedRef.current) return;
-        setUseFacingMode(true);
-      });
-
     return () => {
       mountedRef.current = false;
       safeStop();
@@ -72,13 +53,20 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
     return () => {
       safeStop();
     };
-  }, [active, cameraIndex, useFacingMode]);
+  }, [active, cameraIndex]);
 
   const startScanner = async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
     setError("");
 
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
     const el = document.getElementById(readerId);
-    if (!el) return;
+    if (!el || !mountedRef.current) {
+      startingRef.current = false;
+      return;
+    }
 
     try {
       await safeStop();
@@ -87,84 +75,155 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
         scannerRef.current = new Html5Qrcode(readerId);
       }
 
-      const cameraConfig = useFacingMode || cameras.length === 0
-        ? { facingMode: "environment" }
-        : cameras[cameraIndex]?.id;
+      const containerWidth = el.clientWidth || 280;
+      const boxSize = Math.min(Math.floor(containerWidth * 0.8), 350);
 
-      if (!cameraConfig) {
-        setError("Камера не найдена");
-        onToggle(false);
-        return;
+      const scanConfig = {
+        fps: 20,
+        qrbox: { width: boxSize, height: boxSize },
+        aspectRatio: 1,
+        disableFlip: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      } as Parameters<typeof scannerRef.current.start>[1];
+
+      const onSuccess = (decodedText: string) => {
+        if (decodedText !== lastScanRef.current) {
+          lastScanRef.current = decodedText;
+          onScan(decodedText);
+          setTimeout(() => {
+            lastScanRef.current = "";
+          }, 2000);
+        }
+      };
+
+      const onFailure = () => {};
+
+      if (isMobile()) {
+        await startWithFacingMode(scanConfig, onSuccess, onFailure);
+      } else {
+        await startWithDeviceList(scanConfig, onSuccess, onFailure);
       }
 
-      const containerWidth = el.clientWidth || 320;
-      const boxSize = Math.min(Math.floor(containerWidth * 0.85), 400);
+      applyFocusHint(el);
+    } catch (err) {
+      if (!mountedRef.current) {
+        startingRef.current = false;
+        return;
+      }
+      handleStartError(err);
+    } finally {
+      startingRef.current = false;
+    }
+  };
 
+  const startWithFacingMode = async (
+    scanConfig: Parameters<Html5Qrcode["start"]>[1],
+    onSuccess: (text: string) => void,
+    onFailure: () => void
+  ) => {
+    if (!scannerRef.current) return;
+    await scannerRef.current.start(
+      { facingMode: "environment" },
+      scanConfig,
+      onSuccess,
+      onFailure
+    );
+
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      if (mountedRef.current && devices.length > 1) {
+        setCameras(devices.map((d) => ({ id: d.id, label: d.label })));
+        const backIdx = devices.findIndex(
+          (c) =>
+            c.label.toLowerCase().includes("back") ||
+            c.label.toLowerCase().includes("задн") ||
+            c.label.toLowerCase().includes("rear") ||
+            c.label.toLowerCase().includes("environment")
+        );
+        if (backIdx >= 0) setCameraIndex(backIdx);
+      }
+    } catch {
+      // can't enumerate — that's fine, already scanning
+    }
+  };
+
+  const startWithDeviceList = async (
+    scanConfig: Parameters<Html5Qrcode["start"]>[1],
+    onSuccess: (text: string) => void,
+    onFailure: () => void
+  ) => {
+    if (!scannerRef.current) return;
+
+    let devices: { id: string; label: string }[] = [];
+    try {
+      const cams = await Html5Qrcode.getCameras();
+      devices = cams.map((d) => ({ id: d.id, label: d.label }));
+      if (mountedRef.current) setCameras(devices);
+    } catch {
+      // fallback to facingMode
+    }
+
+    if (devices.length > 0) {
+      const idx = cameraIndex < devices.length ? cameraIndex : 0;
+      if (mountedRef.current) setCameraIndex(idx);
       await scannerRef.current.start(
-        cameraConfig,
-        {
-          fps: 25,
-          qrbox: { width: boxSize, height: boxSize },
-          aspectRatio: 1,
-          disableFlip: false,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
-        } as Parameters<typeof scannerRef.current.start>[1],
-        (decodedText) => {
-          if (decodedText !== lastScanRef.current) {
-            lastScanRef.current = decodedText;
-            onScan(decodedText);
-            setTimeout(() => {
-              lastScanRef.current = "";
-            }, 2000);
-          }
-        },
-        () => {}
+        devices[idx].id,
+        scanConfig,
+        onSuccess,
+        onFailure
       );
+    } else {
+      await scannerRef.current.start(
+        { facingMode: "environment" },
+        scanConfig,
+        onSuccess,
+        onFailure
+      );
+    }
+  };
 
-      try {
-        const videoEl = el.querySelector("video");
-        if (videoEl && videoEl.srcObject) {
-          const track = (videoEl.srcObject as MediaStream).getVideoTracks()[0];
-          if (track) {
-            const caps = track.getCapabilities?.() as Record<string, unknown> | undefined;
-            const focusModes = (caps?.focusMode ?? []) as string[];
-            const constraints: Record<string, unknown> = {};
-
-            if (focusModes.includes("continuous")) {
-              constraints.focusMode = "continuous";
-            }
-            if (caps?.zoom) {
-              constraints.zoom = 1;
-            }
-
-            if (Object.keys(constraints).length > 0) {
-              await track.applyConstraints({ advanced: [constraints] } as MediaTrackConstraints);
-            }
+  const applyFocusHint = (el: HTMLElement) => {
+    try {
+      const videoEl = el.querySelector("video");
+      if (videoEl && videoEl.srcObject) {
+        const track = (videoEl.srcObject as MediaStream).getVideoTracks()[0];
+        if (track) {
+          const caps = track.getCapabilities?.() as Record<string, unknown> | undefined;
+          const focusModes = (caps?.focusMode ?? []) as string[];
+          const constraints: Record<string, unknown> = {};
+          if (focusModes.includes("continuous")) {
+            constraints.focusMode = "continuous";
+          }
+          if (caps?.zoom) {
+            constraints.zoom = 1;
+          }
+          if (Object.keys(constraints).length > 0) {
+            track.applyConstraints({ advanced: [constraints] } as MediaTrackConstraints);
           }
         }
-      } catch {
-        // focus constraints not supported — ignore
       }
-    } catch (err) {
-      if (!mountedRef.current) return;
-      const msg = err instanceof Error ? err.message : String(err);
-
-      if (!useFacingMode && cameras.length === 0) {
-        setUseFacingMode(true);
-        return;
-      }
-
-      if (msg.includes("Permission") || msg.includes("NotAllowed")) {
-        setError("Разрешите доступ к камере в настройках браузера");
-      } else if (msg.includes("NotFound") || msg.includes("not found")) {
-        setError("Камера не найдена на устройстве");
-      } else {
-        setError("Ошибка камеры: " + msg.slice(0, 80));
-      }
-      onToggle(false);
+    } catch {
+      // focus constraints not supported
     }
+  };
+
+  const handleStartError = (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+
+    if (msg.includes("Permission") || msg.includes("NotAllowed")) {
+      setError("Разрешите доступ к камере в настройках браузера");
+    } else if (msg.includes("NotFound") || msg.includes("not found") || msg.includes("Requested device not found")) {
+      setError("Камера не найдена на устройстве");
+    } else if (msg.includes("NotReadableError") || msg.includes("Could not start")) {
+      setError("Камера занята другим приложением. Закройте другие приложения и попробуйте снова");
+    } else if (msg.includes("OverconstrainedError")) {
+      setError("Камера не поддерживает нужные параметры");
+    } else {
+      setError("Ошибка камеры: " + msg.slice(0, 100));
+    }
+    onToggle(false);
   };
 
   const handleToggle = () => {
@@ -181,8 +240,6 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
     await safeStop();
     setCameraIndex((prev) => (prev + 1) % cameras.length);
   };
-
-  const hasCameras = cameras.length > 0 || useFacingMode;
 
   return (
     <div className="space-y-4">
@@ -260,10 +317,9 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
             ? "bg-mine-red hover:bg-mine-red/90 text-white"
             : "bg-mine-cyan hover:bg-mine-cyan/90 text-white"
         }`}
-        disabled={!hasCameras && !active}
       >
         <Icon name={active ? "CameraOff" : "Camera"} size={16} />
-        {active ? "Остановить камеру" : "Включить камеру"}
+        {active ? "Остановить" : "Включить камеру"}
       </Button>
     </div>
   );
