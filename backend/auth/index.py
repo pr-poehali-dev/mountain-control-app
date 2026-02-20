@@ -3,13 +3,22 @@ import os
 import hashlib
 import secrets
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_type
 
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
+
+def serialize_default(obj):
+    if isinstance(obj, datetime):
+        if obj.tzinfo is None:
+            return obj.isoformat() + '+00:00'
+        return obj.isoformat()
+    if isinstance(obj, (date_type,)):
+        return obj.isoformat()
+    return str(obj)
 
 def json_response(status, body):
     return {
@@ -20,7 +29,7 @@ def json_response(status, body):
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
         },
-        'body': json.dumps(body, ensure_ascii=False, default=str)
+        'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
 def handler(event, context):
