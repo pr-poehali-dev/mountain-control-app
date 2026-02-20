@@ -157,8 +157,16 @@ def login(body):
         }
     })
 
+def parse_qr_code(raw):
+    try:
+        data = json.loads(raw)
+        return data.get('code', raw)
+    except (json.JSONDecodeError, AttributeError):
+        return raw.strip()
+
 def login_by_code(body):
-    code = body.get('code', '').strip().upper()
+    raw_code = body.get('code', '').strip()
+    code = parse_qr_code(raw_code).upper()
 
     if not code:
         return json_response(400, {'error': 'Введите личный код'})

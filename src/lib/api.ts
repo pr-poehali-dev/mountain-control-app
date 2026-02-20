@@ -109,6 +109,10 @@ export const personnelApi = {
     }),
   search: (q: string) =>
     request(API.personnel, "", { params: { action: "search", q } }),
+  edit: (body: Record<string, unknown>) =>
+    request(API.personnel, "", { method: "PUT", body, params: { action: "edit" } }),
+  getHistory: (id: number) =>
+    request(API.personnel, "", { params: { action: "history", id: String(id) } }),
 };
 
 export const dispatcherApi = {

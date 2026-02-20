@@ -36,10 +36,19 @@ def handler(event, context):
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
+def parse_qr_code(raw):
+    try:
+        data = json.loads(raw)
+        return data.get('code', raw)
+    except (json.JSONDecodeError, AttributeError):
+        return raw.strip()
+
 def identify(body):
-    code = body.get('code', '').strip()
-    if not code:
+    raw_code = body.get('code', '').strip()
+    if not raw_code:
         return json_response(400, {'error': 'Код не указан'})
+
+    code = parse_qr_code(raw_code)
 
     conn = get_db()
     cur = conn.cursor()
@@ -102,8 +111,13 @@ def identify(body):
     })
 
 def checkin(body):
-    code = body.get('code', '').strip()
+    raw_code = body.get('code', '').strip()
     action = body.get('action', 'checkin')
+
+    if not raw_code:
+        return json_response(400, {'error': 'Код не указан'})
+
+    code = parse_qr_code(raw_code)
 
     if not code:
         return json_response(400, {'error': 'Код не указан'})

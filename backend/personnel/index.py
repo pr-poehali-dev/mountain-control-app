@@ -35,6 +35,10 @@ def handler(event, context):
         return add_person(body)
     elif method == 'PUT' and action == 'status':
         return update_status(body)
+    elif method == 'PUT' and action == 'edit':
+        return edit_person(body)
+    elif method == 'GET' and action == 'history':
+        return get_history(params)
     elif method == 'GET' and action == 'search':
         return search_personnel(params)
 
@@ -242,3 +246,91 @@ def search_personnel(params):
         })
 
     return json_response(200, {'results': results, 'total': len(results)})
+
+def edit_person(body):
+    person_id = body.get('id')
+    if not person_id:
+        return json_response(400, {'error': 'ID обязателен'})
+
+    fields = {}
+    for key in ('full_name', 'position', 'department', 'category', 'phone', 'room', 'shift', 'status', 'medical_status'):
+        if key in body:
+            fields[key] = str(body[key]).strip()
+
+    if not fields:
+        return json_response(400, {'error': 'Нет полей для обновления'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    set_parts = []
+    for key, val in fields.items():
+        set_parts.append("%s = '%s'" % (key, val.replace("'", "''")))
+    set_parts.append("updated_at = NOW()")
+
+    cur.execute("""
+        UPDATE personnel SET %s WHERE id = %d RETURNING full_name
+    """ % (', '.join(set_parts), int(person_id)))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник не найден'})
+
+    changed = ', '.join(fields.keys())
+    cur.execute("""
+        INSERT INTO events (event_type, description, personnel_id)
+        VALUES ('edit', '%s — изменены данные (%s)', %d)
+    """ % (row[0].replace("'", "''"), changed, int(person_id)))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Данные обновлены'})
+
+def get_history(params):
+    person_id = params.get('id', '')
+    if not person_id:
+        return json_response(400, {'error': 'ID обязателен'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, event_type, description, created_at
+        FROM events
+        WHERE personnel_id = %d
+        ORDER BY created_at DESC
+        LIMIT 50
+    """ % int(person_id))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    type_labels = {
+        'scan_checkin': 'КПП — отмечен',
+        'scan_denied': 'КПП — отказ',
+        'medical_pass': 'Медосмотр пройден',
+        'medical_fail': 'Медосмотр не пройден',
+        'arrival': 'Прибытие',
+        'departure': 'Убытие',
+        'status_change': 'Смена статуса',
+        'edit': 'Изменение данных',
+        'shift_start': 'Начало смены',
+        'lantern_issued': 'Выдан фонарь',
+        'lantern_returned': 'Возвращён фонарь'
+    }
+
+    events = []
+    for r in rows:
+        events.append({
+            'id': r[0],
+            'type': r[1],
+            'type_label': type_labels.get(r[1], r[1]),
+            'description': r[2],
+            'created_at': r[3]
+        })
+
+    return json_response(200, {'events': events})
