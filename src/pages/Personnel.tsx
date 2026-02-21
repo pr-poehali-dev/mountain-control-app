@@ -128,17 +128,7 @@ interface StatsData {
 }
 
 function buildQrPayload(p: PersonnelItem) {
-  return JSON.stringify({
-    code: p.personal_code,
-    name: p.full_name,
-    pos: p.position,
-    dept: p.department,
-    cat: p.category,
-    med: p.medical_status || "pending",
-    status: p.status,
-    org: p.organization || "",
-    orgType: p.organization_type || "",
-  });
+  return p.personal_code;
 }
 
 const Personnel = () => {
@@ -471,7 +461,7 @@ const Personnel = () => {
       document.body.appendChild(container);
       const root = createRoot(container);
       flushSync(() => {
-        root.render(<QRCodeSVG value={value} size={qrSize} level="M" />);
+        root.render(<QRCodeSVG value={value} size={qrSize} level="L" />);
       });
       const svg = container.querySelector("svg");
       const markup = svg ? svg.outerHTML : "";
@@ -916,7 +906,7 @@ const Personnel = () => {
                     size={120}
                     bgColor="#ffffff"
                     fgColor="#000000"
-                    level="M"
+                    level="L"
                   />
                 </button>
                 <div className="flex-1 space-y-3">
@@ -1186,15 +1176,12 @@ const Personnel = () => {
                     size={240}
                     bgColor="#ffffff"
                     fgColor="#000000"
-                    level="M"
+                    level="L"
                   />
                 </div>
               </div>
               <div className="rounded-lg border border-border bg-secondary/30 p-3">
-                <p className="text-[10px] text-muted-foreground mb-1">В QR зашито:</p>
                 <div className="grid grid-cols-2 gap-1 text-xs">
-                  <span className="text-muted-foreground">Код:</span>
-                  <span className="text-foreground font-mono">{qrPerson.personal_code}</span>
                   <span className="text-muted-foreground">Медосмотр:</span>
                   <span className={qrPerson.medical_status === "passed" ? "text-mine-green" : "text-mine-red"}>
                     {medicalLabels[qrPerson.medical_status || "pending"]}

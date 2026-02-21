@@ -96,7 +96,7 @@ const Profile = () => {
                 size={168}
                 bgColor="#ffffff"
                 fgColor="#000000"
-                level="M"
+                level="L"
               />
             </div>
             <div className="text-center space-y-1">
