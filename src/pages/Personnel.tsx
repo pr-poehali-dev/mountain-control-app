@@ -151,6 +151,8 @@ const Personnel = () => {
   const [qrPerson, setQrPerson] = useState<PersonnelItem | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
   const [formName, setFormName] = useState("");
   const [formPosition, setFormPosition] = useState("");
   const [formDept, setFormDept] = useState("");
@@ -406,6 +408,194 @@ const Personnel = () => {
     printWindow.document.close();
   };
 
+  const toggleSelect = (id: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === personnel.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(personnel.map((p) => p.id)));
+    }
+  };
+
+  const handleBatchPrint = () => {
+    const selected = personnel.filter((p) => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) return;
+
+    const renderQrSvg = (person: PersonnelItem) => {
+      const container = document.createElement("div");
+      const root = document.createElement("div");
+      container.appendChild(root);
+      document.body.appendChild(container);
+      const el = document.createElement("div");
+      root.appendChild(el);
+      import("react-dom/client").then(({ createRoot }) => {
+        // fallback — won't be used, we build SVG inline
+      });
+      document.body.removeChild(container);
+      return "";
+    };
+    void renderQrSvg;
+
+    const escapeHtml = (str: string) =>
+      str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const badgeHtml = (person: PersonnelItem) => {
+      const payload = JSON.stringify({
+        code: person.personal_code,
+        name: person.full_name,
+        pos: person.position,
+        dept: person.department,
+        cat: person.category,
+        med: person.medical_status || "pending",
+        status: person.status,
+        org: person.organization || "",
+        orgType: person.organization_type || "",
+      });
+
+      return `
+        <div class="badge">
+          <div class="badge-header">Горный контроль — Рудник Бадран</div>
+          <div class="badge-name">${escapeHtml(person.full_name)}</div>
+          <div class="badge-position">${escapeHtml(person.position || "—")}</div>
+          <div class="badge-qr" id="qr-${person.id}"></div>
+          <div class="badge-code">${escapeHtml(person.personal_code)}</div>
+          <div class="badge-dept">${escapeHtml(person.department || "")}${person.organization ? " — " + escapeHtml(person.organization) : ""}</div>
+          <div class="badge-info">Сканируйте QR для проверки данных</div>
+          <script>
+            (function(){
+              var el = document.getElementById('qr-${person.id}');
+              if(el && typeof QRCode !== 'undefined') {
+                new QRCode(el, {
+                  text: ${JSON.stringify(payload)},
+                  width: 140,
+                  height: 140,
+                  colorDark: "#000000",
+                  colorLight: "#ffffff",
+                  correctLevel: QRCode.CorrectLevel.M
+                });
+              }
+            })();
+          </${"script"}>
+        </div>
+      `;
+    };
+
+    const badges = selected.map(badgeHtml).join("\n");
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>QR-бейджи — ${selected.length} шт.</title>
+        <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></${"script"}>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Arial', sans-serif; background: #fff; }
+          .page-title { text-align: center; padding: 16px 0 8px; font-size: 14px; color: #888; }
+          .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 10px 20px;
+            max-width: 210mm;
+            margin: 0 auto;
+          }
+          .badge {
+            border: 1.5px solid #333;
+            border-radius: 10px;
+            padding: 12px 10px;
+            text-align: center;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .badge-header {
+            font-size: 8px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #666;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+          }
+          .badge-name {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 2px;
+            line-height: 1.2;
+          }
+          .badge-position {
+            font-size: 9px;
+            color: #666;
+            margin-bottom: 8px;
+          }
+          .badge-qr {
+            display: flex;
+            justify-content: center;
+            margin: 6px auto;
+          }
+          .badge-qr img, .badge-qr canvas {
+            width: 140px !important;
+            height: 140px !important;
+          }
+          .badge-code {
+            font-size: 16px;
+            font-weight: bold;
+            font-family: monospace;
+            letter-spacing: 3px;
+            margin: 6px 0;
+          }
+          .badge-dept {
+            font-size: 8px;
+            color: #888;
+          }
+          .badge-info {
+            font-size: 7px;
+            color: #aaa;
+            margin-top: 6px;
+            border-top: 1px solid #eee;
+            padding-top: 5px;
+          }
+          @media print {
+            body { background: white; }
+            .page-title { display: none; }
+            .no-print { display: none !important; }
+            .grid { padding: 5mm 10mm; gap: 8px; }
+            @page { size: A4 portrait; margin: 5mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page-title no-print">Бейджи сотрудников: ${selected.length} шт. (по 10 на лист A4)</div>
+        <div class="grid">${badges}</div>
+        <script>
+          setTimeout(function(){
+            var imgs = document.querySelectorAll('.badge-qr canvas');
+            if(imgs.length > 0) {
+              setTimeout(function(){ window.print(); }, 400);
+            } else {
+              setTimeout(function(){ window.print(); }, 1000);
+            }
+          }, 500);
+        </${"script"}>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const formatDate = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
@@ -454,14 +644,26 @@ const Personnel = () => {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Button
-            size="sm"
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={handleOpenAdd}
-          >
-            <Icon name="UserPlus" size={14} />
-            Добавить
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button
+                size="sm"
+                className="gap-2 bg-mine-cyan text-white hover:bg-mine-cyan/90"
+                onClick={handleBatchPrint}
+              >
+                <Icon name="Printer" size={14} />
+                Печать QR ({selectedIds.size})
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={handleOpenAdd}
+            >
+              <Icon name="UserPlus" size={14} />
+              Добавить
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -511,6 +713,14 @@ const Personnel = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
+                    <th className="px-3 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={personnel.length > 0 && selectedIds.size === personnel.length}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer"
+                      />
+                    </th>
                     {["Код", "QR", "ФИО", "Организация", "Должность", "Подразделение", "Категория", "Медосмотр", "Статус", ""].map((h) => (
                       <th
                         key={h || "actions"}
@@ -529,10 +739,18 @@ const Personnel = () => {
                     return (
                       <tr
                         key={p.id || i}
-                        className="border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in"
+                        className={`border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in ${selectedIds.has(p.id) ? "bg-mine-cyan/5" : ""}`}
                         style={{ animationDelay: `${i * 30}ms` }}
                         onClick={() => openCard(p)}
                       >
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(p.id)}
+                            onChange={() => toggleSelect(p.id)}
+                            className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
                             {p.personal_code}
@@ -609,7 +827,7 @@ const Personnel = () => {
                   })}
                   {personnel.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={11} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет данных
                       </td>
                     </tr>
