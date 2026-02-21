@@ -15,11 +15,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import Icon from "@/components/ui/icon";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { personnelApi } from "@/lib/api";
 import { QRCodeSVG } from "qrcode.react";
+
+type BadgeLayout = "2x5" | "2x4" | "2x3" | "1x4" | "3x5";
+const layoutOptions: { value: BadgeLayout; label: string; cols: number; perPage: number }[] = [
+  { value: "2x5", label: "2 × 5 — 10 шт/лист", cols: 2, perPage: 10 },
+  { value: "2x4", label: "2 × 4 — 8 шт/лист", cols: 2, perPage: 8 },
+  { value: "2x3", label: "2 × 3 — 6 шт/лист", cols: 2, perPage: 6 },
+  { value: "3x5", label: "3 × 5 — 15 шт/лист", cols: 3, perPage: 15 },
+  { value: "1x4", label: "1 × 4 — 4 шт/лист (крупные)", cols: 1, perPage: 4 },
+];
+type BadgeSize = "small" | "medium" | "large";
+const sizeOptions: { value: BadgeSize; label: string; qr: number; namePx: number; codePx: number }[] = [
+  { value: "small", label: "Маленький", qr: 100, namePx: 11, codePx: 13 },
+  { value: "medium", label: "Средний", qr: 140, namePx: 13, codePx: 16 },
+  { value: "large", label: "Крупный", qr: 200, namePx: 16, codePx: 20 },
+];
 
 const statusLabels: Record<string, string> = {
   on_shift: "на смене",
@@ -153,6 +169,9 @@ const Personnel = () => {
   const printRef = useRef<HTMLDivElement>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [printLayout, setPrintLayout] = useState<BadgeLayout>("2x5");
+  const [printSize, setPrintSize] = useState<BadgeSize>("medium");
+  const [showPrintSettings, setShowPrintSettings] = useState(false);
 
   const [formName, setFormName] = useState("");
   const [formPosition, setFormPosition] = useState("");
@@ -431,6 +450,9 @@ const Personnel = () => {
     const selected = personnel.filter((p) => selectedIds.has(p.id));
     if (selected.length === 0) return;
 
+    const layout = layoutOptions.find((l) => l.value === printLayout) || layoutOptions[0];
+    const size = sizeOptions.find((s) => s.value === printSize) || sizeOptions[1];
+
     const printWindow = window.open("", "_blank", "width=900,height=700");
     if (!printWindow) return;
 
@@ -440,7 +462,7 @@ const Personnel = () => {
     const badgeHtml = (person: PersonnelItem) => {
       const qrValue = buildQrPayload(person);
       const svgMarkup = renderToStaticMarkup(
-        <QRCodeSVG value={qrValue} size={140} level="M" />
+        <QRCodeSVG value={qrValue} size={size.qr} level="M" />
       );
 
       return `
@@ -457,6 +479,10 @@ const Personnel = () => {
     };
 
     const badges = selected.map(badgeHtml).join("\n");
+    const cols = layout.cols;
+    const perPage = layout.perPage;
+    const gapPx = cols === 1 ? 16 : cols === 3 ? 6 : 10;
+    const padPx = cols === 1 ? "10px 30px" : cols === 3 ? "6px 8px" : "8px 16px";
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -469,85 +495,87 @@ const Personnel = () => {
           .page-title { text-align: center; padding: 16px 0 8px; font-size: 14px; color: #888; }
           .grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            padding: 10px 20px;
+            grid-template-columns: repeat(${cols}, 1fr);
+            gap: ${gapPx}px;
+            padding: ${padPx};
             max-width: 210mm;
             margin: 0 auto;
           }
           .badge {
             border: 1.5px solid #333;
             border-radius: 10px;
-            padding: 12px 10px;
+            padding: ${cols === 3 ? "8px 6px" : "12px 10px"};
             text-align: center;
             page-break-inside: avoid;
             break-inside: avoid;
           }
           .badge-header {
-            font-size: 8px;
+            font-size: ${cols === 3 ? "6px" : "8px"};
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 1.5px;
             color: #666;
-            margin-bottom: 8px;
+            margin-bottom: ${cols === 3 ? "4px" : "8px"};
             border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
+            padding-bottom: ${cols === 3 ? "3px" : "5px"};
           }
           .badge-name {
-            font-size: 13px;
+            font-size: ${size.namePx}px;
             font-weight: bold;
             margin-bottom: 2px;
             line-height: 1.2;
           }
           .badge-position {
-            font-size: 9px;
+            font-size: ${Math.max(size.namePx - 4, 8)}px;
             color: #666;
-            margin-bottom: 8px;
+            margin-bottom: ${cols === 3 ? "4px" : "8px"};
           }
           .badge-qr {
             display: flex;
             justify-content: center;
-            margin: 6px auto;
+            margin: ${cols === 3 ? "3px" : "6px"} auto;
           }
           .badge-qr svg {
-            width: 140px;
-            height: 140px;
+            width: ${size.qr}px;
+            height: ${size.qr}px;
           }
           .badge-code {
-            font-size: 16px;
+            font-size: ${size.codePx}px;
             font-weight: bold;
             font-family: monospace;
             letter-spacing: 3px;
-            margin: 6px 0;
+            margin: ${cols === 3 ? "3px" : "6px"} 0;
           }
           .badge-dept {
-            font-size: 8px;
+            font-size: ${cols === 3 ? "7px" : "8px"};
             color: #888;
           }
           .badge-info {
-            font-size: 7px;
+            font-size: ${cols === 3 ? "6px" : "7px"};
             color: #aaa;
-            margin-top: 6px;
+            margin-top: ${cols === 3 ? "3px" : "6px"};
             border-top: 1px solid #eee;
-            padding-top: 5px;
+            padding-top: ${cols === 3 ? "3px" : "5px"};
           }
           @media print {
             body { background: white; }
             .page-title { display: none; }
             .no-print { display: none !important; }
-            .grid { padding: 5mm 10mm; gap: 8px; }
+            .grid { padding: 3mm 8mm; gap: ${Math.max(gapPx - 2, 4)}px; }
+            .badge:nth-child(${perPage}n+1) { break-before: ${perPage > 0 ? "auto" : "page"}; }
             @page { size: A4 portrait; margin: 5mm; }
           }
         </style>
       </head>
       <body>
-        <div class="page-title no-print">Бейджи сотрудников: ${selected.length} шт. (по 10 на лист A4)</div>
+        <div class="page-title no-print">Бейджи: ${selected.length} шт. | Раскладка: ${layout.label} | Размер: ${size.label}</div>
         <div class="grid">${badges}</div>
         <script>setTimeout(function(){ window.print(); }, 300);</${"script"}>
       </body>
       </html>
     `);
     printWindow.document.close();
+    setShowPrintSettings(false);
   };
 
   const formatDate = (dateStr: string) => {
@@ -600,14 +628,67 @@ const Personnel = () => {
           </div>
           <div className="flex items-center gap-2">
             {selectedIds.size > 0 && (
-              <Button
-                size="sm"
-                className="gap-2 bg-mine-cyan text-white hover:bg-mine-cyan/90"
-                onClick={handleBatchPrint}
-              >
-                <Icon name="Printer" size={14} />
-                Печать QR ({selectedIds.size})
-              </Button>
+              <Popover open={showPrintSettings} onOpenChange={setShowPrintSettings}>
+                <PopoverTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="gap-2 bg-mine-cyan text-white hover:bg-mine-cyan/90"
+                  >
+                    <Icon name="Printer" size={14} />
+                    Печать QR ({selectedIds.size})
+                    <Icon name="ChevronDown" size={12} />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-4" align="end">
+                  <div className="space-y-4">
+                    <p className="text-sm font-medium">Настройки печати</p>
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground">Раскладка на листе A4</label>
+                      <div className="grid gap-1.5">
+                        {layoutOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setPrintLayout(opt.value)}
+                            className={`text-left text-sm px-3 py-1.5 rounded-md border transition-colors ${
+                              printLayout === opt.value
+                                ? "bg-mine-cyan/10 border-mine-cyan/40 text-mine-cyan"
+                                : "border-border hover:bg-secondary/50"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground">Размер бейджа</label>
+                      <div className="flex gap-2">
+                        {sizeOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setPrintSize(opt.value)}
+                            className={`flex-1 text-xs px-2 py-1.5 rounded-md border transition-colors ${
+                              printSize === opt.value
+                                ? "bg-mine-cyan/10 border-mine-cyan/40 text-mine-cyan"
+                                : "border-border hover:bg-secondary/50"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full gap-2 bg-mine-cyan text-white hover:bg-mine-cyan/90"
+                      onClick={handleBatchPrint}
+                    >
+                      <Icon name="Printer" size={14} />
+                      Печатать {selectedIds.size} бейджей
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             )}
             <Button
               size="sm"
