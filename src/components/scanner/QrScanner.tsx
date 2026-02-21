@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, useId, useCallback } from "react";
-import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
+import {
+  Html5Qrcode,
+  Html5QrcodeScannerState,
+  Html5QrcodeSupportedFormats,
+} from "html5-qrcode";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 
@@ -22,7 +26,6 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
   const startingRef = useRef(false);
   const uniqueId = useId().replace(/:/g, "");
   const readerId = `qr-reader-${uniqueId}`;
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -44,9 +47,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
         }
         scannerRef.current.clear();
       }
-    } catch {
-      // ignore cleanup errors
-    }
+    } catch (_e) { /* cleanup */ }
     scannerRef.current = null;
   };
 
@@ -61,11 +62,10 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
           await scannerRef.current.stop();
         }
       }
-    } catch {
-      // ignore
-    }
+    } catch (_e) { /* ignore */ }
   }, []);
 
+   
   useEffect(() => {
     if (active) {
       startScanner();
@@ -82,9 +82,9 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
     startingRef.current = true;
     setError("");
 
-    await new Promise<void>((r) => setTimeout(r, 100));
+    await new Promise<void>((r) => setTimeout(r, 80));
     await new Promise<void>((r) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => r()))
+      requestAnimationFrame(() => r())
     );
 
     const el = document.getElementById(readerId);
@@ -96,16 +96,23 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
     try {
       await destroyScanner();
 
-      scannerRef.current = new Html5Qrcode(readerId);
+      scannerRef.current = new Html5Qrcode(readerId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+      });
 
       const containerWidth = el.clientWidth || 280;
-      const boxSize = Math.min(Math.floor(containerWidth * 0.7), 300);
+      const boxSize = Math.min(Math.floor(containerWidth * 0.8), 350);
 
       const scanConfig = {
-        fps: 15,
+        fps: 30,
         qrbox: { width: boxSize, height: boxSize },
-        aspectRatio: 1,
         disableFlip: false,
+        videoConstraints: {
+          facingMode: isMobile() ? "environment" : "user",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         experimentalFeatures: {
           useBarCodeDetectorIfSupported: true,
         },
@@ -162,9 +169,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
       if (mountedRef.current && devices.length > 1) {
         setCameras(devices.map((d) => ({ id: d.id, label: d.label })));
       }
-    } catch {
-      // enumeration not available — already scanning, that's fine
-    }
+    } catch (_e) { /* no enumeration */ }
   };
 
   const startDesktop = async (
@@ -179,9 +184,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
       const cams = await Html5Qrcode.getCameras();
       devices = cams.map((d) => ({ id: d.id, label: d.label }));
       if (mountedRef.current) setCameras(devices);
-    } catch {
-      // fallback below
-    }
+    } catch (_e) { /* fallback */ }
 
     if (devices.length > 0) {
       const idx = cameraIndex < devices.length ? cameraIndex : 0;
@@ -223,9 +226,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
           }
         }
       }
-    } catch {
-      // focus not supported
-    }
+    } catch (_e) { /* focus not supported */ }
   };
 
   const handleStartError = (err: unknown) => {
@@ -283,77 +284,73 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
               : "Наведите на QR-код"}
           </p>
         </div>
+        <div className="ml-auto flex items-center gap-2">
+          {cameras.length > 1 && active && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={switchCamera}
+              className="gap-1 text-xs"
+            >
+              <Icon name="RefreshCw" size={14} />
+              Камера
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant={active ? "destructive" : "default"}
+            size="sm"
+            onClick={handleToggle}
+            className="gap-1 text-xs"
+          >
+            <Icon name={active ? "CameraOff" : "Camera"} size={14} />
+            {active ? "Стоп" : "Старт"}
+          </Button>
+        </div>
       </div>
 
       <div
-        ref={containerRef}
-        className={`relative rounded-lg overflow-hidden border-2 transition-all ${
-          active
-            ? "border-mine-cyan bg-black"
-            : "border-dashed border-border bg-secondary/30"
-        }`}
-      >
-        <div
-          id={readerId}
-          className={active ? "w-full" : "hidden"}
-          style={{ minHeight: active ? 300 : 0 }}
-        />
+        id={readerId}
+        className="w-full rounded-lg overflow-hidden bg-black/5 dark:bg-white/5"
+        style={{
+          minHeight: active ? 300 : 120,
+          display: active ? "block" : "none",
+        }}
+      />
 
-        {!active && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <Icon
-              name="Camera"
-              size={48}
-              className="text-muted-foreground/30"
-            />
-            <p className="text-sm text-muted-foreground">
-              Камера не активна
-            </p>
+      {!active && !error && (
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-mine-cyan/10 flex items-center justify-center">
+            <Icon name="ScanLine" size={28} className="text-mine-cyan" />
           </div>
-        )}
-
-        {active && (
-          <div className="absolute top-3 left-3 right-3 flex justify-between items-start pointer-events-none z-10">
-            <div className="px-2 py-1 rounded bg-black/60 text-mine-cyan text-[10px] flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-mine-green animate-pulse" />
-              Сканирование...
-            </div>
-            {cameras.length > 1 && (
-              <button
-                onClick={switchCamera}
-                className="pointer-events-auto p-2 rounded-lg bg-black/60 hover:bg-black/80 transition-colors"
-              >
-                <Icon name="SwitchCamera" size={18} className="text-white" />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <div className="p-3 rounded-lg bg-mine-red/10 border border-mine-red/20 text-mine-red text-xs flex items-center gap-2">
-          <Icon name="AlertCircle" size={14} />
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => { setError(""); onToggle(true); }}
-            className="text-mine-cyan underline text-xs whitespace-nowrap"
-          >
-            Повторить
-          </button>
+          <p className="text-sm text-muted-foreground max-w-[200px]">
+            Нажмите &laquo;Старт&raquo; для включения камеры
+          </p>
         </div>
       )}
 
-      <Button
-        onClick={handleToggle}
-        className={`w-full gap-2 ${
-          active
-            ? "bg-mine-red hover:bg-mine-red/90 text-white"
-            : "bg-mine-cyan hover:bg-mine-cyan/90 text-white"
-        }`}
-      >
-        <Icon name={active ? "CameraOff" : "Camera"} size={16} />
-        {active ? "Остановить" : "Включить камеру"}
-      </Button>
+      {error && (
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <div className="w-12 h-12 rounded-xl bg-destructive/10 flex items-center justify-center">
+            <Icon name="AlertTriangle" size={22} className="text-destructive" />
+          </div>
+          <p className="text-sm text-destructive max-w-[260px]">{error}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setError("");
+              onToggle(true);
+            }}
+            className="gap-1"
+          >
+            <Icon name="RotateCcw" size={14} />
+            Повторить
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
