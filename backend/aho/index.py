@@ -67,6 +67,10 @@ def handler(event, context):
         return get_itr_positions()
     elif method == 'PUT' and action == 'itr-positions':
         return save_itr_positions(body)
+    elif method == 'POST' and action == 'reset':
+        return perform_reset(body)
+    elif method == 'GET' and action == 'export-all':
+        return export_all_data()
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -266,7 +270,7 @@ def get_arrivals(params):
                p.medical_status as current_medical, p.status as person_status, p.qr_code
         FROM aho_arrivals a
         LEFT JOIN personnel p ON a.personnel_id = p.id
-        WHERE 1=1
+        WHERE a.is_hidden = FALSE
     """
     if batch_id:
         query += " AND a.batch_id = '%s'" % batch_id.replace("'", "''")
@@ -310,6 +314,7 @@ def get_batches(params):
                (SELECT COUNT(*) FROM aho_arrivals WHERE batch_id = b.batch_id AND arrival_status = 'arrived') as real_arrived,
                (SELECT COUNT(*) FROM aho_arrivals WHERE batch_id = b.batch_id AND arrival_status = 'departed') as real_departed
         FROM aho_batches b
+        WHERE b.is_hidden = FALSE
         ORDER BY b.created_at DESC
         LIMIT 50
     """)
@@ -451,40 +456,40 @@ def get_stats():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals")
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE")
     total = cur.fetchone()[0]
 
-    cur.execute("SELECT arrival_status, COUNT(*) FROM aho_arrivals GROUP BY arrival_status")
+    cur.execute("SELECT arrival_status, COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE GROUP BY arrival_status")
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE room IS NOT NULL AND room != ''")
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE AND room IS NOT NULL AND room != ''")
     housed = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE room IS NULL OR room = ''")
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE AND (room IS NULL OR room = '')")
     not_housed = cur.fetchone()[0]
 
     cur.execute("""
         SELECT p.medical_status, COUNT(*)
         FROM aho_arrivals a
         JOIN personnel p ON a.personnel_id = p.id
-        WHERE a.arrival_status = 'arrived'
+        WHERE a.arrival_status = 'arrived' AND a.is_hidden = FALSE
         GROUP BY p.medical_status
     """)
     medical = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("""
         SELECT COUNT(*) FROM aho_arrivals
-        WHERE arrival_date = CURRENT_DATE
+        WHERE is_hidden = FALSE AND arrival_date = CURRENT_DATE
     """)
     today_expected = cur.fetchone()[0]
 
     cur.execute("""
         SELECT COUNT(*) FROM aho_arrivals
-        WHERE departure_date = CURRENT_DATE
+        WHERE is_hidden = FALSE AND departure_date = CURRENT_DATE
     """)
     today_departing = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM aho_batches")
+    cur.execute("SELECT COUNT(*) FROM aho_batches WHERE is_hidden = FALSE")
     total_batches = cur.fetchone()[0]
 
     cur.execute("SELECT COALESCE(SUM(capacity), 0), COALESCE(SUM(occupied), 0) FROM rooms")
@@ -529,7 +534,7 @@ def get_medical_status(params):
             ORDER BY checked_at DESC
             LIMIT 1
         ) mc ON true
-        WHERE a.arrival_status IN ('arrived', 'expected')
+        WHERE a.arrival_status IN ('arrived', 'expected') AND a.is_hidden = FALSE
     """
     if batch_id:
         query += " AND a.batch_id = '%s'" % batch_id.replace("'", "''")
@@ -779,7 +784,7 @@ def get_medical_itr_stats(params):
     else:
         itr_where = "FALSE"
 
-    base_where = "a.arrival_status IN ('arrived', 'expected')"
+    base_where = "a.arrival_status IN ('arrived', 'expected') AND a.is_hidden = FALSE"
     if batch_id:
         base_where += " AND a.batch_id = '%s'" % batch_id.replace("'", "''")
 
@@ -859,4 +864,167 @@ def get_medical_itr_stats(params):
         'itr_list': map_rows(itr_rows),
         'worker_list': map_rows(worker_rows),
         'itr_positions': itr_positions,
+    })
+
+
+def perform_reset(body):
+    """Обнуление данных системы. Soft-delete скрывает с экрана, full — удаляет из БД"""
+    reset_type = body.get('reset_type', '')
+    valid_types = ['personnel', 'aho_arrivals', 'aho_departures', 'medical', 'full']
+    if reset_type not in valid_types:
+        return json_response(400, {'error': 'Неизвестный тип обнуления. Допустимые: %s' % ', '.join(valid_types)})
+
+    conn = get_db()
+    cur = conn.cursor()
+    affected = 0
+
+    if reset_type == 'personnel':
+        cur.execute("""
+            UPDATE personnel SET is_hidden = TRUE, updated_at = NOW()
+            WHERE is_hidden = FALSE AND personal_code NOT IN (
+                SELECT COALESCE(p.personal_code, '') FROM users u
+                LEFT JOIN personnel p ON p.full_name = u.full_name
+                WHERE u.role = 'admin' AND p.personal_code IS NOT NULL
+            )
+        """)
+        affected = cur.rowcount
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('personnel', 'Обнуление списка персонала (скрыто %d записей)', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Обнуление списка персонала — скрыто %d записей')
+        """ % affected)
+
+    elif reset_type == 'aho_arrivals':
+        cur.execute("""
+            UPDATE aho_arrivals SET is_hidden = TRUE, updated_at = NOW()
+            WHERE is_hidden = FALSE AND arrival_status IN ('expected', 'arrived')
+        """)
+        affected = cur.rowcount
+        cur.execute("""
+            UPDATE aho_batches SET is_hidden = TRUE WHERE is_hidden = FALSE
+        """)
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('aho_arrivals', 'Обнуление списка заехавших АХО (скрыто %d записей)', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Обнуление списка заехавших АХО — скрыто %d записей')
+        """ % affected)
+
+    elif reset_type == 'aho_departures':
+        cur.execute("""
+            UPDATE aho_arrivals SET is_hidden = TRUE, updated_at = NOW()
+            WHERE is_hidden = FALSE AND arrival_status = 'departed'
+        """)
+        affected = cur.rowcount
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('aho_departures', 'Обнуление списка выехавших АХО (скрыто %d записей)', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Обнуление списка выехавших АХО — скрыто %d записей')
+        """ % affected)
+
+    elif reset_type == 'medical':
+        cur.execute("""
+            UPDATE medical_checks SET is_hidden = TRUE
+            WHERE is_hidden = FALSE
+        """)
+        affected = cur.rowcount
+        cur.execute("""
+            UPDATE personnel SET medical_status = 'pending', updated_at = NOW()
+            WHERE medical_status != 'pending' AND status != 'archived'
+        """)
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('medical', 'Обнуление списков медосмотров (скрыто %d записей)', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Обнуление медосмотров — скрыто %d записей')
+        """ % affected)
+
+    elif reset_type == 'full':
+        counts = {}
+        for table in ['aho_arrivals', 'aho_batches', 'medical_checks', 'events', 'notifications',
+                       'dispatcher_messages', 'medical_reset_log', 'lanterns', 'rooms']:
+            cur.execute("SELECT COUNT(*) FROM %s" % table)
+            counts[table] = cur.fetchone()[0]
+            cur.execute("DELETE FROM %s" % table)
+
+        cur.execute("SELECT COUNT(*) FROM personnel")
+        counts['personnel'] = cur.fetchone()[0]
+        cur.execute("DELETE FROM sessions")
+        cur.execute("DELETE FROM personnel")
+
+        affected = sum(counts.values())
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('full', 'Полный сброс системы до заводских настроек. Удалено: %d записей', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Полный сброс системы — удалено %d записей из всех таблиц')
+        """ % affected)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    labels = {
+        'personnel': 'Список персонала обнулён',
+        'aho_arrivals': 'Список заехавших по АХО обнулён',
+        'aho_departures': 'Список выехавших по АХО обнулён',
+        'medical': 'Списки медосмотров обнулены',
+        'full': 'Система полностью сброшена до заводских настроек',
+    }
+
+    return json_response(200, {
+        'message': labels.get(reset_type, 'Готово'),
+        'affected': affected,
+        'reset_type': reset_type,
+    })
+
+
+def export_all_data():
+    """Выгрузка всех данных из БД (включая скрытые) в JSON"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    tables_cols = {
+        'personnel': ['id','personal_code','full_name','position','department','category','phone','room','status','qr_code','medical_status','shift','organization','organization_type','is_hidden','created_at','updated_at'],
+        'aho_arrivals': ['id','batch_id','personnel_id','full_name','position','department','organization','organization_type','phone','arrival_date','departure_date','arrival_status','check_in_at','check_out_at','room','building','medical_status','personal_code','notes','is_hidden','created_at','updated_at'],
+        'aho_batches': ['id','batch_id','file_name','total_count','arrived_count','departed_count','arrival_date','departure_date','is_hidden','created_at'],
+        'medical_checks': ['id','personnel_id','check_type','status','blood_pressure','pulse','temperature','alcohol_level','shift_type','check_direction','shift_date','doctor_name','notes','is_hidden','checked_at'],
+        'events': ['id','event_type','description','personnel_id','user_id','metadata','is_hidden','created_at'],
+        'lanterns': ['id','lantern_number','rescuer_number','status','assigned_to','issued_at','returned_at','condition'],
+        'rooms': ['id','room_number','building','capacity','occupied','status'],
+        'notifications': ['id','type','title','message','person_name','person_code','is_read','created_at'],
+        'reset_log': ['id','reset_type','description','affected_rows','performed_by','performed_at'],
+    }
+
+    result = {}
+    for table, cols in tables_cols.items():
+        cur.execute("SELECT %s FROM %s ORDER BY id" % (', '.join(cols), table))
+        rows = cur.fetchall()
+        result[table] = []
+        for r in rows:
+            item = {}
+            for i, col in enumerate(cols):
+                item[col] = r[i]
+            result[table].append(item)
+        result[table + '_count'] = len(rows)
+
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'data': result,
+        'exported_at': datetime.now().isoformat(),
+        'message': 'Полная выгрузка всех данных (включая скрытые)',
     })

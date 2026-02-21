@@ -30,6 +30,19 @@
       "path": "/?action=upload",
       "body": {},
       "expectedStatus": 400
+    },
+    {
+      "name": "Reset with invalid type returns error",
+      "method": "POST",
+      "path": "/?action=reset",
+      "body": {"reset_type": "invalid"},
+      "expectedStatus": 400
+    },
+    {
+      "name": "Export all data",
+      "method": "GET",
+      "path": "/?action=export-all",
+      "expectedStatus": 200
     }
   ]
 }

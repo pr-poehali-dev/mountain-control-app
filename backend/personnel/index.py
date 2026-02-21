@@ -68,7 +68,7 @@ def get_personnel(params):
         SELECT id, personal_code, full_name, position, department, category, 
                phone, room, status, qr_code, medical_status, shift, created_at,
                organization, organization_type
-        FROM personnel WHERE status != 'archived'
+        FROM personnel WHERE status != 'archived' AND is_hidden = FALSE
     """
     if category:
         query += " AND category = '%s'" % category.replace("'", "''")
@@ -102,25 +102,25 @@ def get_stats():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived'")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE")
     total = cur.fetchone()[0]
 
-    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY category")
+    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY category")
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY status")
+    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY status")
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY medical_status")
+    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY medical_status")
     by_medical = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY COALESCE(organization_type, '')")
+    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY COALESCE(organization_type, '')")
     by_org_type = {}
     for r in cur.fetchall():
         key = r[0] if r[0] else 'unknown'
         by_org_type[key] = r[1]
 
-    cur.execute("SELECT COALESCE(organization, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND organization != '' GROUP BY organization ORDER BY COUNT(*) DESC LIMIT 20")
+    cur.execute("SELECT COALESCE(organization, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND organization != '' GROUP BY organization ORDER BY COUNT(*) DESC LIMIT 20")
     by_org = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("SELECT COUNT(*) FROM rooms")

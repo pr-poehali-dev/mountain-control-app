@@ -6,6 +6,23 @@ import Icon from "@/components/ui/icon";
 import { useState, useEffect } from "react";
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const users = [
   { id: 1, name: "Иванов А.С.", email: "ivanov@rudnik.ru", role: "Оператор", dept: "Участок №3", active: true },
@@ -30,12 +47,59 @@ const systemModules = [
   { name: "АХО", status: "активен", uptime: "100%", icon: "Building2", color: "text-mine-amber" },
 ];
 
+const resetOptions = [
+  {
+    value: "personnel",
+    label: "Обнулить список персонала",
+    description: "Скрывает всех сотрудников кроме администраторов. Данные сохраняются в БД для выгрузки.",
+    icon: "Users",
+    color: "text-mine-amber",
+    danger: false,
+  },
+  {
+    value: "aho_arrivals",
+    label: "Обнулить список заехавших по АХО",
+    description: "Скрывает все записи о заехавших на рудник. Данные сохраняются в БД для выгрузки.",
+    icon: "LogIn",
+    color: "text-mine-cyan",
+    danger: false,
+  },
+  {
+    value: "aho_departures",
+    label: "Обнулить список выехавших по АХО",
+    description: "Скрывает все записи о выехавших с рудника. Данные сохраняются в БД для выгрузки.",
+    icon: "LogOut",
+    color: "text-mine-cyan",
+    danger: false,
+  },
+  {
+    value: "medical",
+    label: "Обнулить списки по медосмотрам",
+    description: "Скрывает все результаты медосмотров и сбрасывает статусы. Данные сохраняются в БД.",
+    icon: "HeartPulse",
+    color: "text-mine-green",
+    danger: false,
+  },
+  {
+    value: "full",
+    label: "Полностью обнулить всю систему",
+    description: "Удаляет ВСЕ данные из базы (персонал, АХО, медосмотры, события, история). Настройки сохраняются. Для передачи системы новому администратору.",
+    icon: "Trash2",
+    color: "text-mine-red",
+    danger: true,
+  },
+];
+
 const Admin = () => {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [itrPositions, setItrPositions] = useState<string[]>([]);
   const [newPosition, setNewPosition] = useState("");
   const [itrLoading, setItrLoading] = useState(false);
+  const [selectedReset, setSelectedReset] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
   useEffect(() => {
     loadItrPositions();
@@ -72,6 +136,47 @@ const Admin = () => {
       toast({ title: err instanceof Error ? err.message : "Ошибка сохранения", variant: "destructive" });
     } finally { setItrLoading(false); }
   };
+
+  const handleResetClick = () => {
+    if (!selectedReset) {
+      toast({ title: "Выберите тип обнуления", variant: "destructive" });
+      return;
+    }
+    setConfirmOpen(true);
+  };
+
+  const handleResetConfirm = async () => {
+    setConfirmOpen(false);
+    setResetLoading(true);
+    try {
+      const res = await ahoApi.resetData(selectedReset);
+      toast({ title: res.message + ` (затронуто: ${res.affected})` });
+      setSelectedReset("");
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка обнуления", variant: "destructive" });
+    } finally { setResetLoading(false); }
+  };
+
+  const handleExportAll = async () => {
+    setExportLoading(true);
+    try {
+      const res = await ahoApi.exportAllData();
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `export_rudnik_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Данные выгружены" });
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка выгрузки", variant: "destructive" });
+    } finally { setExportLoading(false); }
+  };
+
+  const currentResetOption = resetOptions.find(r => r.value === selectedReset);
 
   const filtered = users.filter(
     (u) =>
@@ -200,63 +305,172 @@ const Admin = () => {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="p-4 border-b border-border">
-              <div className="flex items-center gap-2 mb-1">
-                <Icon name="Briefcase" size={18} className="text-mine-amber" />
-                <h3 className="text-sm font-semibold text-foreground">Должности ИТР</h3>
+          <div className="space-y-6">
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <div className="p-4 border-b border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name="Briefcase" size={18} className="text-mine-amber" />
+                  <h3 className="text-sm font-semibold text-foreground">Должности ИТР</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Список для автоклассификации ИТР / рабочие
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Список используется для автоматической классификации ИТР / рабочие в медосмотре АХО
-              </p>
+              <div className="p-4 space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Новая должность..."
+                    value={newPosition}
+                    onChange={(e) => setNewPosition(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddPosition()}
+                    className="bg-secondary/50 h-8 text-xs flex-1"
+                  />
+                  <Button size="sm" variant="outline" className="h-8 px-3" onClick={handleAddPosition}>
+                    <Icon name="Plus" size={14} />
+                  </Button>
+                </div>
+
+                <div className="max-h-[200px] overflow-y-auto space-y-1">
+                  {itrPositions.map((pos, idx) => (
+                    <div key={idx} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/30 group hover:bg-secondary/50 transition-colors">
+                      <Icon name="Briefcase" size={12} className="text-mine-amber/60" />
+                      <span className="text-xs flex-1">{pos}</span>
+                      <button
+                        onClick={() => handleRemovePosition(idx)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-mine-red/10 transition-all"
+                      >
+                        <Icon name="X" size={12} className="text-mine-red" />
+                      </button>
+                    </div>
+                  ))}
+                  {itrPositions.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      Список пуст
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    {itrPositions.length} должностей
+                  </span>
+                  <Button size="sm" className="gap-1.5 h-8 bg-mine-amber text-white hover:bg-mine-amber/90" onClick={handleSavePositions} disabled={itrLoading}>
+                    <Icon name="Save" size={14} />
+                    {itrLoading ? "..." : "Сохранить"}
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="p-4 space-y-3">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Новая должность..."
-                  value={newPosition}
-                  onChange={(e) => setNewPosition(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddPosition()}
-                  className="bg-secondary/50 h-8 text-xs flex-1"
-                />
-                <Button size="sm" variant="outline" className="h-8 px-3" onClick={handleAddPosition}>
-                  <Icon name="Plus" size={14} />
-                </Button>
-              </div>
 
-              <div className="max-h-[400px] overflow-y-auto space-y-1">
-                {itrPositions.map((pos, idx) => (
-                  <div key={idx} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/30 group hover:bg-secondary/50 transition-colors">
-                    <Icon name="Briefcase" size={12} className="text-mine-amber/60" />
-                    <span className="text-xs flex-1">{pos}</span>
-                    <button
-                      onClick={() => handleRemovePosition(idx)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-mine-red/10 transition-all"
-                    >
-                      <Icon name="X" size={12} className="text-mine-red" />
-                    </button>
+            <div className="rounded-xl border border-mine-red/30 bg-card overflow-hidden">
+              <div className="p-4 border-b border-mine-red/20">
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name="RotateCcw" size={18} className="text-mine-red" />
+                  <h3 className="text-sm font-semibold text-foreground">Обнуление данных</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Простые обнуления скрывают данные с экрана, но сохраняют в базе для выгрузки
+                </p>
+              </div>
+              <div className="p-4 space-y-4">
+                <Select value={selectedReset} onValueChange={setSelectedReset}>
+                  <SelectTrigger className="bg-secondary/50 text-xs h-9">
+                    <SelectValue placeholder="Выберите тип обнуления..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {resetOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                        <div className="flex items-center gap-2">
+                          <Icon name={opt.icon} size={14} className={opt.color} />
+                          <span>{opt.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {currentResetOption && (
+                  <div className={`rounded-lg p-3 text-xs space-y-2 ${currentResetOption.danger ? "bg-mine-red/10 border border-mine-red/20" : "bg-secondary/30"}`}>
+                    <div className="flex items-start gap-2">
+                      <Icon name={currentResetOption.danger ? "AlertTriangle" : "Info"} size={14} className={currentResetOption.danger ? "text-mine-red mt-0.5" : "text-muted-foreground mt-0.5"} />
+                      <p className={currentResetOption.danger ? "text-mine-red" : "text-muted-foreground"}>
+                        {currentResetOption.description}
+                      </p>
+                    </div>
                   </div>
-                ))}
-                {itrPositions.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">
-                    Список пуст. Добавьте должности ИТР
-                  </p>
                 )}
-              </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-border">
-                <span className="text-xs text-muted-foreground">
-                  {itrPositions.length} должностей
-                </span>
-                <Button size="sm" className="gap-1.5 h-8 bg-mine-amber text-white hover:bg-mine-amber/90" onClick={handleSavePositions} disabled={itrLoading}>
-                  <Icon name="Save" size={14} />
-                  {itrLoading ? "Сохранение..." : "Сохранить"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 h-8 text-xs flex-1 border-mine-red/30 text-mine-red hover:bg-mine-red/10 hover:text-mine-red"
+                    onClick={handleResetClick}
+                    disabled={!selectedReset || resetLoading}
+                  >
+                    <Icon name="RotateCcw" size={14} />
+                    {resetLoading ? "Выполняется..." : "Обнулить"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 h-8 text-xs border-border"
+                    onClick={handleExportAll}
+                    disabled={exportLoading}
+                    title="Выгрузить все данные (включая скрытые) для сохранения"
+                  >
+                    <Icon name="Download" size={14} />
+                    {exportLoading ? "..." : "Выгрузка"}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              {currentResetOption?.danger ? (
+                <Icon name="AlertTriangle" size={20} className="text-mine-red" />
+              ) : (
+                <Icon name="RotateCcw" size={20} className="text-mine-amber" />
+              )}
+              Подтверждение обнуления
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block font-medium text-foreground">
+                {currentResetOption?.label}
+              </span>
+              <span className="block">
+                {currentResetOption?.description}
+              </span>
+              {currentResetOption?.danger && (
+                <span className="block text-mine-red font-medium">
+                  Это действие необратимо! Все данные будут удалены из базы данных безвозвратно.
+                  Рекомендуем сначала сделать выгрузку данных.
+                </span>
+              )}
+              {!currentResetOption?.danger && (
+                <span className="block text-muted-foreground">
+                  Данные будут скрыты с экрана, но останутся в базе. Администратор может выгрузить их в любой момент.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetConfirm}
+              className={currentResetOption?.danger ? "bg-mine-red hover:bg-mine-red/90 text-white" : "bg-mine-amber hover:bg-mine-amber/90 text-white"}
+            >
+              {currentResetOption?.danger ? "Да, удалить всё" : "Да, обнулить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 };

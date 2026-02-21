@@ -177,7 +177,7 @@ def get_checks(params):
     conn = get_db()
     cur = conn.cursor()
 
-    where = ["p.status != 'archived'"]
+    where = ["p.status != 'archived'", "p.is_hidden = FALSE", "mc.is_hidden = FALSE"]
     if date_from:
         where.append("mc.shift_date >= '%s'" % date_from.replace("'", ""))
     if date_to:
@@ -240,7 +240,7 @@ def get_medical_stats(params):
     cur.execute("""
         SELECT mc.status, COUNT(*) FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
-        WHERE p.status != 'archived' AND %s
+        WHERE p.status != 'archived' AND p.is_hidden = FALSE AND mc.is_hidden = FALSE AND %s
         GROUP BY mc.status
     """ % date_filter)
     period = {r[0]: r[1] for r in cur.fetchall()}
@@ -249,7 +249,7 @@ def get_medical_stats(params):
         SELECT mc.shift_type, mc.check_direction, mc.status, COUNT(*)
         FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
-        WHERE p.status != 'archived' AND %s
+        WHERE p.status != 'archived' AND p.is_hidden = FALSE AND mc.is_hidden = FALSE AND %s
         GROUP BY mc.shift_type, mc.check_direction, mc.status
     """ % date_filter)
     by_shift = {}
@@ -259,16 +259,16 @@ def get_medical_stats(params):
             by_shift[key] = {'passed': 0, 'failed': 0}
         by_shift[key][r[2]] = by_shift[key].get(r[2], 0) + r[3]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived'")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE")
     total_personnel = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND medical_status = 'passed'")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND medical_status = 'passed'")
     med_passed = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND medical_status = 'failed'")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND medical_status = 'failed'")
     med_failed = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND medical_status IN ('pending', '')")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND medical_status IN ('pending', '')")
     med_pending = cur.fetchone()[0]
 
     cur.close()

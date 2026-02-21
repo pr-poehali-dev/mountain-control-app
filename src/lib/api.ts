@@ -219,6 +219,10 @@ export const ahoApi = {
     request(API.aho, "", { params: { action: "itr-positions" } }),
   saveItrPositions: (positions: string[]) =>
     request(API.aho, "", { method: "PUT", body: { positions }, params: { action: "itr-positions" } }),
+  resetData: (resetType: string) =>
+    request(API.aho, "", { method: "POST", body: { reset_type: resetType }, params: { action: "reset" } }),
+  exportAllData: () =>
+    request(API.aho, "", { params: { action: "export-all" } }),
 };
 
 export const scannerApi = {
