@@ -18,7 +18,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import Icon from "@/components/ui/icon";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import { personnelApi } from "@/lib/api";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -169,8 +170,14 @@ const Personnel = () => {
   const printRef = useRef<HTMLDivElement>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [printLayout, setPrintLayout] = useState<BadgeLayout>("2x5");
-  const [printSize, setPrintSize] = useState<BadgeSize>("medium");
+  const [printLayout, setPrintLayout] = useState<BadgeLayout>(() => {
+    const saved = localStorage.getItem("badge_layout");
+    return (saved as BadgeLayout) || "2x5";
+  });
+  const [printSize, setPrintSize] = useState<BadgeSize>(() => {
+    const saved = localStorage.getItem("badge_size");
+    return (saved as BadgeSize) || "medium";
+  });
   const [showPrintSettings, setShowPrintSettings] = useState(false);
 
   const [formName, setFormName] = useState("");
@@ -459,11 +466,23 @@ const Personnel = () => {
     const escapeHtml = (str: string) =>
       str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+    const renderQrSvg = (value: string, qrSize: number): string => {
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      flushSync(() => {
+        root.render(<QRCodeSVG value={value} size={qrSize} level="M" />);
+      });
+      const svg = container.querySelector("svg");
+      const markup = svg ? svg.outerHTML : "";
+      root.unmount();
+      document.body.removeChild(container);
+      return markup;
+    };
+
     const badgeHtml = (person: PersonnelItem) => {
       const qrValue = buildQrPayload(person);
-      const svgMarkup = renderToStaticMarkup(
-        <QRCodeSVG value={qrValue} size={size.qr} level="M" />
-      );
+      const svgMarkup = renderQrSvg(qrValue, size.qr);
 
       return `
         <div class="badge">
@@ -648,7 +667,7 @@ const Personnel = () => {
                         {layoutOptions.map((opt) => (
                           <button
                             key={opt.value}
-                            onClick={() => setPrintLayout(opt.value)}
+                            onClick={() => { setPrintLayout(opt.value); localStorage.setItem("badge_layout", opt.value); }}
                             className={`text-left text-sm px-3 py-1.5 rounded-md border transition-colors ${
                               printLayout === opt.value
                                 ? "bg-mine-cyan/10 border-mine-cyan/40 text-mine-cyan"
@@ -666,7 +685,7 @@ const Personnel = () => {
                         {sizeOptions.map((opt) => (
                           <button
                             key={opt.value}
-                            onClick={() => setPrintSize(opt.value)}
+                            onClick={() => { setPrintSize(opt.value); localStorage.setItem("badge_size", opt.value); }}
                             className={`flex-1 text-xs px-2 py-1.5 rounded-md border transition-colors ${
                               printSize === opt.value
                                 ? "bg-mine-cyan/10 border-mine-cyan/40 text-mine-cyan"
