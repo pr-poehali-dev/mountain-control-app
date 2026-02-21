@@ -1,0 +1,1 @@
+INSERT INTO settings (key, value) VALUES ('shift_schedule', '{"day_start": "05:00", "day_end": "17:00", "night_start": "17:00", "night_end": "05:00"}'::jsonb) ON CONFLICT DO NOTHING;

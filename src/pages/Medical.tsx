@@ -10,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 import { useState, useEffect, useCallback } from "react";
@@ -96,6 +102,14 @@ interface ShiftInfo {
   check_direction: string;
   direction_label: string;
   shift_date: string;
+  schedule?: ShiftSchedule;
+}
+
+interface ShiftSchedule {
+  day_start: string;
+  day_end: string;
+  night_start: string;
+  night_end: string;
 }
 
 function formatTime(dateStr?: string): string {
@@ -147,6 +161,13 @@ const Medical = () => {
   const [denyLoading, setDenyLoading] = useState(false);
   const [denyResult, setDenyResult] = useState<ScanResult | null>(null);
 
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [schedDayStart, setSchedDayStart] = useState("05:00");
+  const [schedDayEnd, setSchedDayEnd] = useState("17:00");
+  const [schedNightStart, setSchedNightStart] = useState("17:00");
+  const [schedNightEnd, setSchedNightEnd] = useState("05:00");
+  const [schedSaving, setSchedSaving] = useState(false);
+
   const buildParams = useCallback(() => {
     const p: Record<string, string> = {};
     if (dateFrom) p.date_from = dateFrom;
@@ -179,6 +200,35 @@ const Medical = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const openSchedule = () => {
+    const s = shiftInfo?.schedule;
+    if (s) {
+      setSchedDayStart(s.day_start || "05:00");
+      setSchedDayEnd(s.day_end || "17:00");
+      setSchedNightStart(s.night_start || "17:00");
+      setSchedNightEnd(s.night_end || "05:00");
+    }
+    setShowSchedule(true);
+  };
+
+  const handleSaveSchedule = async () => {
+    setSchedSaving(true);
+    try {
+      await medicalApi.saveSchedule({
+        day_start: schedDayStart,
+        day_end: schedDayEnd,
+        night_start: schedNightStart,
+        night_end: schedNightEnd,
+      });
+      setShowSchedule(false);
+      fetchData();
+    } catch {
+      /* */
+    } finally {
+      setSchedSaving(false);
+    }
+  };
 
   const handleScan = useCallback(
     async (code: string) => {
@@ -316,21 +366,26 @@ const Medical = () => {
                 <p className="text-xs text-muted-foreground">
                   Режим: {shiftInfo.direction_label}
                   {shiftInfo.shift_type === "day"
-                    ? " (дневная 05:00–17:00)"
-                    : " (ночная 17:00–05:00)"}
+                    ? ` (дневная ${shiftInfo.schedule?.day_start || "05:00"}–${shiftInfo.schedule?.day_end || "17:00"})`
+                    : ` (ночная ${shiftInfo.schedule?.night_start || "17:00"}–${shiftInfo.schedule?.night_end || "05:00"})`}
                 </p>
               </div>
             </div>
-            <Badge
-              variant="outline"
-              className={
-                shiftInfo.check_direction === "to_shift"
-                  ? "bg-mine-green/20 text-mine-green border-mine-green/30"
-                  : "bg-mine-amber/20 text-mine-amber border-mine-amber/30"
-              }
-            >
-              {shiftInfo.direction_label}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  shiftInfo.check_direction === "to_shift"
+                    ? "bg-mine-green/20 text-mine-green border-mine-green/30"
+                    : "bg-mine-amber/20 text-mine-amber border-mine-amber/30"
+                }
+              >
+                {shiftInfo.direction_label}
+              </Badge>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={openSchedule} title="Настроить время смен">
+                <Icon name="Settings" size={16} />
+              </Button>
+            </div>
           </div>
         )}
 
@@ -820,6 +875,55 @@ const Medical = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={showSchedule} onOpenChange={setShowSchedule}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon name="Clock" size={18} className="text-mine-cyan" />
+              Расписание смен
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 pt-2">
+            <div className="rounded-xl border border-mine-amber/20 bg-mine-amber/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Icon name="Sun" size={16} className="text-mine-amber" />
+                <span className="text-sm font-semibold text-foreground">Дневная смена</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Начало</label>
+                  <Input type="time" value={schedDayStart} onChange={(e) => setSchedDayStart(e.target.value)} className="bg-background" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Конец</label>
+                  <Input type="time" value={schedDayEnd} onChange={(e) => setSchedDayEnd(e.target.value)} className="bg-background" />
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Icon name="Moon" size={16} className="text-indigo-400" />
+                <span className="text-sm font-semibold text-foreground">Ночная смена</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Начало</label>
+                  <Input type="time" value={schedNightStart} onChange={(e) => setSchedNightStart(e.target.value)} className="bg-background" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Конец</label>
+                  <Input type="time" value={schedNightEnd} onChange={(e) => setSchedNightEnd(e.target.value)} className="bg-background" />
+                </div>
+              </div>
+            </div>
+            <Button className="w-full gap-2 bg-mine-cyan text-white hover:bg-mine-cyan/90" onClick={handleSaveSchedule} disabled={schedSaving}>
+              {schedSaving ? <Icon name="Loader2" size={16} className="animate-spin" /> : <Icon name="Save" size={16} />}
+              Сохранить
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 };

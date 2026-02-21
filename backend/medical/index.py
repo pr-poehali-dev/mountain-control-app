@@ -49,6 +49,22 @@ def parse_qr_code(raw):
     except (json.JSONDecodeError, AttributeError):
         return raw.strip()
 
+def get_shift_schedule():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM settings WHERE key = 'shift_schedule' LIMIT 1")
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if row:
+        v = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        return v
+    return {'day_start': '05:00', 'day_end': '17:00', 'night_start': '17:00', 'night_end': '05:00'}
+
+def parse_hm(s):
+    parts = s.split(':')
+    return int(parts[0]), int(parts[1])
+
 def detect_shift():
     """Определяет текущую смену и направление по времени"""
     now = datetime.utcnow()
@@ -59,18 +75,28 @@ def detect_shift():
     except Exception:
         pass
 
+    schedule = get_shift_schedule()
+    day_start_h, day_start_m = parse_hm(schedule.get('day_start', '05:00'))
+    day_end_h, day_end_m = parse_hm(schedule.get('day_end', '17:00'))
+
     hour = now.hour
+    minute = now.minute
+    current_minutes = hour * 60 + minute
+    day_start_minutes = day_start_h * 60 + day_start_m
+    day_end_minutes = day_end_h * 60 + day_end_m
+
     shift_date = now.date()
 
-    if 5 <= hour < 17:
+    if day_start_minutes <= current_minutes < day_end_minutes:
         shift_type = 'day'
-        if hour < 11:
+        mid = day_start_minutes + (day_end_minutes - day_start_minutes) // 2
+        if current_minutes < mid:
             check_direction = 'to_shift'
         else:
             check_direction = 'from_shift'
     else:
         shift_type = 'night'
-        if hour >= 17:
+        if current_minutes >= day_end_minutes:
             check_direction = 'to_shift'
         else:
             check_direction = 'from_shift'
@@ -154,18 +180,58 @@ def handler(event, context):
         return scan_medical(body)
     elif method == 'POST' and action == 'deny':
         return deny_medical(body)
+    elif method == 'GET' and action == 'schedule':
+        return get_schedule()
+    elif method == 'POST' and action == 'schedule':
+        return save_schedule(body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
 def get_current_shift():
     shift_type, check_direction, shift_date = detect_shift()
+    schedule = get_shift_schedule()
     return json_response(200, {
         'shift_type': shift_type,
         'shift_label': SHIFT_LABELS.get(shift_type, shift_type),
         'check_direction': check_direction,
         'direction_label': DIRECTION_LABELS.get(check_direction, check_direction),
-        'shift_date': shift_date
+        'shift_date': shift_date,
+        'schedule': schedule
     })
+
+def get_schedule():
+    return json_response(200, get_shift_schedule())
+
+def save_schedule(body):
+    day_start = body.get('day_start', '').strip()
+    day_end = body.get('day_end', '').strip()
+    night_start = body.get('night_start', '').strip()
+    night_end = body.get('night_end', '').strip()
+
+    if not day_start or not day_end:
+        return json_response(400, {'error': 'Укажите время начала и конца дневной смены'})
+
+    if not night_start:
+        night_start = day_end
+    if not night_end:
+        night_end = day_start
+
+    value = json.dumps({'day_start': day_start, 'day_end': day_end, 'night_start': night_start, 'night_end': night_end}, ensure_ascii=False)
+    safe_value = value.replace("'", "''")
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM settings WHERE key = 'shift_schedule' LIMIT 1")
+    row = cur.fetchone()
+    if row:
+        cur.execute("UPDATE settings SET value = '%s'::jsonb, updated_at = NOW() WHERE key = 'shift_schedule'" % safe_value)
+    else:
+        cur.execute("INSERT INTO settings (key, value) VALUES ('shift_schedule', '%s'::jsonb)" % safe_value)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Расписание смен сохранено', 'schedule': {'day_start': day_start, 'day_end': day_end, 'night_start': night_start, 'night_end': night_end}})
 
 def get_checks(params):
     date_from = params.get('date_from', '')

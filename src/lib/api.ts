@@ -167,6 +167,10 @@ export const medicalApi = {
     request(API.medical, "", { method: "POST", body: { code }, params: { action: "scan" } }),
   deny: (code: string, reason: string) =>
     request(API.medical, "", { method: "POST", body: { code, reason }, params: { action: "deny" } }),
+  getSchedule: () =>
+    request(API.medical, "", { params: { action: "schedule" } }),
+  saveSchedule: (body: { day_start: string; day_end: string; night_start: string; night_end: string }) =>
+    request(API.medical, "", { method: "POST", body, params: { action: "schedule" } }),
 };
 
 export const eventsApi = {
