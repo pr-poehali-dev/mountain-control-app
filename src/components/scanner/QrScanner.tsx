@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useId } from "react";
+import { useEffect, useRef, useState, useId, useCallback } from "react";
 import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
@@ -22,27 +22,49 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
   const startingRef = useRef(false);
   const uniqueId = useId().replace(/:/g, "");
   const readerId = `qr-reader-${uniqueId}`;
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      safeStop();
+      destroyScanner();
     };
   }, []);
 
-  const safeStop = async () => {
+  const destroyScanner = async () => {
     try {
-      if (
-        scannerRef.current &&
-        scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING
-      ) {
-        await scannerRef.current.stop();
+      if (scannerRef.current) {
+        const state = scannerRef.current.getState();
+        if (
+          state === Html5QrcodeScannerState.SCANNING ||
+          state === Html5QrcodeScannerState.PAUSED
+        ) {
+          await scannerRef.current.stop();
+        }
+        scannerRef.current.clear();
+      }
+    } catch {
+      // ignore cleanup errors
+    }
+    scannerRef.current = null;
+  };
+
+  const safeStop = useCallback(async () => {
+    try {
+      if (scannerRef.current) {
+        const state = scannerRef.current.getState();
+        if (
+          state === Html5QrcodeScannerState.SCANNING ||
+          state === Html5QrcodeScannerState.PAUSED
+        ) {
+          await scannerRef.current.stop();
+        }
       }
     } catch {
       // ignore
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (active) {
@@ -60,7 +82,10 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
     startingRef.current = true;
     setError("");
 
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise<void>((r) => setTimeout(r, 100));
+    await new Promise<void>((r) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => r()))
+    );
 
     const el = document.getElementById(readerId);
     if (!el || !mountedRef.current) {
@@ -69,17 +94,15 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
     }
 
     try {
-      await safeStop();
+      await destroyScanner();
 
-      if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode(readerId);
-      }
+      scannerRef.current = new Html5Qrcode(readerId);
 
       const containerWidth = el.clientWidth || 280;
-      const boxSize = Math.min(Math.floor(containerWidth * 0.8), 350);
+      const boxSize = Math.min(Math.floor(containerWidth * 0.7), 300);
 
       const scanConfig = {
-        fps: 20,
+        fps: 15,
         qrbox: { width: boxSize, height: boxSize },
         aspectRatio: 1,
         disableFlip: false,
@@ -101,12 +124,14 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
       const onFailure = () => {};
 
       if (isMobile()) {
-        await startWithFacingMode(scanConfig, onSuccess, onFailure);
+        await startMobile(scanConfig, onSuccess, onFailure);
       } else {
-        await startWithDeviceList(scanConfig, onSuccess, onFailure);
+        await startDesktop(scanConfig, onSuccess, onFailure);
       }
 
-      applyFocusHint(el);
+      if (mountedRef.current) {
+        applyFocusHint(el);
+      }
     } catch (err) {
       if (!mountedRef.current) {
         startingRef.current = false;
@@ -118,41 +143,34 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
     }
   };
 
-  const startWithFacingMode = async (
-    scanConfig: Parameters<Html5Qrcode["start"]>[1],
-    onSuccess: (text: string) => void,
-    onFailure: () => void
+  const startMobile = async (
+    config: Parameters<Html5Qrcode["start"]>[1],
+    onOk: (text: string) => void,
+    onFail: () => void
   ) => {
     if (!scannerRef.current) return;
+
     await scannerRef.current.start(
       { facingMode: "environment" },
-      scanConfig,
-      onSuccess,
-      onFailure
+      config,
+      onOk,
+      onFail
     );
 
     try {
       const devices = await Html5Qrcode.getCameras();
       if (mountedRef.current && devices.length > 1) {
         setCameras(devices.map((d) => ({ id: d.id, label: d.label })));
-        const backIdx = devices.findIndex(
-          (c) =>
-            c.label.toLowerCase().includes("back") ||
-            c.label.toLowerCase().includes("задн") ||
-            c.label.toLowerCase().includes("rear") ||
-            c.label.toLowerCase().includes("environment")
-        );
-        if (backIdx >= 0) setCameraIndex(backIdx);
       }
     } catch {
-      // can't enumerate — that's fine, already scanning
+      // enumeration not available — already scanning, that's fine
     }
   };
 
-  const startWithDeviceList = async (
-    scanConfig: Parameters<Html5Qrcode["start"]>[1],
-    onSuccess: (text: string) => void,
-    onFailure: () => void
+  const startDesktop = async (
+    config: Parameters<Html5Qrcode["start"]>[1],
+    onOk: (text: string) => void,
+    onFail: () => void
   ) => {
     if (!scannerRef.current) return;
 
@@ -162,24 +180,23 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
       devices = cams.map((d) => ({ id: d.id, label: d.label }));
       if (mountedRef.current) setCameras(devices);
     } catch {
-      // fallback to facingMode
+      // fallback below
     }
 
     if (devices.length > 0) {
       const idx = cameraIndex < devices.length ? cameraIndex : 0;
-      if (mountedRef.current) setCameraIndex(idx);
       await scannerRef.current.start(
         devices[idx].id,
-        scanConfig,
-        onSuccess,
-        onFailure
+        config,
+        onOk,
+        onFail
       );
     } else {
       await scannerRef.current.start(
         { facingMode: "environment" },
-        scanConfig,
-        onSuccess,
-        onFailure
+        config,
+        onOk,
+        onFail
       );
     }
   };
@@ -200,30 +217,38 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
             constraints.zoom = 1;
           }
           if (Object.keys(constraints).length > 0) {
-            track.applyConstraints({ advanced: [constraints] } as MediaTrackConstraints);
+            track.applyConstraints({
+              advanced: [constraints],
+            } as MediaTrackConstraints);
           }
         }
       }
     } catch {
-      // focus constraints not supported
+      // focus not supported
     }
   };
 
   const handleStartError = (err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error("[QrScanner] Camera error:", msg);
 
     if (msg.includes("Permission") || msg.includes("NotAllowed")) {
       setError("Разрешите доступ к камере в настройках браузера");
-    } else if (msg.includes("NotFound") || msg.includes("not found") || msg.includes("Requested device not found")) {
+    } else if (
+      msg.includes("NotFound") ||
+      msg.includes("not found") ||
+      msg.includes("Requested device not found")
+    ) {
       setError("Камера не найдена на устройстве");
     } else if (msg.includes("NotReadableError") || msg.includes("Could not start")) {
-      setError("Камера занята другим приложением. Закройте другие приложения и попробуйте снова");
+      setError(
+        "Камера занята другим приложением. Закройте другие приложения и попробуйте снова"
+      );
     } else if (msg.includes("OverconstrainedError")) {
       setError("Камера не поддерживает нужные параметры");
     } else {
-      setError("Ошибка камеры: " + msg.slice(0, 100));
+      setError("Ошибка камеры: " + msg.slice(0, 120));
     }
-    onToggle(false);
   };
 
   const handleToggle = () => {
@@ -231,6 +256,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
       safeStop();
       onToggle(false);
     } else {
+      setError("");
       onToggle(true);
     }
   };
@@ -260,6 +286,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
       </div>
 
       <div
+        ref={containerRef}
         className={`relative rounded-lg overflow-hidden border-2 transition-all ${
           active
             ? "border-mine-cyan bg-black"
@@ -307,6 +334,12 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
         <div className="p-3 rounded-lg bg-mine-red/10 border border-mine-red/20 text-mine-red text-xs flex items-center gap-2">
           <Icon name="AlertCircle" size={14} />
           <span className="flex-1">{error}</span>
+          <button
+            onClick={() => { setError(""); onToggle(true); }}
+            className="text-mine-cyan underline text-xs whitespace-nowrap"
+          >
+            Повторить
+          </button>
         </div>
       )}
 
