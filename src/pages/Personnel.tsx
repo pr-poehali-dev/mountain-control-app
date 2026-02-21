@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { personnelApi } from "@/lib/api";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -433,61 +434,24 @@ const Personnel = () => {
     const printWindow = window.open("", "_blank", "width=900,height=700");
     if (!printWindow) return;
 
-    const renderQrSvg = (person: PersonnelItem) => {
-      const container = document.createElement("div");
-      const root = document.createElement("div");
-      container.appendChild(root);
-      document.body.appendChild(container);
-      const el = document.createElement("div");
-      root.appendChild(el);
-      import("react-dom/client").then(({ createRoot }) => {
-        // fallback — won't be used, we build SVG inline
-      });
-      document.body.removeChild(container);
-      return "";
-    };
-    void renderQrSvg;
-
     const escapeHtml = (str: string) =>
       str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
     const badgeHtml = (person: PersonnelItem) => {
-      const payload = JSON.stringify({
-        code: person.personal_code,
-        name: person.full_name,
-        pos: person.position,
-        dept: person.department,
-        cat: person.category,
-        med: person.medical_status || "pending",
-        status: person.status,
-        org: person.organization || "",
-        orgType: person.organization_type || "",
-      });
+      const qrValue = buildQrPayload(person);
+      const svgMarkup = renderToStaticMarkup(
+        <QRCodeSVG value={qrValue} size={140} level="M" />
+      );
 
       return `
         <div class="badge">
           <div class="badge-header">Горный контроль — Рудник Бадран</div>
           <div class="badge-name">${escapeHtml(person.full_name)}</div>
           <div class="badge-position">${escapeHtml(person.position || "—")}</div>
-          <div class="badge-qr" id="qr-${person.id}"></div>
+          <div class="badge-qr">${svgMarkup}</div>
           <div class="badge-code">${escapeHtml(person.personal_code)}</div>
           <div class="badge-dept">${escapeHtml(person.department || "")}${person.organization ? " — " + escapeHtml(person.organization) : ""}</div>
           <div class="badge-info">Сканируйте QR для проверки данных</div>
-          <script>
-            (function(){
-              var el = document.getElementById('qr-${person.id}');
-              if(el && typeof QRCode !== 'undefined') {
-                new QRCode(el, {
-                  text: ${JSON.stringify(payload)},
-                  width: 140,
-                  height: 140,
-                  colorDark: "#000000",
-                  colorLight: "#ffffff",
-                  correctLevel: QRCode.CorrectLevel.M
-                });
-              }
-            })();
-          </${"script"}>
         </div>
       `;
     };
@@ -499,7 +463,6 @@ const Personnel = () => {
       <html>
       <head>
         <title>QR-бейджи — ${selected.length} шт.</title>
-        <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></${"script"}>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: 'Arial', sans-serif; background: #fff; }
@@ -546,9 +509,9 @@ const Personnel = () => {
             justify-content: center;
             margin: 6px auto;
           }
-          .badge-qr img, .badge-qr canvas {
-            width: 140px !important;
-            height: 140px !important;
+          .badge-qr svg {
+            width: 140px;
+            height: 140px;
           }
           .badge-code {
             font-size: 16px;
@@ -580,16 +543,7 @@ const Personnel = () => {
       <body>
         <div class="page-title no-print">Бейджи сотрудников: ${selected.length} шт. (по 10 на лист A4)</div>
         <div class="grid">${badges}</div>
-        <script>
-          setTimeout(function(){
-            var imgs = document.querySelectorAll('.badge-qr canvas');
-            if(imgs.length > 0) {
-              setTimeout(function(){ window.print(); }, 400);
-            } else {
-              setTimeout(function(){ window.print(); }, 1000);
-            }
-          }, 500);
-        </${"script"}>
+        <script>setTimeout(function(){ window.print(); }, 300);</${"script"}>
       </body>
       </html>
     `);
