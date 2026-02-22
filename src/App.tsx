@@ -33,6 +33,20 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminRoute({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin") return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 function PublicRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -44,15 +58,15 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-    <Route path="/personnel" element={<ProtectedRoute><Personnel /></ProtectedRoute>} />
-    <Route path="/dispatcher" element={<ProtectedRoute><Dispatcher /></ProtectedRoute>} />
-    <Route path="/medical" element={<ProtectedRoute><Medical /></ProtectedRoute>} />
-    <Route path="/lampa" element={<ProtectedRoute><Lampa /></ProtectedRoute>} />
-    <Route path="/scanner" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
-    <Route path="/aho" element={<ProtectedRoute><Aho /></ProtectedRoute>} />
-    <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+    <Route path="/personnel" element={<AdminRoute><Personnel /></AdminRoute>} />
+    <Route path="/dispatcher" element={<AdminRoute><Dispatcher /></AdminRoute>} />
+    <Route path="/medical" element={<AdminRoute><Medical /></AdminRoute>} />
+    <Route path="/lampa" element={<AdminRoute><Lampa /></AdminRoute>} />
+    <Route path="/scanner" element={<AdminRoute><Scanner /></AdminRoute>} />
+    <Route path="/aho" element={<AdminRoute><Aho /></AdminRoute>} />
+    <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-    <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+    <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

@@ -96,6 +96,9 @@ export const authApi = {
     request(API.auth, "", { method: "POST", body: { code }, params: { action: "login-code" } }),
   me: () => request(API.auth, "", { params: { action: "me" } }),
   logout: () => request(API.auth, "", { method: "POST", params: { action: "logout" } }),
+  listUsers: () => request(API.auth, "", { params: { action: "users" } }),
+  updateRole: (user_id: number, role: string) =>
+    request(API.auth, "", { method: "PUT", body: { user_id, role }, params: { action: "role" } }),
 };
 
 export const personnelApi = {

@@ -957,19 +957,20 @@ def perform_reset(body):
             counts[table] = cur.fetchone()[0]
             cur.execute("DELETE FROM %s" % table)
 
-        cur.execute("SELECT COUNT(*) FROM personnel")
+        cur.execute("SELECT COUNT(*) FROM personnel WHERE full_name NOT IN (SELECT full_name FROM users WHERE role = 'admin')")
         counts['personnel'] = cur.fetchone()[0]
-        cur.execute("DELETE FROM sessions")
-        cur.execute("DELETE FROM personnel")
+        cur.execute("DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users WHERE role = 'admin')")
+        cur.execute("DELETE FROM personnel WHERE full_name NOT IN (SELECT full_name FROM users WHERE role = 'admin')")
+        cur.execute("DELETE FROM users WHERE role != 'admin'")
 
         affected = sum(counts.values())
         cur.execute("""
             INSERT INTO reset_log (reset_type, description, affected_rows)
-            VALUES ('full', 'Полный сброс системы до заводских настроек. Удалено: %d записей', %d)
+            VALUES ('full', 'Полный сброс системы. Администраторы сохранены. Удалено: %d записей', %d)
         """ % (affected, affected))
         cur.execute("""
             INSERT INTO events (event_type, description)
-            VALUES ('system_reset', 'Полный сброс системы — удалено %d записей из всех таблиц')
+            VALUES ('system_reset', 'Полный сброс системы — удалено %d записей. Администраторы сохранены.')
         """ % affected)
 
     conn.commit()

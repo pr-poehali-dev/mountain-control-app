@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
 import { useState, useEffect } from "react";
-import { ahoApi } from "@/lib/api";
+import { ahoApi, authApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   Select,
@@ -24,21 +25,39 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const users = [
-  { id: 1, name: "Иванов А.С.", email: "ivanov@rudnik.ru", role: "Оператор", dept: "Участок №3", active: true },
-  { id: 2, name: "Смирнова Е.В.", email: "smirnova@rudnik.ru", role: "Врач", dept: "Медпункт", active: true },
-  { id: 3, name: "Козлова И.А.", email: "kozlova@rudnik.ru", role: "Врач", dept: "Медпункт", active: true },
-  { id: 4, name: "Громов П.Р.", email: "gromov@rudnik.ru", role: "Диспетчер", dept: "Диспетчерская", active: true },
-  { id: 5, name: "Орлов М.К.", email: "orlov@rudnik.ru", role: "Администратор", dept: "ИТ", active: true },
-  { id: 6, name: "Борисов Н.Л.", email: "borisov@rudnik.ru", role: "Оператор", dept: "КПП", active: false },
-];
+interface SystemUser {
+  id: number;
+  email: string;
+  full_name: string;
+  position: string;
+  department: string;
+  personal_code: string;
+  role: string;
+  is_active: boolean;
+  organization: string;
+  organization_type: string;
+}
 
 const roleColors: Record<string, string> = {
-  "Администратор": "bg-mine-red/20 text-mine-red border-mine-red/30",
-  "Врач": "bg-mine-green/20 text-mine-green border-mine-green/30",
-  "Диспетчер": "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
-  "Оператор": "bg-mine-cyan/20 text-mine-cyan border-mine-cyan/30",
+  admin: "bg-mine-red/20 text-mine-red border-mine-red/30",
+  doctor: "bg-mine-green/20 text-mine-green border-mine-green/30",
+  dispatcher: "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
+  operator: "bg-mine-cyan/20 text-mine-cyan border-mine-cyan/30",
 };
+
+const roleLabels: Record<string, string> = {
+  admin: "Администратор",
+  operator: "Оператор",
+  dispatcher: "Диспетчер",
+  doctor: "Врач",
+};
+
+const roleOptions = [
+  { value: "admin", label: "Администратор" },
+  { value: "operator", label: "Оператор" },
+  { value: "dispatcher", label: "Диспетчер" },
+  { value: "doctor", label: "Врач" },
+];
 
 const systemModules = [
   { name: "Персонал", status: "активен", uptime: "99.8%", icon: "Users", color: "text-mine-amber" },
@@ -83,7 +102,7 @@ const resetOptions = [
   {
     value: "full",
     label: "Полностью обнулить всю систему",
-    description: "Удаляет ВСЕ данные из базы (персонал, АХО, медосмотры, события, история). Настройки сохраняются. Для передачи системы новому администратору.",
+    description: "Удаляет ВСЕ данные из базы (персонал, АХО, медосмотры, события, история). Администраторы и настройки сохраняются.",
     icon: "Trash2",
     color: "text-mine-red",
     danger: true,
@@ -92,7 +111,11 @@ const resetOptions = [
 
 const Admin = () => {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [search, setSearch] = useState("");
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [roleChangeLoading, setRoleChangeLoading] = useState<number | null>(null);
   const [itrPositions, setItrPositions] = useState<string[]>([]);
   const [newPosition, setNewPosition] = useState("");
   const [itrLoading, setItrLoading] = useState(false);
@@ -101,7 +124,27 @@ const Admin = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
 
+  const loadUsers = async () => {
+    try {
+      const data = await authApi.listUsers();
+      setUsers(data.users || []);
+    } catch { /* ignore */ }
+    finally { setUsersLoading(false); }
+  };
+
+  const handleRoleChange = async (userId: number, newRole: string) => {
+    setRoleChangeLoading(userId);
+    try {
+      const res = await authApi.updateRole(userId, newRole);
+      toast({ title: res.message });
+      loadUsers();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка смены роли", variant: "destructive" });
+    } finally { setRoleChangeLoading(null); }
+  };
+
   useEffect(() => {
+    loadUsers();
     loadItrPositions();
   }, []);
 
@@ -180,7 +223,7 @@ const Admin = () => {
 
   const filtered = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.full_name.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -232,17 +275,16 @@ const Admin = () => {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <Button size="sm" className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-8 text-xs">
-                  <Icon name="UserPlus" size={12} />
-                  Добавить
-                </Button>
+                <Badge variant="outline" className="text-[11px]">
+                  {users.length} чел.
+                </Badge>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Имя", "Email", "Роль", "Подразделение", "Статус", "Действия"].map((h) => (
+                    {["Имя", "Email", "Роль", "Подразделение", "Статус"].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
@@ -253,53 +295,91 @@ const Admin = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((u, i) => (
-                    <tr
-                      key={u.id}
-                      className="border-b border-border/50 hover:bg-secondary/50 transition-colors animate-fade-in"
-                      style={{ animationDelay: `${i * 30}ms` }}
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-foreground">
-                        {u.name}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {u.email}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant="outline"
-                          className={`text-[11px] ${roleColors[u.role] || "bg-secondary text-muted-foreground"}`}
-                        >
-                          {u.role}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {u.dept}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              u.active ? "bg-mine-green" : "bg-muted-foreground"
-                            }`}
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {u.active ? "Активен" : "Отключён"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          <button className="p-1.5 rounded hover:bg-secondary transition-colors">
-                            <Icon name="Pencil" size={14} className="text-muted-foreground" />
-                          </button>
-                          <button className="p-1.5 rounded hover:bg-mine-red/10 transition-colors">
-                            <Icon name="Trash2" size={14} className="text-mine-red/60" />
-                          </button>
-                        </div>
+                  {usersLoading ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center">
+                        <Icon name="Loader2" size={20} className="animate-spin mx-auto text-muted-foreground" />
                       </td>
                     </tr>
-                  ))}
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Пользователи не найдены
+                      </td>
+                    </tr>
+                  ) : filtered.map((u, i) => {
+                    const isSelf = currentUser?.id === u.id;
+                    return (
+                      <tr
+                        key={u.id}
+                        className="border-b border-border/50 hover:bg-secondary/50 transition-colors animate-fade-in"
+                        style={{ animationDelay: `${i * 30}ms` }}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-foreground">{u.full_name}</div>
+                          {u.personal_code && (
+                            <span className="text-[10px] text-muted-foreground font-mono">{u.personal_code}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                          {u.email}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isSelf ? (
+                            <Badge
+                              variant="outline"
+                              className={`text-[11px] ${roleColors[u.role] || "bg-secondary text-muted-foreground"}`}
+                            >
+                              {roleLabels[u.role] || u.role}
+                            </Badge>
+                          ) : (
+                            <Select
+                              value={u.role}
+                              onValueChange={(val) => handleRoleChange(u.id, val)}
+                              disabled={roleChangeLoading === u.id}
+                            >
+                              <SelectTrigger className="h-7 text-[11px] w-[140px] bg-secondary/30 border-border/50">
+                                {roleChangeLoading === u.id ? (
+                                  <Icon name="Loader2" size={12} className="animate-spin" />
+                                ) : (
+                                  <SelectValue />
+                                )}
+                              </SelectTrigger>
+                              <SelectContent>
+                                {roleOptions.map((r) => (
+                                  <SelectItem key={r.value} value={r.value} className="text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`w-2 h-2 rounded-full ${
+                                        r.value === "admin" ? "bg-mine-red" :
+                                        r.value === "doctor" ? "bg-mine-green" :
+                                        r.value === "dispatcher" ? "bg-mine-amber" : "bg-mine-cyan"
+                                      }`} />
+                                      {r.label}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                          {u.department || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                u.is_active ? "bg-mine-green" : "bg-muted-foreground"
+                              }`}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {u.is_active ? "Активен" : "Отключён"}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

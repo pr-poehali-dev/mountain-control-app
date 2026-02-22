@@ -52,6 +52,10 @@ def handler(event, context):
         return get_me(event)
     elif method == 'POST' and action == 'logout':
         return logout(event)
+    elif method == 'GET' and action == 'users':
+        return list_users(event)
+    elif method == 'PUT' and action == 'role':
+        return update_role(event, body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -276,3 +280,95 @@ def logout(event):
         conn.close()
 
     return json_response(200, {'message': 'Выход выполнен'})
+
+
+def get_current_user(event):
+    headers = event.get('headers') or {}
+    auth = headers.get('X-Authorization', headers.get('x-authorization', ''))
+    token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
+    if not token:
+        return None
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT u.id, u.role FROM users u
+        JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE
+    """ % token.replace("'", "''"))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return None
+    return {'id': row[0], 'role': row[1]}
+
+
+def list_users(event):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, email, full_name, position, department, personal_code, role, is_active, organization, organization_type,
+               created_at
+        FROM users ORDER BY id
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    users = []
+    for r in rows:
+        users.append({
+            'id': r[0], 'email': r[1], 'full_name': r[2],
+            'position': r[3] or '', 'department': r[4] or '',
+            'personal_code': r[5] or '', 'role': r[6],
+            'is_active': r[7], 'organization': r[8] or '',
+            'organization_type': r[9] or '',
+            'created_at': r[10]
+        })
+
+    return json_response(200, {'users': users})
+
+
+def update_role(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    user_id = body.get('user_id')
+    new_role = body.get('role', '').strip()
+    valid_roles = ['admin', 'operator', 'dispatcher', 'doctor']
+
+    if not user_id or new_role not in valid_roles:
+        return json_response(400, {'error': 'Укажите user_id и роль (%s)' % ', '.join(valid_roles)})
+
+    if int(user_id) == caller['id']:
+        return json_response(400, {'error': 'Нельзя менять роль самому себе'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, role FROM users WHERE id = %d" % int(user_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Пользователь не найден'})
+
+    old_role = row[1]
+    cur.execute("UPDATE users SET role = '%s' WHERE id = %d" % (new_role, int(user_id)))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    role_labels = {'admin': 'Администратор', 'operator': 'Оператор', 'dispatcher': 'Диспетчер', 'doctor': 'Врач'}
+
+    return json_response(200, {
+        'message': 'Роль изменена: %s → %s' % (role_labels.get(old_role, old_role), role_labels.get(new_role, new_role)),
+        'user_id': int(user_id),
+        'old_role': old_role,
+        'new_role': new_role
+    })
