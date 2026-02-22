@@ -29,6 +29,7 @@ const roleLabels: Record<string, string> = {
   doctor: "Врач",
   worker: "Сотрудник",
   aho_specialist: "Специалист АХО",
+  security: "СБ",
 };
 
 const typeIcons: Record<string, { icon: string; color: string }> = {

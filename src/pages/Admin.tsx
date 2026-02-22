@@ -45,6 +45,7 @@ const roleColors: Record<string, string> = {
   dispatcher: "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
   operator: "bg-mine-cyan/20 text-mine-cyan border-mine-cyan/30",
   aho_specialist: "bg-mine-purple/20 text-mine-purple border-mine-purple/30",
+  security: "bg-mine-red/15 text-mine-red border-mine-red/25",
 };
 
 const roleLabels: Record<string, string> = {
@@ -53,6 +54,7 @@ const roleLabels: Record<string, string> = {
   dispatcher: "Диспетчер",
   doctor: "Врач",
   aho_specialist: "Специалист АХО",
+  security: "СБ",
 };
 
 const roleOptions = [
@@ -61,6 +63,7 @@ const roleOptions = [
   { value: "dispatcher", label: "Диспетчер" },
   { value: "doctor", label: "Врач" },
   { value: "aho_specialist", label: "Специалист АХО" },
+  { value: "security", label: "СБ" },
 ];
 
 const pageLabels: Record<string, { label: string; icon: string }> = {
@@ -74,7 +77,7 @@ const pageLabels: Record<string, { label: string; icon: string }> = {
   reports: { label: "Отчёты", icon: "BarChart3" },
 };
 
-const editableRoles = ["operator", "dispatcher", "doctor", "aho_specialist"];
+const editableRoles = ["operator", "dispatcher", "doctor", "aho_specialist", "security"];
 
 const systemModules = [
   { name: "Персонал", status: "активен", uptime: "99.8%", icon: "Users", color: "text-mine-amber" },
@@ -143,6 +146,12 @@ const Admin = () => {
   const [permissions, setPermissions] = useState<Record<string, string[]>>({});
   const [permsLoading, setPermsLoading] = useState(true);
   const [permsSaving, setPermsSaving] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUser, setNewUser] = useState({ full_name: "", email: "", password: "", role: "operator", position: "", department: "" });
+  const [addingUser, setAddingUser] = useState(false);
+  const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
+  const [editUser, setEditUser] = useState<SystemUser | null>(null);
+  const [editFields, setEditFields] = useState({ full_name: "", email: "", position: "", department: "", password: "" });
 
   const loadPermissions = async () => {
     try {
@@ -189,6 +198,57 @@ const Admin = () => {
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка смены роли", variant: "destructive" });
     } finally { setRoleChangeLoading(null); }
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUser.full_name || !newUser.email || !newUser.password) {
+      toast({ title: "Заполните ФИО, email и пароль", variant: "destructive" });
+      return;
+    }
+    setAddingUser(true);
+    try {
+      const res = await authApi.createUser(newUser);
+      toast({ title: res.message });
+      setShowAddUser(false);
+      setNewUser({ full_name: "", email: "", password: "", role: "operator", position: "", department: "" });
+      loadUsers();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка создания", variant: "destructive" });
+    } finally { setAddingUser(false); }
+  };
+
+  const handleDeleteUser = async (userId: number) => {
+    try {
+      const res = await authApi.deleteUser(userId);
+      toast({ title: res.message });
+      setDeleteUserId(null);
+      loadUsers();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка удаления", variant: "destructive" });
+    }
+  };
+
+  const handleEditUser = async () => {
+    if (!editUser) return;
+    try {
+      const body: Record<string, unknown> = { user_id: editUser.id };
+      if (editFields.full_name !== editUser.full_name) body.full_name = editFields.full_name;
+      if (editFields.email !== editUser.email) body.email = editFields.email;
+      if (editFields.position !== (editUser.position || "")) body.position = editFields.position;
+      if (editFields.department !== (editUser.department || "")) body.department = editFields.department;
+      if (editFields.password) body.password = editFields.password;
+      const res = await authApi.updateUser(body);
+      toast({ title: res.message });
+      setEditUser(null);
+      loadUsers();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка обновления", variant: "destructive" });
+    }
+  };
+
+  const openEditUser = (u: SystemUser) => {
+    setEditUser(u);
+    setEditFields({ full_name: u.full_name, email: u.email, position: u.position || "", department: u.department || "", password: "" });
   };
 
   useEffect(() => {
@@ -270,11 +330,13 @@ const Admin = () => {
 
   const currentResetOption = resetOptions.find(r => r.value === selectedReset);
 
-  const filtered = users.filter(
-    (u) =>
-      u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = users
+    .filter(
+      (u) =>
+        u.full_name.toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => (a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1));
 
   return (
     <AppLayout title="Администрирование" subtitle="Управление пользователями и системой">
@@ -325,15 +387,80 @@ const Admin = () => {
                   />
                 </div>
                 <Badge variant="outline" className="text-[11px]">
-                  {users.length} чел.
+                  {users.filter(u => u.is_active).length} чел.
                 </Badge>
+                <Button
+                  size="sm"
+                  className="gap-1.5 h-8 bg-mine-green text-white hover:bg-mine-green/90"
+                  onClick={() => setShowAddUser(!showAddUser)}
+                >
+                  <Icon name={showAddUser ? "X" : "UserPlus"} size={14} />
+                  {showAddUser ? "Отмена" : "Добавить"}
+                </Button>
               </div>
             </div>
+            {showAddUser && (
+              <div className="p-4 border-b border-mine-green/20 bg-mine-green/5 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    placeholder="ФИО *"
+                    className="h-8 text-xs bg-secondary/50"
+                    value={newUser.full_name}
+                    onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Email *"
+                    className="h-8 text-xs bg-secondary/50"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Пароль *"
+                    type="password"
+                    className="h-8 text-xs bg-secondary/50"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  />
+                  <Select value={newUser.role} onValueChange={(val) => setNewUser({ ...newUser, role: val })}>
+                    <SelectTrigger className="h-8 text-xs bg-secondary/50">
+                      <SelectValue placeholder="Роль" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roleOptions.map((r) => (
+                        <SelectItem key={r.value} value={r.value} className="text-xs">{r.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Должность"
+                    className="h-8 text-xs bg-secondary/50"
+                    value={newUser.position}
+                    onChange={(e) => setNewUser({ ...newUser, position: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Подразделение"
+                    className="h-8 text-xs bg-secondary/50"
+                    value={newUser.department}
+                    onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-1.5 h-8 bg-mine-green text-white hover:bg-mine-green/90"
+                  onClick={handleCreateUser}
+                  disabled={addingUser}
+                >
+                  <Icon name="UserPlus" size={14} />
+                  {addingUser ? "Создаю..." : "Создать пользователя"}
+                </Button>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Имя", "Email", "Роль", "Подразделение", "Статус"].map((h) => (
+                    {["Имя", "Email", "Роль", "Подразделение", "Статус", ""].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
@@ -346,13 +473,13 @@ const Admin = () => {
                 <tbody>
                   {usersLoading ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center">
+                      <td colSpan={6} className="px-4 py-8 text-center">
                         <Icon name="Loader2" size={20} className="animate-spin mx-auto text-muted-foreground" />
                       </td>
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Пользователи не найдены
                       </td>
                     </tr>
@@ -401,7 +528,9 @@ const Admin = () => {
                                       <span className={`w-2 h-2 rounded-full ${
                                         r.value === "admin" ? "bg-mine-red" :
                                         r.value === "doctor" ? "bg-mine-green" :
-                                        r.value === "dispatcher" ? "bg-mine-amber" : "bg-mine-cyan"
+                                        r.value === "dispatcher" ? "bg-mine-amber" :
+                                        r.value === "aho_specialist" ? "bg-mine-purple" :
+                                        r.value === "security" ? "bg-mine-red" : "bg-mine-cyan"
                                       }`} />
                                       {r.label}
                                     </div>
@@ -425,6 +554,26 @@ const Admin = () => {
                               {u.is_active ? "Активен" : "Отключён"}
                             </span>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {!isSelf && u.is_active && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => openEditUser(u)}
+                                className="p-1.5 rounded-md hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
+                                title="Редактировать"
+                              >
+                                <Icon name="Pencil" size={13} />
+                              </button>
+                              <button
+                                onClick={() => setDeleteUserId(u.id)}
+                                className="p-1.5 rounded-md hover:bg-mine-red/10 text-muted-foreground hover:text-mine-red transition-colors"
+                                title="Удалить"
+                              >
+                                <Icon name="Trash2" size={13} />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -618,6 +767,84 @@ const Admin = () => {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={deleteUserId !== null} onOpenChange={() => setDeleteUserId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Icon name="Trash2" size={20} className="text-mine-red" />
+              Удалить пользователя?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Пользователь будет деактивирован. Он не сможет войти в систему, но данные останутся в базе.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteUserId && handleDeleteUser(deleteUserId)}
+              className="bg-mine-red hover:bg-mine-red/90 text-white"
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={editUser !== null} onOpenChange={() => setEditUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Icon name="Pencil" size={20} className="text-mine-amber" />
+              Редактировать пользователя
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 pt-2">
+                <Input
+                  placeholder="ФИО"
+                  className="h-9 text-sm"
+                  value={editFields.full_name}
+                  onChange={(e) => setEditFields({ ...editFields, full_name: e.target.value })}
+                />
+                <Input
+                  placeholder="Email"
+                  className="h-9 text-sm"
+                  value={editFields.email}
+                  onChange={(e) => setEditFields({ ...editFields, email: e.target.value })}
+                />
+                <Input
+                  placeholder="Должность"
+                  className="h-9 text-sm"
+                  value={editFields.position}
+                  onChange={(e) => setEditFields({ ...editFields, position: e.target.value })}
+                />
+                <Input
+                  placeholder="Подразделение"
+                  className="h-9 text-sm"
+                  value={editFields.department}
+                  onChange={(e) => setEditFields({ ...editFields, department: e.target.value })}
+                />
+                <Input
+                  placeholder="Новый пароль (оставьте пустым, если не менять)"
+                  type="password"
+                  className="h-9 text-sm"
+                  value={editFields.password}
+                  onChange={(e) => setEditFields({ ...editFields, password: e.target.value })}
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleEditUser}
+              className="bg-mine-amber hover:bg-mine-amber/90 text-white"
+            >
+              Сохранить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

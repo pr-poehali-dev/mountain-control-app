@@ -34,12 +34,25 @@ def json_response(status, body):
 
 ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'aho', 'reports', 'profile', 'admin']
 
+VALID_ROLES = ['admin', 'operator', 'dispatcher', 'doctor', 'aho_specialist', 'security']
+
 DEFAULT_PERMISSIONS = {
     'admin': ALL_PAGES[:],
     'operator': ['dashboard', 'profile'],
     'dispatcher': ['dashboard', 'profile'],
     'doctor': ['dashboard', 'profile'],
+    'aho_specialist': ['dashboard', 'profile'],
+    'security': ['dashboard', 'profile'],
 }
+
+
+def get_auth_token(event):
+    headers = event.get('headers') or {}
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            return val.replace('Bearer ', '') if val.startswith('Bearer ') else val
+    return ''
 
 
 def load_permissions(cur):
@@ -51,7 +64,7 @@ def load_permissions(cur):
 
 
 def handler(event, context):
-    """Авторизация и регистрация пользователей системы Горный контроль"""
+    """Авторизация и управление пользователями системы Горный контроль"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
 
@@ -78,6 +91,12 @@ def handler(event, context):
         return get_permissions(event)
     elif method == 'PUT' and action == 'permissions':
         return save_permissions(event, body)
+    elif method == 'POST' and action == 'create-user':
+        return create_user(event, body)
+    elif method == 'DELETE' and action == 'delete-user':
+        return delete_user(event, body)
+    elif method == 'PUT' and action == 'update-user':
+        return update_user(event, body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -270,10 +289,7 @@ def login_by_code(body):
     })
 
 def get_me(event):
-    headers = event.get('headers') or {}
-    auth = headers.get('X-Authorization', headers.get('x-authorization', ''))
-    token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
-
+    token = get_auth_token(event)
     if not token:
         return json_response(401, {'error': 'Требуется авторизация'})
 
@@ -314,10 +330,7 @@ def get_me(event):
     })
 
 def logout(event):
-    headers = event.get('headers', {})
-    auth = headers.get('X-Authorization', headers.get('x-authorization', ''))
-    token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
-
+    token = get_auth_token(event)
     if token:
         conn = get_db()
         cur = conn.cursor()
@@ -330,9 +343,7 @@ def logout(event):
 
 
 def get_current_user(event):
-    headers = event.get('headers') or {}
-    auth = headers.get('X-Authorization', headers.get('x-authorization', ''))
-    token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
+    token = get_auth_token(event)
     if not token:
         return None
     conn = get_db()
@@ -387,10 +398,9 @@ def update_role(event, body):
 
     user_id = body.get('user_id')
     new_role = body.get('role', '').strip()
-    valid_roles = ['admin', 'operator', 'dispatcher', 'doctor']
 
-    if not user_id or new_role not in valid_roles:
-        return json_response(400, {'error': 'Укажите user_id и роль (%s)' % ', '.join(valid_roles)})
+    if not user_id or new_role not in VALID_ROLES:
+        return json_response(400, {'error': 'Укажите user_id и роль (%s)' % ', '.join(VALID_ROLES)})
 
     if int(user_id) == caller['id']:
         return json_response(400, {'error': 'Нельзя менять роль самому себе'})
@@ -411,7 +421,11 @@ def update_role(event, body):
     cur.close()
     conn.close()
 
-    role_labels = {'admin': 'Администратор', 'operator': 'Оператор', 'dispatcher': 'Диспетчер', 'doctor': 'Врач'}
+    role_labels = {
+        'admin': 'Администратор', 'operator': 'Оператор',
+        'dispatcher': 'Диспетчер', 'doctor': 'Врач',
+        'aho_specialist': 'Специалист АХО', 'security': 'СБ'
+    }
 
     return json_response(200, {
         'message': 'Роль изменена: %s → %s' % (role_labels.get(old_role, old_role), role_labels.get(new_role, new_role)),
@@ -445,11 +459,6 @@ def save_permissions(event, body):
         return json_response(400, {'error': 'permissions должен быть объектом'})
 
     permissions['admin'] = ALL_PAGES[:]
-    for role in permissions:
-        if 'dashboard' not in permissions[role]:
-            permissions[role].insert(0, 'dashboard')
-        if 'profile' not in permissions[role]:
-            permissions[role].append('profile')
 
     conn = get_db()
     cur = conn.cursor()
@@ -463,3 +472,152 @@ def save_permissions(event, body):
     conn.close()
 
     return json_response(200, {'message': 'Настройки доступа сохранены', 'permissions': permissions})
+
+
+def create_user(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    full_name = body.get('full_name', '').strip()
+    email = body.get('email', '').strip().lower()
+    password = body.get('password', '').strip()
+    role = body.get('role', 'operator').strip()
+    position = body.get('position', '').strip()
+    department = body.get('department', '').strip()
+    organization = body.get('organization', '').strip()
+    organization_type = body.get('organization_type', '').strip()
+
+    if not full_name or not email or not password:
+        return json_response(400, {'error': 'ФИО, email и пароль обязательны'})
+
+    if role not in VALID_ROLES:
+        return json_response(400, {'error': 'Недопустимая роль'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM users WHERE email = '%s'" % email.replace("'", "''"))
+    if cur.fetchone():
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Пользователь с таким email уже существует'})
+
+    cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
+    next_id = cur.fetchone()[0]
+    personal_code = 'УС-%03d' % next_id
+    qr_code = 'QR-US-%03d' % next_id
+    password_hash = hash_password(password)
+
+    cur.execute("""
+        INSERT INTO users (email, password_hash, full_name, position, department, personal_code, qr_code, role, organization, organization_type)
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
+        RETURNING id, personal_code, qr_code
+    """ % (
+        email.replace("'", "''"),
+        password_hash,
+        full_name.replace("'", "''"),
+        position.replace("'", "''"),
+        department.replace("'", "''"),
+        personal_code,
+        qr_code,
+        role,
+        organization.replace("'", "''"),
+        organization_type.replace("'", "''")
+    ))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'message': 'Пользователь создан',
+        'user': {
+            'id': row[0], 'email': email, 'full_name': full_name,
+            'position': position, 'department': department,
+            'personal_code': row[1], 'qr_code': row[2], 'role': role,
+            'is_active': True,
+            'organization': organization, 'organization_type': organization_type
+        }
+    })
+
+
+def delete_user(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    user_id = body.get('user_id')
+    if not user_id:
+        return json_response(400, {'error': 'Укажите user_id'})
+
+    if int(user_id) == caller['id']:
+        return json_response(400, {'error': 'Нельзя удалить самого себя'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, full_name FROM users WHERE id = %d" % int(user_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Пользователь не найден'})
+
+    name = row[1]
+    cur.execute("DELETE FROM sessions WHERE user_id = %d" % int(user_id))
+    cur.execute("UPDATE users SET is_active = FALSE, email = email || '_deleted_' || '%d' WHERE id = %d" % (int(user_id), int(user_id)))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Пользователь %s деактивирован' % name})
+
+
+def update_user(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    user_id = body.get('user_id')
+    if not user_id:
+        return json_response(400, {'error': 'Укажите user_id'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM users WHERE id = %d" % int(user_id))
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Пользователь не найден'})
+
+    updates = []
+    for field in ['full_name', 'email', 'position', 'department', 'role', 'organization', 'organization_type']:
+        if field in body and body[field] is not None:
+            val = str(body[field]).strip()
+            if field == 'role' and val not in VALID_ROLES:
+                cur.close()
+                conn.close()
+                return json_response(400, {'error': 'Недопустимая роль'})
+            if field == 'email':
+                val = val.lower()
+            updates.append("%s = '%s'" % (field, val.replace("'", "''")))
+
+    if 'password' in body and body['password']:
+        updates.append("password_hash = '%s'" % hash_password(body['password']))
+
+    if 'is_active' in body:
+        updates.append("is_active = %s" % ('TRUE' if body['is_active'] else 'FALSE'))
+
+    if not updates:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Нечего обновлять'})
+
+    cur.execute("UPDATE users SET %s WHERE id = %d" % (', '.join(updates), int(user_id)))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Данные пользователя обновлены'})

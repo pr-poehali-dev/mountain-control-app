@@ -102,6 +102,12 @@ export const authApi = {
   getPermissions: () => request(API.auth, "", { params: { action: "permissions" } }),
   savePermissions: (permissions: Record<string, string[]>) =>
     request(API.auth, "", { method: "PUT", body: { permissions }, params: { action: "permissions" } }),
+  createUser: (body: Record<string, unknown>) =>
+    request(API.auth, "", { method: "POST", body, params: { action: "create-user" } }),
+  deleteUser: (user_id: number) =>
+    request(API.auth, "", { method: "DELETE", body: { user_id }, params: { action: "delete-user" } }),
+  updateUser: (body: Record<string, unknown>) =>
+    request(API.auth, "", { method: "PUT", body, params: { action: "update-user" } }),
 };
 
 export const personnelApi = {
