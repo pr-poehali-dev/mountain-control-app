@@ -88,6 +88,13 @@ const conditionLabels: Record<string, string> = {
   needs_charging: "Требует зарядки",
 };
 
+const conditionColors: Record<string, string> = {
+  normal: "text-mine-green",
+  damaged: "text-mine-red",
+  needs_repair: "text-mine-amber",
+  needs_charging: "text-blue-400",
+};
+
 function formatTime(dateStr?: string): string {
   if (!dateStr) return "—";
   try {
@@ -553,7 +560,7 @@ const Lampa = () => {
                           <td className="px-3 py-3 text-xs text-muted-foreground font-mono whitespace-nowrap">
                             {formatTime(r.returned_at)}
                           </td>
-                          <td className="px-3 py-3 text-xs text-muted-foreground">{conditionLabels[r.condition] || r.condition || "—"}</td>
+                          <td className={`px-3 py-3 text-xs font-medium ${conditionColors[r.condition] || "text-muted-foreground"}`}>{conditionLabels[r.condition] || r.condition || "—"}</td>
                           <td className="px-3 py-3">
                             {r.status === "issued" && (
                               <Button
