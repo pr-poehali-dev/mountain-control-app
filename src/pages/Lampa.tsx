@@ -478,6 +478,18 @@ const Lampa = () => {
     }
   };
 
+  const handleDecommission = async (repairId: number) => {
+    const reason = prompt("Причина списания:");
+    if (!reason) return;
+    try {
+      await lampRoomApi.decommission(repairId, reason);
+      playSuccess();
+      fetchData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ошибка списания");
+    }
+  };
+
   const filteredIssues = issues.filter(
     (i) =>
       (i.person_name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -831,10 +843,16 @@ const Lampa = () => {
                             </td>
                             <td className="px-3 py-3">
                               {r.status === "repair" && (
-                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-mine-green/30 text-mine-green hover:bg-mine-green/10" onClick={() => handleReturnRepair(r.id)}>
-                                  <Icon name="Check" size={12} />
-                                  Вернуть
-                                </Button>
+                                <div className="flex gap-1">
+                                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-mine-green/30 text-mine-green hover:bg-mine-green/10" onClick={() => handleReturnRepair(r.id)}>
+                                    <Icon name="Check" size={12} />
+                                    Вернуть
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-mine-red/30 text-mine-red hover:bg-mine-red/10" onClick={() => handleDecommission(r.id)}>
+                                    <Icon name="Trash2" size={12} />
+                                    Списать
+                                  </Button>
+                                </div>
                               )}
                             </td>
                           </tr>
