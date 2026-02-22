@@ -50,6 +50,8 @@ def handler(event, context):
         return get_issues(params)
     elif method == 'GET' and action == 'stats':
         return get_stats()
+    elif method == 'GET' and action == 'detail':
+        return get_detail(params)
     elif method == 'GET' and action == 'search':
         return search_person(params)
     elif method == 'GET' and action == 'denials':
@@ -68,6 +70,7 @@ def handler(event, context):
 def get_issues(params):
     status_filter = params.get('status', '')
     date_filter = params.get('date', '')
+    item_type_filter = params.get('item_type', '')
     conn = get_db()
     cur = conn.cursor()
 
@@ -77,6 +80,13 @@ def get_issues(params):
     if date_filter:
         safe_date = date_filter.replace("'", "''")
         conditions.append("i.issued_at::date = '%s'" % safe_date)
+    if item_type_filter and item_type_filter in ('lantern', 'rescuer', 'both'):
+        if item_type_filter == 'lantern':
+            conditions.append("i.item_type IN ('lantern', 'both')")
+        elif item_type_filter == 'rescuer':
+            conditions.append("i.item_type IN ('rescuer', 'both')")
+        else:
+            conditions.append("i.item_type = 'both'")
 
     where = ""
     if conditions:
@@ -85,11 +95,13 @@ def get_issues(params):
     cur.execute("""
         SELECT i.id, i.person_code, i.person_name, i.item_type,
                i.lantern_number, i.rescuer_number, i.status,
-               i.issued_at, i.returned_at, i.condition, i.notes, i.issued_by
+               i.issued_at, i.returned_at, i.condition, i.notes, i.issued_by,
+               i.tabular_number, p.position, p.department, p.organization
         FROM lamp_room_issues i
+        LEFT JOIN personnel p ON i.person_id = p.id
         %s
         ORDER BY i.issued_at DESC
-        LIMIT 200
+        LIMIT 300
     """ % where)
     rows = cur.fetchall()
     cur.close()
@@ -101,10 +113,101 @@ def get_issues(params):
             'id': r[0], 'person_code': r[1], 'person_name': r[2],
             'item_type': r[3], 'lantern_number': r[4], 'rescuer_number': r[5],
             'status': r[6], 'issued_at': r[7], 'returned_at': r[8],
-            'condition': r[9], 'notes': r[10], 'issued_by': r[11]
+            'condition': r[9], 'notes': r[10], 'issued_by': r[11],
+            'tabular_number': r[12] or '', 'position': r[13] or '',
+            'department': r[14] or '', 'organization': r[15] or ''
         })
 
     return json_response(200, {'issues': items, 'total': len(items)})
+
+def get_detail(params):
+    detail_type = params.get('type', '')
+    conn = get_db()
+    cur = conn.cursor()
+
+    if detail_type == 'lanterns_out':
+        cur.execute("""
+            SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
+                   i.issued_at, i.issued_by, i.tabular_number,
+                   p.position, p.department, p.organization
+            FROM lamp_room_issues i
+            LEFT JOIN personnel p ON i.person_id = p.id
+            WHERE i.status = 'issued' AND i.item_type IN ('lantern', 'both')
+            ORDER BY i.issued_at DESC
+        """)
+    elif detail_type == 'rescuers_out':
+        cur.execute("""
+            SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
+                   i.issued_at, i.issued_by, i.tabular_number,
+                   p.position, p.department, p.organization
+            FROM lamp_room_issues i
+            LEFT JOIN personnel p ON i.person_id = p.id
+            WHERE i.status = 'issued' AND i.item_type IN ('rescuer', 'both')
+            ORDER BY i.issued_at DESC
+        """)
+    elif detail_type == 'today_issued':
+        cur.execute("""
+            SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
+                   i.issued_at, i.issued_by, i.tabular_number,
+                   p.position, p.department, p.organization
+            FROM lamp_room_issues i
+            LEFT JOIN personnel p ON i.person_id = p.id
+            WHERE i.issued_at::date = CURRENT_DATE
+            ORDER BY i.issued_at DESC
+        """)
+    elif detail_type == 'today_returned':
+        cur.execute("""
+            SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
+                   i.returned_at, i.issued_by, i.tabular_number,
+                   p.position, p.department, p.organization
+            FROM lamp_room_issues i
+            LEFT JOIN personnel p ON i.person_id = p.id
+            WHERE i.returned_at::date = CURRENT_DATE
+            ORDER BY i.returned_at DESC
+        """)
+    elif detail_type == 'denials':
+        cur.execute("""
+            SELECT d.id, d.person_code, d.person_name, d.reason, d.denied_at, d.denied_by, d.tabular_number
+            FROM lamp_room_denials d
+            WHERE d.denied_at::date = CURRENT_DATE
+            ORDER BY d.denied_at DESC
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        items = []
+        for r in rows:
+            items.append({
+                'id': r[0], 'person_code': r[1], 'person_name': r[2],
+                'reason': r[3], 'denied_at': r[4], 'denied_by': r[5],
+                'tabular_number': r[6] or ''
+            })
+        return json_response(200, {'items': items, 'total': len(items), 'type': 'denials'})
+    else:
+        cur.execute("""
+            SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
+                   i.issued_at, i.issued_by, i.tabular_number,
+                   p.position, p.department, p.organization
+            FROM lamp_room_issues i
+            LEFT JOIN personnel p ON i.person_id = p.id
+            WHERE i.status = 'issued'
+            ORDER BY i.issued_at DESC
+        """)
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    items = []
+    for r in rows:
+        items.append({
+            'id': r[0], 'person_code': r[1], 'person_name': r[2],
+            'lantern_number': r[3], 'rescuer_number': r[4],
+            'time': r[5], 'issued_by': r[6], 'tabular_number': r[7] or '',
+            'position': r[8] or '', 'department': r[9] or '', 'organization': r[10] or ''
+        })
+
+    return json_response(200, {'items': items, 'total': len(items), 'type': detail_type})
 
 def get_stats():
     conn = get_db()
@@ -151,7 +254,7 @@ def search_person(params):
 
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
-               p.medical_status, p.organization
+               p.medical_status, p.organization, p.tabular_number
         FROM personnel p
         WHERE p.status != 'archived'
           AND (p.full_name ILIKE '%%%s%%' OR p.personal_code ILIKE '%%%s%%' OR p.qr_code ILIKE '%%%s%%')
@@ -166,7 +269,7 @@ def search_person(params):
         results.append({
             'id': r[0], 'personal_code': r[1], 'full_name': r[2],
             'position': r[3], 'department': r[4], 'medical_status': r[5],
-            'organization': r[6]
+            'organization': r[6], 'tabular_number': r[7] or ''
         })
 
     return json_response(200, {'results': results})
@@ -184,7 +287,7 @@ def identify_person(body):
 
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
-               p.medical_status, p.organization, p.category
+               p.medical_status, p.organization, p.category, p.tabular_number
         FROM personnel p
         WHERE (p.personal_code = '%s' OR p.qr_code = '%s') AND p.status != 'archived'
         LIMIT 1
@@ -217,7 +320,7 @@ def identify_person(body):
         'person': {
             'id': row[0], 'personal_code': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4], 'medical_status': row[5],
-            'organization': row[6], 'category': row[7]
+            'organization': row[6], 'category': row[7], 'tabular_number': row[8] or ''
         },
         'active_issues': active_issues
     })
@@ -244,7 +347,7 @@ def issue_item(body):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, personal_code, full_name, medical_status FROM personnel WHERE id = %d AND status != 'archived'" % int(person_id))
+    cur.execute("SELECT id, personal_code, full_name, medical_status, tabular_number FROM personnel WHERE id = %d AND status != 'archived'" % int(person_id))
     p = cur.fetchone()
     if not p:
         cur.close()
@@ -261,16 +364,17 @@ def issue_item(body):
     safe_name = p[2].replace("'", "''")
     safe_code = p[1].replace("'", "''")
     safe_by = (issued_by or '').replace("'", "''")
+    safe_tab = (p[4] or '').replace("'", "''")
 
     cur.execute("""
-        INSERT INTO lamp_room_issues (person_id, person_code, person_name, item_type, lantern_number, rescuer_number, issued_by)
-        VALUES (%d, '%s', '%s', '%s', %s, %s, '%s')
+        INSERT INTO lamp_room_issues (person_id, person_code, person_name, item_type, lantern_number, rescuer_number, issued_by, tabular_number)
+        VALUES (%d, '%s', '%s', '%s', %s, %s, '%s', '%s')
         RETURNING id
     """ % (
         int(person_id), safe_code, safe_name, item_type,
         ("'%s'" % safe_ln) if lantern_number else 'NULL',
         ("'%s'" % safe_rn) if rescuer_number else 'NULL',
-        safe_by
+        safe_by, safe_tab
     ))
     issue_id = cur.fetchone()[0]
 
@@ -361,15 +465,20 @@ def deny_person(body):
     conn = get_db()
     cur = conn.cursor()
 
+    tab_num = ''
     person_id_val = 'NULL'
-    if person_id:
+    if person_id and int(person_id) > 0:
         person_id_val = str(int(person_id))
+        cur.execute("SELECT tabular_number FROM personnel WHERE id = %s" % person_id_val)
+        tr = cur.fetchone()
+        if tr:
+            tab_num = (tr[0] or '').replace("'", "''")
 
     cur.execute("""
-        INSERT INTO lamp_room_denials (person_id, person_code, person_name, reason, denied_by)
-        VALUES (%s, '%s', '%s', '%s', '%s')
+        INSERT INTO lamp_room_denials (person_id, person_code, person_name, reason, denied_by, tabular_number)
+        VALUES (%s, '%s', '%s', '%s', '%s', '%s')
         RETURNING id
-    """ % (person_id_val, safe_code, safe_name, safe_reason, safe_by))
+    """ % (person_id_val, safe_code, safe_name, safe_reason, safe_by, tab_num))
     denial_id = cur.fetchone()[0]
 
     desc = 'Недопуск: %s (%s) — %s' % (safe_name, safe_code, safe_reason)
@@ -398,7 +507,7 @@ def get_denials(params):
         where = "WHERE d.denied_at::date = '%s'" % safe_date
 
     cur.execute("""
-        SELECT d.id, d.person_code, d.person_name, d.reason, d.denied_at, d.denied_by
+        SELECT d.id, d.person_code, d.person_name, d.reason, d.denied_at, d.denied_by, d.tabular_number
         FROM lamp_room_denials d
         %s
         ORDER BY d.denied_at DESC
@@ -412,7 +521,8 @@ def get_denials(params):
     for r in rows:
         items.append({
             'id': r[0], 'person_code': r[1], 'person_name': r[2],
-            'reason': r[3], 'denied_at': r[4], 'denied_by': r[5]
+            'reason': r[3], 'denied_at': r[4], 'denied_by': r[5],
+            'tabular_number': r[6] or ''
         })
 
     return json_response(200, {'denials': items, 'total': len(items)})

@@ -1,0 +1,3 @@
+ALTER TABLE personnel ADD COLUMN IF NOT EXISTS tabular_number VARCHAR(50) DEFAULT '';
+ALTER TABLE lamp_room_issues ADD COLUMN IF NOT EXISTS tabular_number VARCHAR(50) DEFAULT '';
+ALTER TABLE lamp_room_denials ADD COLUMN IF NOT EXISTS tabular_number VARCHAR(50) DEFAULT '';

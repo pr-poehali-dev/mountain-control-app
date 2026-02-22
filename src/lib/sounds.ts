@@ -60,6 +60,12 @@ export function playDenied() {
   setTimeout(() => playTone(220, 0.3, "square", 0.25), 180);
 }
 
+export function playWarning() {
+  playTone(600, 0.12, "triangle", 0.2);
+  setTimeout(() => playTone(500, 0.12, "triangle", 0.2), 150);
+  setTimeout(() => playTone(600, 0.12, "triangle", 0.2), 300);
+}
+
 export function playScan() {
   playTone(1200, 0.08, "sine", 0.15);
 }

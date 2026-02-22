@@ -251,6 +251,8 @@ export const lampRoomApi = {
     request(API.lampRoom, "", { params: { action: "search", q } }),
   getDenials: (params?: Record<string, string>) =>
     request(API.lampRoom, "", { params: { action: "denials", ...params } }),
+  getDetail: (type: string) =>
+    request(API.lampRoom, "", { params: { action: "detail", type } }),
   identify: (code: string) =>
     request(API.lampRoom, "", { method: "POST", body: { code }, params: { action: "identify" } }),
   issue: (body: Record<string, unknown>) =>

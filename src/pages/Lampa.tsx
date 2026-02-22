@@ -21,7 +21,7 @@ import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 import { lampRoomApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { playSuccess, playDenied, playScan } from "@/lib/sounds";
+import { playSuccess, playDenied, playScan, playWarning } from "@/lib/sounds";
 
 interface PersonInfo {
   id: number;
@@ -32,6 +32,24 @@ interface PersonInfo {
   medical_status: string;
   organization: string;
   category: string;
+  tabular_number?: string;
+}
+
+interface DetailItem {
+  id: number;
+  person_code: string;
+  person_name: string;
+  lantern_number?: string;
+  rescuer_number?: string;
+  time?: string;
+  issued_by?: string;
+  tabular_number?: string;
+  position?: string;
+  department?: string;
+  organization?: string;
+  reason?: string;
+  denied_at?: string;
+  denied_by?: string;
 }
 
 interface ActiveIssue {
@@ -55,6 +73,10 @@ interface IssueRecord {
   condition: string;
   notes: string;
   issued_by: string;
+  tabular_number?: string;
+  position?: string;
+  department?: string;
+  organization?: string;
 }
 
 interface DenialRecord {
@@ -64,6 +86,7 @@ interface DenialRecord {
   reason: string;
   denied_at: string;
   denied_by: string;
+  tabular_number?: string;
 }
 
 interface Stats {
@@ -139,6 +162,11 @@ const Lampa = () => {
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueMsg, setIssueMsg] = useState("");
   const [issueError, setIssueError] = useState("");
+
+  const [detailType, setDetailType] = useState<string | null>(null);
+  const [detailItems, setDetailItems] = useState<DetailItem[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [isDenialDetail, setIsDenialDetail] = useState(false);
 
   const [manualCode, setManualCode] = useState("");
   const [manualSearching, setManualSearching] = useState(false);
@@ -225,7 +253,7 @@ const Lampa = () => {
         setLanternNum("");
         setRescuerNum("");
         if (hasActive) {
-          playDenied();
+          playWarning();
           const items = data.active_issues.map((ai: ActiveIssue) => {
             const parts = [];
             if (ai.lantern_number) parts.push(`Фонарь ${ai.lantern_number}`);
@@ -357,6 +385,20 @@ const Lampa = () => {
     }
   };
 
+  const openDetail = async (type: string) => {
+    setDetailType(type);
+    setDetailLoading(true);
+    setDetailItems([]);
+    setIsDenialDetail(type === "today_denied");
+    try {
+      const data = await lampRoomApi.getDetail(type);
+      setDetailItems(data.items || []);
+    } catch { /* ignore */
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const filteredIssues = issues.filter(
     (i) =>
       (i.person_name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -377,20 +419,27 @@ const Lampa = () => {
       <div className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { label: "Выдано сейчас", value: stats.active, icon: "Package", color: "text-mine-cyan" },
-            { label: "Фонарей выдано", value: stats.lanterns_out, icon: "Flashlight", color: "text-mine-amber" },
-            { label: "СС выдано", value: stats.rescuers_out, icon: "Shield", color: "text-indigo-400" },
-            { label: "Выдано за день", value: stats.today_issued, icon: "ArrowUpRight", color: "text-mine-green" },
-            { label: "Возвращено за день", value: stats.today_returned, icon: "ArrowDownLeft", color: "text-blue-400" },
-            { label: "Недопусков", value: stats.today_denied, icon: "Ban", color: "text-mine-red" },
+            { key: "active", label: "Выдано сейчас", value: stats.active, icon: "Package", color: "mine-cyan" },
+            { key: "lanterns_out", label: "Фонарей выдано", value: stats.lanterns_out, icon: "Flashlight", color: "mine-amber" },
+            { key: "rescuers_out", label: "СС выдано", value: stats.rescuers_out, icon: "Shield", color: "indigo-400" },
+            { key: "today_issued", label: "Выдано за день", value: stats.today_issued, icon: "ArrowUpRight", color: "mine-green" },
+            { key: "today_returned", label: "Возвращено за день", value: stats.today_returned, icon: "ArrowDownLeft", color: "blue-400" },
+            { key: "today_denied", label: "Недопусков", value: stats.today_denied, icon: "Ban", color: "mine-red" },
           ].map((s) => (
-            <div key={s.label} className="rounded-xl border border-border bg-card p-4">
+            <button
+              key={s.key}
+              onClick={() => openDetail(s.key)}
+              className={`rounded-xl border border-${s.color}/20 bg-${s.color}/5 p-4 text-left hover:border-${s.color}/40 hover:shadow-lg transition-all cursor-pointer group`}
+            >
               <div className="flex items-center gap-2 mb-2">
-                <Icon name={s.icon} size={16} className={s.color} />
+                <Icon name={s.icon} size={16} className={`text-${s.color}`} />
                 <span className="text-xs text-muted-foreground">{s.label}</span>
               </div>
               <p className="text-2xl font-bold text-foreground font-mono">{s.value}</p>
-            </div>
+              <p className="text-[10px] text-muted-foreground mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                Подробнее →
+              </p>
+            </button>
           ))}
         </div>
 
@@ -547,7 +596,7 @@ const Lampa = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border">
-                        {["Время", "Код", "ФИО", "Тип", "Фонарь", "СС", "Статус", "Возврат", "Состояние", ""].map((h) => (
+                        {["Время", "Код", "Таб.№", "ФИО", "Тип", "Фонарь", "СС", "Статус", "Возврат", "Состояние", ""].map((h) => (
                           <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3">
                             {h}
                           </th>
@@ -561,6 +610,7 @@ const Lampa = () => {
                             {formatDateTime(r.issued_at)}
                           </td>
                           <td className="px-3 py-3 text-xs font-mono text-foreground">{r.person_code}</td>
+                          <td className="px-3 py-3 text-xs font-mono text-muted-foreground">{r.tabular_number || "—"}</td>
                           <td className="px-3 py-3 text-sm text-foreground font-medium max-w-[180px] truncate">{r.person_name}</td>
                           <td className="px-3 py-3">
                             <Badge variant="outline" className="text-[10px]">
@@ -597,7 +647,7 @@ const Lampa = () => {
                       ))}
                       {filteredIssues.length === 0 && (
                         <tr>
-                          <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                          <td colSpan={11} className="px-4 py-12 text-center text-sm text-muted-foreground">
                             Нет записей о выдаче
                           </td>
                         </tr>
@@ -610,7 +660,7 @@ const Lampa = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border">
-                        {["Время", "Код", "ФИО", "Причина", "Кто оформил"].map((h) => (
+                        {["Время", "Код", "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
                           <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3">
                             {h}
                           </th>
@@ -624,6 +674,7 @@ const Lampa = () => {
                             {formatDateTime(d.denied_at)}
                           </td>
                           <td className="px-3 py-3 text-xs font-mono text-foreground">{d.person_code}</td>
+                          <td className="px-3 py-3 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
                           <td className="px-3 py-3 text-sm text-foreground font-medium">{d.person_name}</td>
                           <td className="px-3 py-3 text-sm text-mine-red">{d.reason}</td>
                           <td className="px-3 py-3 text-xs text-muted-foreground">{d.denied_by || "—"}</td>
@@ -631,7 +682,7 @@ const Lampa = () => {
                       ))}
                       {filteredDenials.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                          <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
                             Нет записей о недопусках
                           </td>
                         </tr>
@@ -663,7 +714,9 @@ const Lampa = () => {
                   <div>
                     <p className="text-sm font-semibold text-foreground">{identifiedPerson.full_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {identifiedPerson.personal_code} · {identifiedPerson.department || identifiedPerson.organization}
+                      {identifiedPerson.personal_code}
+                      {identifiedPerson.tabular_number ? ` · Таб.№ ${identifiedPerson.tabular_number}` : ""}
+                      {" · "}{identifiedPerson.department || identifiedPerson.organization}
                     </p>
                   </div>
                   <div className="ml-auto">
@@ -892,6 +945,85 @@ const Lampa = () => {
               )}
               Оформить недопуск
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detailType !== null} onOpenChange={(open) => !open && setDetailType(null)}>
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon
+                name={
+                  ({ active: "Package", lanterns_out: "Flashlight", rescuers_out: "Shield", today_issued: "ArrowUpRight", today_returned: "ArrowDownLeft", today_denied: "Ban" } as Record<string, string>)[detailType || ""] || "List"
+                }
+                size={18}
+                className={
+                  ({ active: "text-mine-cyan", lanterns_out: "text-mine-amber", rescuers_out: "text-indigo-400", today_issued: "text-mine-green", today_returned: "text-blue-400", today_denied: "text-mine-red" } as Record<string, string>)[detailType || ""] || ""
+                }
+              />
+              {({ active: "Выдано сейчас", lanterns_out: "Фонарей выдано", rescuers_out: "Самоспасателей выдано", today_issued: "Выдано за день", today_returned: "Возвращено за день", today_denied: "Недопуски за день" } as Record<string, string>)[detailType || ""] || "Детали"}
+              <Badge variant="outline" className="ml-2 text-xs">{detailItems.length}</Badge>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {detailLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Icon name="Loader2" size={24} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : detailItems.length === 0 ? (
+              <div className="text-center py-12">
+                <Icon name="Inbox" size={32} className="text-muted-foreground/20 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Нет записей</p>
+              </div>
+            ) : isDenialDetail ? (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    {["Дата/Время", "Код", "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
+                      <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailItems.map((d) => (
+                    <tr key={d.id} className="border-b border-border/50 hover:bg-secondary/30">
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(d.denied_at)}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-foreground">{d.person_code}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
+                      <td className="px-3 py-2.5 text-sm font-medium text-foreground">{d.person_name}</td>
+                      <td className="px-3 py-2.5 text-sm text-mine-red">{d.reason}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{d.denied_by || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    {["Дата/Время", "Код", "Таб.№", "ФИО", "Должность", "Подразделение", "Фонарь", "СС", "Кто выдал"].map((h) => (
+                      <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailItems.map((d) => (
+                    <tr key={d.id} className="border-b border-border/50 hover:bg-secondary/30">
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(d.time)}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-foreground">{d.person_code}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
+                      <td className="px-3 py-2.5 text-sm font-medium text-foreground">{d.person_name}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{d.position || "—"}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{d.department || d.organization || "—"}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-mine-amber">{d.lantern_number || "—"}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-indigo-400">{d.rescuer_number || "—"}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{d.issued_by || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </DialogContent>
       </Dialog>
