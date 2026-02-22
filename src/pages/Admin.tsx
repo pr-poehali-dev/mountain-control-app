@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
 import { useState, useEffect } from "react";
 import { ahoApi, authApi } from "@/lib/api";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -58,6 +59,19 @@ const roleOptions = [
   { value: "dispatcher", label: "Диспетчер" },
   { value: "doctor", label: "Врач" },
 ];
+
+const pageLabels: Record<string, { label: string; icon: string }> = {
+  dashboard: { label: "Дашборд", icon: "LayoutDashboard" },
+  personnel: { label: "Персонал", icon: "Users" },
+  dispatcher: { label: "Диспетчерская", icon: "Radio" },
+  medical: { label: "Медконтроль", icon: "HeartPulse" },
+  lampa: { label: "Ламповая", icon: "Lightbulb" },
+  scanner: { label: "Сканирование", icon: "ScanLine" },
+  aho: { label: "АХО", icon: "Building2" },
+  reports: { label: "Отчёты", icon: "BarChart3" },
+};
+
+const editableRoles = ["operator", "dispatcher", "doctor"];
 
 const systemModules = [
   { name: "Персонал", status: "активен", uptime: "99.8%", icon: "Users", color: "text-mine-amber" },
@@ -123,6 +137,37 @@ const Admin = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [permissions, setPermissions] = useState<Record<string, string[]>>({});
+  const [permsLoading, setPermsLoading] = useState(true);
+  const [permsSaving, setPermsSaving] = useState(false);
+
+  const loadPermissions = async () => {
+    try {
+      const data = await authApi.getPermissions();
+      setPermissions(data.permissions || {});
+    } catch { /* ignore */ }
+    finally { setPermsLoading(false); }
+  };
+
+  const togglePageAccess = (role: string, page: string) => {
+    setPermissions(prev => {
+      const current = prev[role] || [];
+      const has = current.includes(page);
+      const updated = has ? current.filter(p => p !== page) : [...current, page];
+      return { ...prev, [role]: updated };
+    });
+  };
+
+  const handleSavePermissions = async () => {
+    setPermsSaving(true);
+    try {
+      const res = await authApi.savePermissions(permissions);
+      setPermissions(res.permissions);
+      toast({ title: res.message });
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка сохранения", variant: "destructive" });
+    } finally { setPermsSaving(false); }
+  };
 
   const loadUsers = async () => {
     try {
@@ -146,6 +191,7 @@ const Admin = () => {
   useEffect(() => {
     loadUsers();
     loadItrPositions();
+    loadPermissions();
   }, []);
 
   const loadItrPositions = async () => {
@@ -437,6 +483,69 @@ const Admin = () => {
                   <Button size="sm" className="gap-1.5 h-8 bg-mine-amber text-white hover:bg-mine-amber/90" onClick={handleSavePositions} disabled={itrLoading}>
                     <Icon name="Save" size={14} />
                     {itrLoading ? "..." : "Сохранить"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-primary/30 bg-card overflow-hidden">
+              <div className="p-4 border-b border-primary/20">
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name="ShieldCheck" size={18} className="text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Доступ по ролям</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Какие разделы видит каждая роль (кроме администратора — видит всё)
+                </p>
+              </div>
+              <div className="p-4 space-y-4">
+                {permsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Icon name="Loader2" size={20} className="animate-spin text-muted-foreground" />
+                  </div>
+                ) : editableRoles.map((role) => {
+                  const rolePages = permissions[role] || [];
+                  return (
+                    <div key={role} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={`text-[11px] ${roleColors[role] || ""}`}>
+                          {roleLabels[role]}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {Object.entries(pageLabels).map(([page, meta]) => {
+                          const enabled = rolePages.includes(page);
+                          const isLocked = page === "dashboard";
+                          return (
+                            <button
+                              key={page}
+                              onClick={() => !isLocked && togglePageAccess(role, page)}
+                              disabled={isLocked}
+                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] transition-all border ${
+                                enabled
+                                  ? "bg-primary/10 border-primary/30 text-primary"
+                                  : "bg-secondary/30 border-transparent text-muted-foreground hover:bg-secondary/50"
+                              } ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                            >
+                              <Icon name={meta.icon} size={12} />
+                              <span className="truncate">{meta.label}</span>
+                              {enabled && <Icon name="Check" size={10} className="ml-auto flex-shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="pt-2 border-t border-border">
+                  <Button
+                    size="sm"
+                    className="w-full gap-1.5 h-8 bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={handleSavePermissions}
+                    disabled={permsSaving}
+                  >
+                    <Icon name="Save" size={14} />
+                    {permsSaving ? "Сохраняю..." : "Сохранить доступ"}
                   </Button>
                 </div>
               </div>

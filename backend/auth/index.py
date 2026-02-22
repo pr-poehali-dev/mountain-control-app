@@ -32,6 +32,24 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
+ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'aho', 'reports', 'profile', 'admin']
+
+DEFAULT_PERMISSIONS = {
+    'admin': ALL_PAGES[:],
+    'operator': ['dashboard', 'profile'],
+    'dispatcher': ['dashboard', 'profile'],
+    'doctor': ['dashboard', 'profile'],
+}
+
+
+def load_permissions(cur):
+    cur.execute("SELECT value FROM settings WHERE key = 'role_permissions'")
+    row = cur.fetchone()
+    if row:
+        return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    return DEFAULT_PERMISSIONS
+
+
 def handler(event, context):
     """Авторизация и регистрация пользователей системы Горный контроль"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -56,6 +74,10 @@ def handler(event, context):
         return list_users(event)
     elif method == 'PUT' and action == 'role':
         return update_role(event, body)
+    elif method == 'GET' and action == 'permissions':
+        return get_permissions(event)
+    elif method == 'PUT' and action == 'permissions':
+        return save_permissions(event, body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -158,12 +180,18 @@ def login(body):
         conn.close()
         return json_response(403, {'error': 'Учётная запись отключена'})
 
+    role = row[7]
     token = secrets.token_hex(32)
     expires = datetime.now() + timedelta(days=7)
     cur.execute("""
         INSERT INTO sessions (user_id, token, expires_at)
         VALUES (%d, '%s', '%s')
     """ % (row[0], token, expires.isoformat()))
+
+    if role == 'admin':
+        allowed = ALL_PAGES[:]
+    else:
+        allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
     conn.commit()
     cur.close()
@@ -174,9 +202,10 @@ def login(body):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': row[7],
+            'personal_code': row[5], 'qr_code': row[6], 'role': role,
             'organization': row[9] or '', 'organization_type': row[10] or ''
-        }
+        },
+        'allowed_pages': allowed
     })
 
 def parse_qr_code(raw):
@@ -212,12 +241,18 @@ def login_by_code(body):
         conn.close()
         return json_response(403, {'error': 'Учётная запись отключена'})
 
+    role = row[7]
     token = secrets.token_hex(32)
     expires = datetime.now() + timedelta(days=7)
     cur.execute("""
         INSERT INTO sessions (user_id, token, expires_at)
         VALUES (%d, '%s', '%s')
     """ % (row[0], token, expires.isoformat()))
+
+    if role == 'admin':
+        allowed = ALL_PAGES[:]
+    else:
+        allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
     conn.commit()
     cur.close()
@@ -228,9 +263,10 @@ def login_by_code(body):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': row[7],
+            'personal_code': row[5], 'qr_code': row[6], 'role': role,
             'organization': row[9] or '', 'organization_type': row[10] or ''
-        }
+        },
+        'allowed_pages': allowed
     })
 
 def get_me(event):
@@ -251,19 +287,30 @@ def get_me(event):
         WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE
     """ % token.replace("'", "''"))
     row = cur.fetchone()
-    cur.close()
-    conn.close()
 
     if not row:
+        cur.close()
+        conn.close()
         return json_response(401, {'error': 'Сессия истекла'})
+
+    role = row[7]
+    if role == 'admin':
+        allowed = ALL_PAGES[:]
+    else:
+        perms = load_permissions(cur)
+        allowed = perms.get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+
+    cur.close()
+    conn.close()
 
     return json_response(200, {
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': row[7],
+            'personal_code': row[5], 'qr_code': row[6], 'role': role,
             'organization': row[8] or '', 'organization_type': row[9] or ''
-        }
+        },
+        'allowed_pages': allowed
     })
 
 def logout(event):
@@ -372,3 +419,47 @@ def update_role(event, body):
         'old_role': old_role,
         'new_role': new_role
     })
+
+
+def get_permissions(event):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    perms = load_permissions(cur)
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'permissions': perms, 'all_pages': ALL_PAGES})
+
+
+def save_permissions(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    permissions = body.get('permissions', {})
+    if not isinstance(permissions, dict):
+        return json_response(400, {'error': 'permissions должен быть объектом'})
+
+    permissions['admin'] = ALL_PAGES[:]
+    for role in permissions:
+        if 'dashboard' not in permissions[role]:
+            permissions[role].insert(0, 'dashboard')
+        if 'profile' not in permissions[role]:
+            permissions[role].append('profile')
+
+    conn = get_db()
+    cur = conn.cursor()
+    perms_json = json.dumps(permissions, ensure_ascii=False)
+    cur.execute("""
+        INSERT INTO settings (key, value, updated_at) VALUES ('role_permissions', '%s'::jsonb, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = '%s'::jsonb, updated_at = NOW()
+    """ % (perms_json.replace("'", "''"), perms_json.replace("'", "''")))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Настройки доступа сохранены', 'permissions': permissions})

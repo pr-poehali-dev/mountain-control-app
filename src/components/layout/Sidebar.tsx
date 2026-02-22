@@ -4,29 +4,30 @@ import Icon from "@/components/ui/icon";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
-  { path: "/", icon: "LayoutDashboard", label: "Дашборд", adminOnly: false },
-  { path: "/personnel", icon: "Users", label: "Персонал", adminOnly: true },
-  { path: "/dispatcher", icon: "Radio", label: "Диспетчерская", adminOnly: true },
-  { path: "/medical", icon: "HeartPulse", label: "Медконтроль", adminOnly: true },
-  { path: "/lampa", icon: "Lightbulb", label: "Ламповая", adminOnly: true },
-  { path: "/scanner", icon: "ScanLine", label: "Сканирование", adminOnly: true },
-  { path: "/aho", icon: "Building2", label: "АХО", adminOnly: true },
-  { path: "/reports", icon: "BarChart3", label: "Отчёты", adminOnly: true },
-  { path: "/profile", icon: "UserCircle", label: "Кабинет", adminOnly: false },
-  { path: "/admin", icon: "Shield", label: "Админ", adminOnly: true },
+  { path: "/", page: "dashboard", icon: "LayoutDashboard", label: "Дашборд" },
+  { path: "/personnel", page: "personnel", icon: "Users", label: "Персонал" },
+  { path: "/dispatcher", page: "dispatcher", icon: "Radio", label: "Диспетчерская" },
+  { path: "/medical", page: "medical", icon: "HeartPulse", label: "Медконтроль" },
+  { path: "/lampa", page: "lampa", icon: "Lightbulb", label: "Ламповая" },
+  { path: "/scanner", page: "scanner", icon: "ScanLine", label: "Сканирование" },
+  { path: "/aho", page: "aho", icon: "Building2", label: "АХО" },
+  { path: "/reports", page: "reports", icon: "BarChart3", label: "Отчёты" },
+  { path: "/profile", page: "profile", icon: "UserCircle", label: "Кабинет" },
+  { path: "/admin", page: "admin", icon: "Shield", label: "Админ" },
 ];
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const { logout, allowedPages } = useAuth();
 
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
+
+  const visibleItems = navItems.filter((item) => allowedPages.includes(item.page));
 
   return (
     <aside
@@ -49,7 +50,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
-        {navItems.filter((item) => !item.adminOnly || isAdmin).map((item) => {
+        {visibleItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <button

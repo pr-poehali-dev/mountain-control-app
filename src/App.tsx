@@ -33,8 +33,8 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function AdminRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+function PageRoute({ page, children }: { page: string; children: ReactNode }) {
+  const { user, loading, allowedPages } = useAuth();
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -43,7 +43,7 @@ function AdminRoute({ children }: { children: ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== "admin") return <Navigate to="/" replace />;
+  if (!allowedPages.includes(page)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -58,15 +58,15 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-    <Route path="/personnel" element={<AdminRoute><Personnel /></AdminRoute>} />
-    <Route path="/dispatcher" element={<AdminRoute><Dispatcher /></AdminRoute>} />
-    <Route path="/medical" element={<AdminRoute><Medical /></AdminRoute>} />
-    <Route path="/lampa" element={<AdminRoute><Lampa /></AdminRoute>} />
-    <Route path="/scanner" element={<AdminRoute><Scanner /></AdminRoute>} />
-    <Route path="/aho" element={<AdminRoute><Aho /></AdminRoute>} />
-    <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
+    <Route path="/personnel" element={<PageRoute page="personnel"><Personnel /></PageRoute>} />
+    <Route path="/dispatcher" element={<PageRoute page="dispatcher"><Dispatcher /></PageRoute>} />
+    <Route path="/medical" element={<PageRoute page="medical"><Medical /></PageRoute>} />
+    <Route path="/lampa" element={<PageRoute page="lampa"><Lampa /></PageRoute>} />
+    <Route path="/scanner" element={<PageRoute page="scanner"><Scanner /></PageRoute>} />
+    <Route path="/aho" element={<PageRoute page="aho"><Aho /></PageRoute>} />
+    <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />
     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-    <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+    <Route path="/admin" element={<PageRoute page="admin"><Admin /></PageRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

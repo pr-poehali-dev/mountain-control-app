@@ -99,6 +99,9 @@ export const authApi = {
   listUsers: () => request(API.auth, "", { params: { action: "users" } }),
   updateRole: (user_id: number, role: string) =>
     request(API.auth, "", { method: "PUT", body: { user_id, role }, params: { action: "role" } }),
+  getPermissions: () => request(API.auth, "", { params: { action: "permissions" } }),
+  savePermissions: (permissions: Record<string, string[]>) =>
+    request(API.auth, "", { method: "PUT", body: { permissions }, params: { action: "permissions" } }),
 };
 
 export const personnelApi = {
