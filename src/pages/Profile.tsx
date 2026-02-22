@@ -12,6 +12,7 @@ const roleLabels: Record<string, string> = {
   doctor: "Врач",
   dispatcher: "Диспетчер",
   worker: "Сотрудник",
+  aho_specialist: "Специалист АХО",
 };
 
 const Profile = () => {

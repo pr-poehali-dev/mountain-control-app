@@ -26,7 +26,9 @@ const roleLabels: Record<string, string> = {
   operator: "Оператор",
   medic: "Медик",
   dispatcher: "Диспетчер",
+  doctor: "Врач",
   worker: "Сотрудник",
+  aho_specialist: "Специалист АХО",
 };
 
 const typeIcons: Record<string, { icon: string; color: string }> = {

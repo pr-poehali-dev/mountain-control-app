@@ -27,6 +27,7 @@ export default {
 					red: 'hsl(var(--mine-red))',
 					amber: 'hsl(var(--mine-amber))',
 					cyan: 'hsl(var(--mine-cyan))',
+					purple: 'hsl(var(--mine-purple))',
 				},
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',

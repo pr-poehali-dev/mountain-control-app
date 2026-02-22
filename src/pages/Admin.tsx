@@ -44,6 +44,7 @@ const roleColors: Record<string, string> = {
   doctor: "bg-mine-green/20 text-mine-green border-mine-green/30",
   dispatcher: "bg-mine-amber/20 text-mine-amber border-mine-amber/30",
   operator: "bg-mine-cyan/20 text-mine-cyan border-mine-cyan/30",
+  aho_specialist: "bg-mine-purple/20 text-mine-purple border-mine-purple/30",
 };
 
 const roleLabels: Record<string, string> = {
@@ -51,6 +52,7 @@ const roleLabels: Record<string, string> = {
   operator: "Оператор",
   dispatcher: "Диспетчер",
   doctor: "Врач",
+  aho_specialist: "Специалист АХО",
 };
 
 const roleOptions = [
@@ -58,6 +60,7 @@ const roleOptions = [
   { value: "operator", label: "Оператор" },
   { value: "dispatcher", label: "Диспетчер" },
   { value: "doctor", label: "Врач" },
+  { value: "aho_specialist", label: "Специалист АХО" },
 ];
 
 const pageLabels: Record<string, { label: string; icon: string }> = {
@@ -71,7 +74,7 @@ const pageLabels: Record<string, { label: string; icon: string }> = {
   reports: { label: "Отчёты", icon: "BarChart3" },
 };
 
-const editableRoles = ["operator", "dispatcher", "doctor"];
+const editableRoles = ["operator", "dispatcher", "doctor", "aho_specialist"];
 
 const systemModules = [
   { name: "Персонал", status: "активен", uptime: "99.8%", icon: "Users", color: "text-mine-amber" },
