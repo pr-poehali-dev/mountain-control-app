@@ -271,6 +271,8 @@ export const lampRoomApi = {
     request(API.lampRoom, "", { method: "POST", body, params: { action: "send-repair" } }),
   returnFromRepair: (repairId: number) =>
     request(API.lampRoom, "", { method: "POST", body: { repair_id: repairId }, params: { action: "return-repair" } }),
+  decommission: (repairId: number, reason: string) =>
+    request(API.lampRoom, "", { method: "POST", body: { repair_id: repairId, reason }, params: { action: "decommission" } }),
 };
 
 export default API;
