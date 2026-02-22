@@ -279,20 +279,43 @@ const Lampa = () => {
         setReturnCondition("normal");
         playSuccess();
       } else {
-        setShowIssueDialog(true);
-        setItemType("both");
         setLanternNum("");
         setRescuerNum("");
+        setIssueMsg("");
+
         if (hasActive) {
-          playWarning();
-          const items = data.active_issues.map((ai: ActiveIssue) => {
-            const parts = [];
-            if (ai.lantern_number) parts.push(`Фонарь ${ai.lantern_number}`);
-            if (ai.rescuer_number) parts.push(`СС ${ai.rescuer_number}`);
-            return parts.join(" + ");
-          }).join(", ");
-          setIssueError(`Уже выдано: ${items}. Можно выдать дополнительно или сначала принять.`);
+          const hasLantern = data.active_issues.some((ai: ActiveIssue) =>
+            ai.item_type === "lantern" || ai.item_type === "both"
+          );
+          const hasRescuer = data.active_issues.some((ai: ActiveIssue) =>
+            ai.item_type === "rescuer" || ai.item_type === "both"
+          );
+
+          if (hasLantern && hasRescuer) {
+            playDenied();
+            const items = data.active_issues.map((ai: ActiveIssue) => {
+              const parts = [];
+              if (ai.lantern_number) parts.push(`Фонарь ${ai.lantern_number}`);
+              if (ai.rescuer_number) parts.push(`СС ${ai.rescuer_number}`);
+              return parts.join(" + ");
+            }).join(", ");
+            setShowIssueDialog(true);
+            setItemType("both");
+            setIssueError(`Уже выдано: ${items}. Повторная выдача невозможна — сначала примите оборудование.`);
+          } else if (hasLantern) {
+            playWarning();
+            setShowIssueDialog(true);
+            setItemType("rescuer");
+            setIssueError("Фонарь уже выдан. Можно выдать только самоспасатель.");
+          } else {
+            playWarning();
+            setShowIssueDialog(true);
+            setItemType("lantern");
+            setIssueError("Самоспасатель уже выдан. Можно выдать только фонарь.");
+          }
         } else {
+          setShowIssueDialog(true);
+          setItemType("both");
           playSuccess();
         }
       }
@@ -332,12 +355,34 @@ const Lampa = () => {
       const data = await lampRoomApi.identify(p.personal_code);
       setIdentifiedPerson(data.person);
       setActiveIssues(data.active_issues || []);
-      setShowIssueDialog(true);
-      setItemType("both");
       setLanternNum("");
       setRescuerNum("");
       setIssueMsg("");
       setIssueError("");
+
+      const activeList = data.active_issues || [];
+      const hasLantern = activeList.some((ai: ActiveIssue) => ai.item_type === "lantern" || ai.item_type === "both");
+      const hasRescuer = activeList.some((ai: ActiveIssue) => ai.item_type === "rescuer" || ai.item_type === "both");
+
+      if (hasLantern && hasRescuer) {
+        const items = activeList.map((ai: ActiveIssue) => {
+          const parts = [];
+          if (ai.lantern_number) parts.push(`Фонарь ${ai.lantern_number}`);
+          if (ai.rescuer_number) parts.push(`СС ${ai.rescuer_number}`);
+          return parts.join(" + ");
+        }).join(", ");
+        setItemType("both");
+        setIssueError(`Уже выдано: ${items}. Повторная выдача невозможна — сначала примите оборудование.`);
+      } else if (hasLantern) {
+        setItemType("rescuer");
+        setIssueError("Фонарь уже выдан. Можно выдать только самоспасатель.");
+      } else if (hasRescuer) {
+        setItemType("lantern");
+        setIssueError("Самоспасатель уже выдан. Можно выдать только фонарь.");
+      } else {
+        setItemType("both");
+      }
+      setShowIssueDialog(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Ошибка идентификации");
     }
@@ -928,82 +973,105 @@ const Lampa = () => {
                 )}
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1.5 block">Что выдаём</label>
-                  <Select value={itemType} onValueChange={setItemType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="both">Фонарь + Самоспасатель</SelectItem>
-                      <SelectItem value="lantern">Только фонарь</SelectItem>
-                      <SelectItem value="rescuer">Только самоспасатель</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              {(() => {
+                const hasL = activeIssues.some(ai => ai.item_type === "lantern" || ai.item_type === "both");
+                const hasR = activeIssues.some(ai => ai.item_type === "rescuer" || ai.item_type === "both");
+                const fullyIssued = hasL && hasR;
+                const partiallyIssued = (hasL || hasR) && !fullyIssued;
 
-                {(itemType === "lantern" || itemType === "both") && (
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1.5 block">Номер фонаря</label>
-                    <Input
-                      placeholder="Ф-001"
-                      value={lanternNum}
-                      onChange={(e) => setLanternNum(e.target.value.toUpperCase())}
-                      className="font-mono"
-                    />
+                return fullyIssued ? (
+                  <div className="rounded-xl border border-mine-red/20 bg-mine-red/5 p-4 text-center space-y-2">
+                    <Icon name="ShieldX" size={32} className="text-mine-red mx-auto" />
+                    <p className="text-sm font-semibold text-mine-red">Повторная выдача невозможна</p>
+                    <p className="text-xs text-muted-foreground">Всё оборудование уже выдано. Сначала примите его обратно.</p>
                   </div>
-                )}
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1.5 block">Что выдаём</label>
+                        {partiallyIssued ? (
+                          <div className="rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm text-foreground">
+                            {itemType === "lantern" ? "Только фонарь" : "Только самоспасатель"}
+                          </div>
+                        ) : (
+                          <Select value={itemType} onValueChange={setItemType}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="both">Фонарь + Самоспасатель</SelectItem>
+                              <SelectItem value="lantern">Только фонарь</SelectItem>
+                              <SelectItem value="rescuer">Только самоспасатель</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
 
-                {(itemType === "rescuer" || itemType === "both") && (
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1.5 block">Номер самоспасателя</label>
-                    <Input
-                      placeholder="СС-001"
-                      value={rescuerNum}
-                      onChange={(e) => setRescuerNum(e.target.value.toUpperCase())}
-                      className="font-mono"
-                    />
-                  </div>
-                )}
-              </div>
+                      {(itemType === "lantern" || itemType === "both") && (
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1.5 block">Номер фонаря</label>
+                          <Input
+                            placeholder="Ф-001"
+                            value={lanternNum}
+                            onChange={(e) => setLanternNum(e.target.value.toUpperCase())}
+                            className="font-mono"
+                          />
+                        </div>
+                      )}
 
-              {issueMsg && (
-                <div className="flex items-center gap-2 rounded-lg border border-mine-green/20 bg-mine-green/5 px-4 py-3">
-                  <Icon name="CheckCircle2" size={16} className="text-mine-green" />
-                  <p className="text-sm text-mine-green">{issueMsg}</p>
-                </div>
-              )}
+                      {(itemType === "rescuer" || itemType === "both") && (
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1.5 block">Номер самоспасателя</label>
+                          <Input
+                            placeholder="СС-001"
+                            value={rescuerNum}
+                            onChange={(e) => setRescuerNum(e.target.value.toUpperCase())}
+                            className="font-mono"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {issueMsg && (
+                      <div className="flex items-center gap-2 rounded-lg border border-mine-green/20 bg-mine-green/5 px-4 py-3">
+                        <Icon name="CheckCircle2" size={16} className="text-mine-green" />
+                        <p className="text-sm text-mine-green">{issueMsg}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button
+                        className="flex-1 gap-2 bg-mine-green text-white hover:bg-mine-green/90"
+                        onClick={handleIssue}
+                        disabled={issueLoading || identifiedPerson.medical_status !== "passed"}
+                      >
+                        {issueLoading ? (
+                          <Icon name="Loader2" size={16} className="animate-spin" />
+                        ) : (
+                          <Icon name="ArrowUpRight" size={16} />
+                        )}
+                        Выдать
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="gap-2 border-mine-red/30 text-mine-red hover:bg-mine-red/10"
+                        onClick={() => openDeny(identifiedPerson)}
+                      >
+                        <Icon name="Ban" size={16} />
+                        Недопуск
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
 
               {issueError && (
-                <div className="flex items-center gap-2 rounded-lg border border-mine-red/20 bg-mine-red/5 px-4 py-3">
-                  <Icon name="AlertTriangle" size={16} className="text-mine-red" />
-                  <p className="text-sm text-mine-red">{issueError}</p>
+                <div className="flex items-center gap-2 rounded-lg border border-mine-amber/20 bg-mine-amber/5 px-4 py-3">
+                  <Icon name="AlertTriangle" size={16} className="text-mine-amber" />
+                  <p className="text-sm text-mine-amber">{issueError}</p>
                 </div>
               )}
-
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1 gap-2 bg-mine-green text-white hover:bg-mine-green/90"
-                  onClick={handleIssue}
-                  disabled={issueLoading || identifiedPerson.medical_status !== "passed"}
-                >
-                  {issueLoading ? (
-                    <Icon name="Loader2" size={16} className="animate-spin" />
-                  ) : (
-                    <Icon name="ArrowUpRight" size={16} />
-                  )}
-                  Выдать
-                </Button>
-                <Button
-                  variant="outline"
-                  className="gap-2 border-mine-red/30 text-mine-red hover:bg-mine-red/10"
-                  onClick={() => openDeny(identifiedPerson)}
-                >
-                  <Icon name="Ban" size={16} />
-                  Недопуск
-                </Button>
-              </div>
             </div>
           )}
         </DialogContent>
