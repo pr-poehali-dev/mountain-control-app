@@ -160,6 +160,7 @@ def add_person(body):
     shift = body.get('shift', '')
     organization = body.get('organization', '').strip()
     organization_type = body.get('organization_type', '').strip()
+    tabular_number = body.get('tabular_number', '').strip()
 
     if not full_name:
         return json_response(400, {'error': 'ФИО обязательно'})
@@ -173,8 +174,8 @@ def add_person(body):
     qr_code = 'QR-MK-%03d' % next_id
 
     cur.execute("""
-        INSERT INTO personnel (personal_code, full_name, position, department, category, phone, room, status, qr_code, shift, organization, organization_type, medical_status)
-        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'arrived', '%s', '%s', '%s', '%s', 'pending')
+        INSERT INTO personnel (personal_code, full_name, position, department, category, phone, room, status, qr_code, shift, organization, organization_type, medical_status, tabular_number)
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'arrived', '%s', '%s', '%s', '%s', 'pending', '%s')
         RETURNING id, personal_code, qr_code
     """ % (
         personal_code,
@@ -187,7 +188,8 @@ def add_person(body):
         qr_code,
         str(shift).replace("'", "''"),
         organization.replace("'", "''"),
-        organization_type.replace("'", "''")
+        organization_type.replace("'", "''"),
+        tabular_number.replace("'", "''")
     ))
     row = cur.fetchone()
 

@@ -64,6 +64,16 @@ def handler(event, context):
         return return_item(body)
     elif method == 'POST' and action == 'deny':
         return deny_person(body)
+    elif method == 'GET' and action == 'settings':
+        return get_settings()
+    elif method == 'POST' and action == 'settings':
+        return save_settings(body)
+    elif method == 'GET' and action == 'repairs':
+        return get_repairs(params)
+    elif method == 'POST' and action == 'send-repair':
+        return send_to_repair(body)
+    elif method == 'POST' and action == 'return-repair':
+        return return_from_repair(body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -231,6 +241,20 @@ def get_stats():
     cur.execute("SELECT COUNT(*) FROM lamp_room_denials WHERE denied_at::date = CURRENT_DATE")
     today_denied = cur.fetchone()[0]
 
+    cur.execute("SELECT value FROM settings WHERE key = 'lamp_room_total_lanterns'")
+    r = cur.fetchone()
+    total_lanterns = int(r[0]) if r else 300
+
+    cur.execute("SELECT value FROM settings WHERE key = 'lamp_room_total_rescuers'")
+    r = cur.fetchone()
+    total_rescuers = int(r[0]) if r else 300
+
+    cur.execute("SELECT COUNT(*) FROM lamp_room_equipment WHERE equipment_type = 'lantern' AND status = 'repair'")
+    lanterns_repair = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM lamp_room_equipment WHERE equipment_type = 'rescuer' AND status = 'repair'")
+    rescuers_repair = cur.fetchone()[0]
+
     cur.close()
     conn.close()
 
@@ -240,7 +264,11 @@ def get_stats():
         'rescuers_out': rescuers_out,
         'today_issued': today_issued,
         'today_returned': today_returned,
-        'today_denied': today_denied
+        'today_denied': today_denied,
+        'total_lanterns': total_lanterns,
+        'total_rescuers': total_rescuers,
+        'lanterns_repair': lanterns_repair,
+        'rescuers_repair': rescuers_repair
     })
 
 def search_person(params):
@@ -526,3 +554,114 @@ def get_denials(params):
         })
 
     return json_response(200, {'denials': items, 'total': len(items)})
+
+def get_settings():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT key, value FROM settings WHERE key IN ('lamp_room_total_lanterns', 'lamp_room_total_rescuers')")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    result = {}
+    for r in rows:
+        result[r[0]] = r[1]
+    return json_response(200, {
+        'total_lanterns': int(result.get('lamp_room_total_lanterns', '300')),
+        'total_rescuers': int(result.get('lamp_room_total_rescuers', '300'))
+    })
+
+def save_settings(body):
+    total_lanterns = body.get('total_lanterns')
+    total_rescuers = body.get('total_rescuers')
+    conn = get_db()
+    cur = conn.cursor()
+    if total_lanterns is not None:
+        cur.execute("UPDATE settings SET value = '%d' WHERE key = 'lamp_room_total_lanterns'" % int(total_lanterns))
+        if cur.rowcount == 0:
+            cur.execute("INSERT INTO settings (key, value) VALUES ('lamp_room_total_lanterns', '%d')" % int(total_lanterns))
+    if total_rescuers is not None:
+        cur.execute("UPDATE settings SET value = '%d' WHERE key = 'lamp_room_total_rescuers'" % int(total_rescuers))
+        if cur.rowcount == 0:
+            cur.execute("INSERT INTO settings (key, value) VALUES ('lamp_room_total_rescuers', '%d')" % int(total_rescuers))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Настройки сохранены'})
+
+def get_repairs(params):
+    status_filter = params.get('status', '')
+    conn = get_db()
+    cur = conn.cursor()
+    where = ""
+    if status_filter and status_filter in ('repair', 'available', 'decommissioned'):
+        where = "WHERE e.status = '%s'" % status_filter
+    else:
+        where = "WHERE e.status IN ('repair', 'decommissioned')"
+    cur.execute("""
+        SELECT e.id, e.equipment_type, e.equipment_number, e.status, e.repair_reason,
+               e.sent_to_repair_at, e.returned_from_repair_at, e.notes
+        FROM lamp_room_equipment e
+        %s
+        ORDER BY e.sent_to_repair_at DESC NULLS LAST
+        LIMIT 200
+    """ % where)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    items = []
+    for r in rows:
+        items.append({
+            'id': r[0], 'equipment_type': r[1], 'equipment_number': r[2],
+            'status': r[3], 'repair_reason': r[4], 'sent_to_repair_at': r[5],
+            'returned_from_repair_at': r[6], 'notes': r[7]
+        })
+    return json_response(200, {'repairs': items, 'total': len(items)})
+
+def send_to_repair(body):
+    equipment_type = body.get('equipment_type', '')
+    equipment_number = body.get('equipment_number', '').strip()
+    repair_reason = body.get('repair_reason', '').strip()
+    if not equipment_type or equipment_type not in ('lantern', 'rescuer'):
+        return json_response(400, {'error': 'Укажите тип оборудования'})
+    if not equipment_number:
+        return json_response(400, {'error': 'Укажите номер оборудования'})
+    if not repair_reason:
+        return json_response(400, {'error': 'Укажите причину ремонта'})
+    safe_num = equipment_number.replace("'", "''")
+    safe_reason = repair_reason.replace("'", "''")
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO lamp_room_equipment (equipment_type, equipment_number, status, repair_reason, sent_to_repair_at)
+        VALUES ('%s', '%s', 'repair', '%s', NOW())
+        RETURNING id
+    """ % (equipment_type, safe_num, safe_reason))
+    eq_id = cur.fetchone()[0]
+    type_name = 'Фонарь' if equipment_type == 'lantern' else 'Самоспасатель'
+    desc = '%s №%s отправлен в ремонт: %s' % (type_name, equipment_number, repair_reason)
+    cur.execute("INSERT INTO events (event_type, description) VALUES ('equipment_repair', '%s')" % desc[:500].replace("'", "''"))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': '%s №%s отправлен в ремонт' % (type_name, equipment_number), 'id': eq_id})
+
+def return_from_repair(body):
+    repair_id = body.get('repair_id')
+    if not repair_id:
+        return json_response(400, {'error': 'ID записи не указан'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, equipment_type, equipment_number FROM lamp_room_equipment WHERE id = %d AND status = 'repair'" % int(repair_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Запись не найдена или уже возвращена'})
+    cur.execute("UPDATE lamp_room_equipment SET status = 'available', returned_from_repair_at = NOW() WHERE id = %d" % int(repair_id))
+    type_name = 'Фонарь' if row[1] == 'lantern' else 'Самоспасатель'
+    desc = '%s №%s возвращён из ремонта' % (type_name, row[2])
+    cur.execute("INSERT INTO events (event_type, description) VALUES ('equipment_repair_return', '%s')" % desc.replace("'", "''"))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': '%s №%s возвращён из ремонта' % (type_name, row[2])})

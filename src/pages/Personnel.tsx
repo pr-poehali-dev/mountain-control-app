@@ -179,6 +179,7 @@ const Personnel = () => {
   const [formShift, setFormShift] = useState("");
   const [formOrg, setFormOrg] = useState("");
   const [formOrgType, setFormOrgType] = useState("");
+  const [formTabNum, setFormTabNum] = useState("");
 
   const [editName, setEditName] = useState("");
   const [editPosition, setEditPosition] = useState("");
@@ -249,6 +250,7 @@ const Personnel = () => {
     setFormShift("");
     setFormOrg("");
     setFormOrgType("");
+    setFormTabNum("");
     setAddError("");
     setAddSuccess(null);
   };
@@ -274,6 +276,7 @@ const Personnel = () => {
         shift: formShift,
         organization: formOrg.trim(),
         organization_type: formOrgType,
+        tabular_number: formTabNum.trim(),
       });
       setAddSuccess({
         personal_code: res.personal_code,
@@ -1328,6 +1331,10 @@ const Personnel = () => {
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Комната</label>
                   <Input placeholder="301" value={formRoom} onChange={(e) => setFormRoom(e.target.value)} className="bg-secondary/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Табельный номер</label>
+                  <Input placeholder="001234" value={formTabNum} onChange={(e) => setFormTabNum(e.target.value)} className="bg-secondary/50" />
                 </div>
               </div>
               <div className="rounded-lg border border-mine-cyan/20 bg-mine-cyan/5 p-3 flex items-start gap-2">

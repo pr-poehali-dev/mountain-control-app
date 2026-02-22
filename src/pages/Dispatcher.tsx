@@ -30,6 +30,10 @@ interface LampStats {
   today_issued: number;
   today_returned: number;
   today_denied: number;
+  total_lanterns: number;
+  total_rescuers: number;
+  lanterns_repair: number;
+  rescuers_repair: number;
 }
 
 interface DetailItem {
@@ -99,7 +103,7 @@ const detailColors: Record<string, string> = {
 const Dispatcher = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [stats, setStats] = useState<LampStats>({ active: 0, lanterns_out: 0, rescuers_out: 0, today_issued: 0, today_returned: 0, today_denied: 0 });
+  const [stats, setStats] = useState<LampStats>({ active: 0, lanterns_out: 0, rescuers_out: 0, today_issued: 0, today_returned: 0, today_denied: 0, total_lanterns: 300, total_rescuers: 300, lanterns_repair: 0, rescuers_repair: 0 });
   const [loading, setLoading] = useState(true);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -166,12 +170,12 @@ const Dispatcher = () => {
   };
 
   const statCards = [
-    { key: "active", label: "Выдано сейчас", value: stats.active, icon: "Package", color: "mine-cyan" },
-    { key: "lanterns_out", label: "Фонарей выдано", value: stats.lanterns_out, icon: "Flashlight", color: "mine-amber" },
-    { key: "rescuers_out", label: "СС выдано", value: stats.rescuers_out, icon: "Shield", color: "indigo-400" },
-    { key: "today_issued", label: "Выдано за день", value: stats.today_issued, icon: "ArrowUpRight", color: "mine-green" },
-    { key: "today_returned", label: "Возвращено за день", value: stats.today_returned, icon: "ArrowDownLeft", color: "blue-400" },
-    { key: "today_denied", label: "Недопусков", value: stats.today_denied, icon: "Ban", color: "mine-red" },
+    { key: "active", label: "Выдано сейчас", value: stats.active, icon: "Package", color: "mine-cyan", sub: "" },
+    { key: "lanterns_out", label: "Фонарей выдано", value: stats.lanterns_out, icon: "Flashlight", color: "mine-amber", sub: `из ${stats.total_lanterns}` },
+    { key: "rescuers_out", label: "СС выдано", value: stats.rescuers_out, icon: "Shield", color: "indigo-400", sub: `из ${stats.total_rescuers}` },
+    { key: "today_issued", label: "За день выдано", value: stats.today_issued, icon: "ArrowUpRight", color: "mine-green", sub: "" },
+    { key: "today_returned", label: "За день принято", value: stats.today_returned, icon: "ArrowDownLeft", color: "blue-400", sub: "" },
+    { key: "today_denied", label: "Недопусков", value: stats.today_denied, icon: "Ban", color: "mine-red", sub: "" },
   ];
 
   return (
@@ -193,7 +197,10 @@ const Dispatcher = () => {
                   <Icon name={s.icon} size={16} className={`text-${s.color}`} />
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.label}</span>
                 </div>
-                <p className="text-2xl font-bold text-foreground">{s.value}</p>
+                <div className="flex items-baseline gap-1">
+                  <p className="text-2xl font-bold text-foreground">{s.value}</p>
+                  {s.sub && <span className="text-[10px] text-muted-foreground">{s.sub}</span>}
+                </div>
                 <p className="text-[10px] text-muted-foreground mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   Нажмите для деталей →
                 </p>
@@ -281,6 +288,7 @@ const Dispatcher = () => {
                     <p className="text-sm text-foreground">{s.label}</p>
                   </div>
                   <span className={`text-lg font-bold font-mono text-${s.color}`}>{s.value}</span>
+                  {s.sub && <span className="text-xs text-muted-foreground">{s.sub}</span>}
                   <Icon name="ChevronRight" size={14} className="text-muted-foreground" />
                 </button>
               ))}

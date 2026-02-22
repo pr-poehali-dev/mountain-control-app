@@ -261,6 +261,16 @@ export const lampRoomApi = {
     request(API.lampRoom, "", { method: "POST", body: { issue_id, condition: condition || "normal" }, params: { action: "return" } }),
   deny: (body: Record<string, unknown>) =>
     request(API.lampRoom, "", { method: "POST", body, params: { action: "deny" } }),
+  getSettings: () =>
+    request(API.lampRoom, "", { params: { action: "settings" } }),
+  saveSettings: (body: { total_lanterns: number; total_rescuers: number }) =>
+    request(API.lampRoom, "", { method: "POST", body, params: { action: "settings" } }),
+  getRepairs: (params?: Record<string, string>) =>
+    request(API.lampRoom, "", { params: { action: "repairs", ...params } }),
+  sendToRepair: (body: Record<string, unknown>) =>
+    request(API.lampRoom, "", { method: "POST", body, params: { action: "send-repair" } }),
+  returnFromRepair: (repairId: number) =>
+    request(API.lampRoom, "", { method: "POST", body: { repair_id: repairId }, params: { action: "return-repair" } }),
 };
 
 export default API;

@@ -89,6 +89,17 @@ interface DenialRecord {
   tabular_number?: string;
 }
 
+interface RepairItem {
+  id: number;
+  equipment_type: string;
+  equipment_number: string;
+  status: string;
+  repair_reason: string;
+  sent_to_repair_at: string;
+  returned_from_repair_at: string;
+  notes: string;
+}
+
 interface Stats {
   active: number;
   lanterns_out: number;
@@ -96,6 +107,10 @@ interface Stats {
   today_issued: number;
   today_returned: number;
   today_denied: number;
+  total_lanterns: number;
+  total_rescuers: number;
+  lanterns_repair: number;
+  rescuers_repair: number;
 }
 
 const itemTypeLabels: Record<string, string> = {
@@ -141,12 +156,24 @@ function formatDateTime(dateStr?: string): string {
 const Lampa = () => {
   const { user } = useAuth();
 
-  const [stats, setStats] = useState<Stats>({ active: 0, lanterns_out: 0, rescuers_out: 0, today_issued: 0, today_returned: 0, today_denied: 0 });
+  const [stats, setStats] = useState<Stats>({ active: 0, lanterns_out: 0, rescuers_out: 0, today_issued: 0, today_returned: 0, today_denied: 0, total_lanterns: 300, total_rescuers: 300, lanterns_repair: 0, rescuers_repair: 0 });
   const [issues, setIssues] = useState<IssueRecord[]>([]);
   const [denials, setDenials] = useState<DenialRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"issues" | "denials">("issues");
+  const [tab, setTab] = useState<"issues" | "denials" | "repairs">("issues");
+
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsLanterns, setSettingsLanterns] = useState("300");
+  const [settingsRescuers, setSettingsRescuers] = useState("300");
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
+  const [repairs, setRepairs] = useState<RepairItem[]>([]);
+  const [showRepairDialog, setShowRepairDialog] = useState(false);
+  const [repairType, setRepairType] = useState<string>("lantern");
+  const [repairNumber, setRepairNumber] = useState("");
+  const [repairReason, setRepairReason] = useState("");
+  const [repairLoading, setRepairLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -189,14 +216,18 @@ const Lampa = () => {
       setError("");
       const p: Record<string, string> = {};
       if (filterStatus !== "all") p.status = filterStatus;
-      const [issuesRes, statsRes, denialsRes] = await Promise.all([
+      const [issuesRes, statsRes, denialsRes, repairsRes] = await Promise.all([
         lampRoomApi.getIssues(p),
         lampRoomApi.getStats(),
         lampRoomApi.getDenials(),
+        lampRoomApi.getRepairs(),
       ]);
       setIssues(issuesRes.issues || []);
       setStats(statsRes);
       setDenials(denialsRes.denials || []);
+      setRepairs(repairsRes.repairs || []);
+      setSettingsLanterns(String(statsRes.total_lanterns || 300));
+      setSettingsRescuers(String(statsRes.total_rescuers || 300));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
@@ -399,6 +430,54 @@ const Lampa = () => {
     }
   };
 
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      await lampRoomApi.saveSettings({
+        total_lanterns: parseInt(settingsLanterns) || 300,
+        total_rescuers: parseInt(settingsRescuers) || 300,
+      });
+      playSuccess();
+      setShowSettings(false);
+      fetchData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ошибка сохранения");
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const handleSendRepair = async () => {
+    if (!repairNumber.trim() || !repairReason.trim()) return;
+    setRepairLoading(true);
+    try {
+      await lampRoomApi.sendToRepair({
+        equipment_type: repairType,
+        equipment_number: repairNumber.trim(),
+        repair_reason: repairReason.trim(),
+      });
+      playSuccess();
+      setShowRepairDialog(false);
+      setRepairNumber("");
+      setRepairReason("");
+      fetchData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ошибка");
+    } finally {
+      setRepairLoading(false);
+    }
+  };
+
+  const handleReturnRepair = async (repairId: number) => {
+    try {
+      await lampRoomApi.returnFromRepair(repairId);
+      playSuccess();
+      fetchData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ошибка");
+    }
+  };
+
   const filteredIssues = issues.filter(
     (i) =>
       (i.person_name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -417,30 +496,42 @@ const Lampa = () => {
   return (
     <AppLayout title="Ламповая" subtitle="Выдача и приём фонарей и самоспасателей">
       <div className="space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            { key: "active", label: "Выдано сейчас", value: stats.active, icon: "Package", color: "mine-cyan" },
-            { key: "lanterns_out", label: "Фонарей выдано", value: stats.lanterns_out, icon: "Flashlight", color: "mine-amber" },
-            { key: "rescuers_out", label: "СС выдано", value: stats.rescuers_out, icon: "Shield", color: "indigo-400" },
-            { key: "today_issued", label: "Выдано за день", value: stats.today_issued, icon: "ArrowUpRight", color: "mine-green" },
-            { key: "today_returned", label: "Возвращено за день", value: stats.today_returned, icon: "ArrowDownLeft", color: "blue-400" },
-            { key: "today_denied", label: "Недопусков", value: stats.today_denied, icon: "Ban", color: "mine-red" },
-          ].map((s) => (
-            <button
-              key={s.key}
-              onClick={() => openDetail(s.key)}
-              className={`rounded-xl border border-${s.color}/20 bg-${s.color}/5 p-4 text-left hover:border-${s.color}/40 hover:shadow-lg transition-all cursor-pointer group`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Icon name={s.icon} size={16} className={`text-${s.color}`} />
-                <span className="text-xs text-muted-foreground">{s.label}</span>
-              </div>
-              <p className="text-2xl font-bold text-foreground font-mono">{s.value}</p>
-              <p className="text-[10px] text-muted-foreground mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                Подробнее →
-              </p>
-            </button>
-          ))}
+        <div className="flex items-center justify-between">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 flex-1">
+            {[
+              { key: "active", label: "Выдано сейчас", value: stats.active, icon: "Package", color: "mine-cyan", sub: "" },
+              { key: "lanterns_out", label: "Фонарей выдано", value: stats.lanterns_out, icon: "Flashlight", color: "mine-amber", sub: `из ${stats.total_lanterns}` },
+              { key: "rescuers_out", label: "СС выдано", value: stats.rescuers_out, icon: "Shield", color: "indigo-400", sub: `из ${stats.total_rescuers}` },
+              { key: "today_issued", label: "За день выдано", value: stats.today_issued, icon: "ArrowUpRight", color: "mine-green", sub: "" },
+              { key: "today_returned", label: "За день принято", value: stats.today_returned, icon: "ArrowDownLeft", color: "blue-400", sub: "" },
+              { key: "today_denied", label: "Недопусков", value: stats.today_denied, icon: "Ban", color: "mine-red", sub: "" },
+              { key: "lanterns_repair_card", label: "Фонарей в ремонте", value: stats.lanterns_repair, icon: "Wrench", color: "orange-400", sub: "" },
+              { key: "rescuers_repair_card", label: "СС в ремонте", value: stats.rescuers_repair, icon: "Wrench", color: "orange-400", sub: "" },
+            ].map((s) => (
+              <button
+                key={s.key}
+                onClick={() => s.key.includes("repair_card") ? setTab("repairs") : openDetail(s.key)}
+                className={`rounded-xl border border-${s.color}/20 bg-${s.color}/5 p-3 text-left hover:border-${s.color}/40 hover:shadow-lg transition-all cursor-pointer group`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icon name={s.icon} size={14} className={`text-${s.color}`} />
+                  <span className="text-[10px] text-muted-foreground leading-tight">{s.label}</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <p className="text-xl font-bold text-foreground font-mono">{s.value}</p>
+                  {s.sub && <span className="text-[10px] text-muted-foreground">{s.sub}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-3 h-9 gap-1.5 shrink-0"
+            onClick={() => setShowSettings(true)}
+          >
+            <Icon name="Settings" size={14} />
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -564,6 +655,15 @@ const Lampa = () => {
                   <Icon name="Ban" size={14} className="mr-1" />
                   Недопуски ({denials.length})
                 </Button>
+                <Button
+                  size="sm"
+                  variant={tab === "repairs" ? "default" : "outline"}
+                  className={tab === "repairs" ? "bg-orange-500 text-white hover:bg-orange-500/90" : ""}
+                  onClick={() => setTab("repairs")}
+                >
+                  <Icon name="Wrench" size={14} className="mr-1" />
+                  Ремонт ({repairs.filter(r => r.status === "repair").length})
+                </Button>
               </div>
               <div className="flex-1" />
               {tab === "issues" && (
@@ -655,7 +755,7 @@ const Lampa = () => {
                     </tbody>
                   </table>
                 </div>
-              ) : (
+              ) : tab === "denials" ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -689,6 +789,66 @@ const Lampa = () => {
                       )}
                     </tbody>
                   </table>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <span className="text-sm text-muted-foreground">Оборудование в ремонте и списанное</span>
+                    <Button size="sm" className="gap-1.5 bg-orange-500 text-white hover:bg-orange-500/90 h-7 text-xs" onClick={() => { setShowRepairDialog(true); setRepairType("lantern"); setRepairNumber(""); setRepairReason(""); }}>
+                      <Icon name="Plus" size={12} />
+                      Отправить в ремонт
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border">
+                          {["Тип", "Номер", "Причина", "Дата отправки", "Дата возврата", "Статус", ""].map((h) => (
+                            <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {repairs.map((r) => (
+                          <tr key={r.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                            <td className="px-3 py-3">
+                              <Badge variant="outline" className="text-[10px]">
+                                {r.equipment_type === "lantern" ? "Фонарь" : "Самоспасатель"}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-3 text-sm font-mono text-foreground">{r.equipment_number}</td>
+                            <td className="px-3 py-3 text-xs text-muted-foreground max-w-[200px]">{r.repair_reason || "—"}</td>
+                            <td className="px-3 py-3 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(r.sent_to_repair_at)}</td>
+                            <td className="px-3 py-3 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(r.returned_from_repair_at)}</td>
+                            <td className="px-3 py-3">
+                              {r.status === "repair" ? (
+                                <Badge className="text-[10px] bg-orange-500/20 text-orange-400 border-orange-500/30">В ремонте</Badge>
+                              ) : r.status === "available" ? (
+                                <Badge className="text-[10px] bg-mine-green/20 text-mine-green border-mine-green/30">Возвращён</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] text-muted-foreground">Списан</Badge>
+                              )}
+                            </td>
+                            <td className="px-3 py-3">
+                              {r.status === "repair" && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-mine-green/30 text-mine-green hover:bg-mine-green/10" onClick={() => handleReturnRepair(r.id)}>
+                                  <Icon name="Check" size={12} />
+                                  Вернуть
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {repairs.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                              Нет оборудования в ремонте
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -1024,6 +1184,90 @@ const Lampa = () => {
                 </tbody>
               </table>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon name="Settings" size={18} className="text-mine-cyan" />
+              Настройки ламповой
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="rounded-xl border border-mine-amber/20 bg-mine-amber/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Icon name="Flashlight" size={16} className="text-mine-amber" />
+                <span className="text-sm font-semibold text-foreground">Шахтные фонари</span>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Общее количество на руднике</label>
+                <Input type="number" value={settingsLanterns} onChange={(e) => setSettingsLanterns(e.target.value)} className="bg-background font-mono" />
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>Выдано: <strong className="text-mine-amber">{stats.lanterns_out}</strong></span>
+                <span>В ремонте: <strong className="text-orange-400">{stats.lanterns_repair}</strong></span>
+                <span>Доступно: <strong className="text-mine-green">{(parseInt(settingsLanterns) || 0) - stats.lanterns_out - stats.lanterns_repair}</strong></span>
+              </div>
+            </div>
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Icon name="Shield" size={16} className="text-indigo-400" />
+                <span className="text-sm font-semibold text-foreground">Самоспасатели</span>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Общее количество на руднике</label>
+                <Input type="number" value={settingsRescuers} onChange={(e) => setSettingsRescuers(e.target.value)} className="bg-background font-mono" />
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>Выдано: <strong className="text-indigo-400">{stats.rescuers_out}</strong></span>
+                <span>В ремонте: <strong className="text-orange-400">{stats.rescuers_repair}</strong></span>
+                <span>Доступно: <strong className="text-mine-green">{(parseInt(settingsRescuers) || 0) - stats.rescuers_out - stats.rescuers_repair}</strong></span>
+              </div>
+            </div>
+            <Button className="w-full gap-2 bg-mine-cyan text-white hover:bg-mine-cyan/90" onClick={handleSaveSettings} disabled={settingsSaving}>
+              {settingsSaving ? <Icon name="Loader2" size={16} className="animate-spin" /> : <Icon name="Save" size={16} />}
+              Сохранить
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showRepairDialog} onOpenChange={setShowRepairDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon name="Wrench" size={18} className="text-orange-400" />
+              Отправить в ремонт
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Тип оборудования</label>
+              <Select value={repairType} onValueChange={setRepairType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lantern">Фонарь</SelectItem>
+                  <SelectItem value="rescuer">Самоспасатель</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Номер оборудования</label>
+              <Input placeholder="Ф-001 или СС-001" value={repairNumber} onChange={(e) => setRepairNumber(e.target.value.toUpperCase())} className="font-mono" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Причина ремонта</label>
+              <Textarea placeholder="Укажите причину..." value={repairReason} onChange={(e) => setRepairReason(e.target.value)} rows={2} />
+            </div>
+            <Button className="w-full gap-2 bg-orange-500 text-white hover:bg-orange-500/90" onClick={handleSendRepair} disabled={repairLoading || !repairNumber.trim() || !repairReason.trim()}>
+              {repairLoading ? <Icon name="Loader2" size={16} className="animate-spin" /> : <Icon name="Wrench" size={16} />}
+              Отправить в ремонт
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
