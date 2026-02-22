@@ -518,17 +518,15 @@ const Admin = () => {
                       <div className="grid grid-cols-2 gap-1.5">
                         {Object.entries(pageLabels).map(([page, meta]) => {
                           const enabled = rolePages.includes(page);
-                          const isLocked = page === "dashboard";
                           return (
                             <button
                               key={page}
-                              onClick={() => !isLocked && togglePageAccess(role, page)}
-                              disabled={isLocked}
-                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] transition-all border ${
+                              onClick={() => togglePageAccess(role, page)}
+                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] transition-all border cursor-pointer ${
                                 enabled
                                   ? "bg-primary/10 border-primary/30 text-primary"
                                   : "bg-secondary/30 border-transparent text-muted-foreground hover:bg-secondary/50"
-                              } ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                              }`}
                             >
                               <Icon name={meta.icon} size={12} />
                               <span className="truncate">{meta.label}</span>
