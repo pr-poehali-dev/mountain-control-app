@@ -8,6 +8,7 @@ const navItems = [
   { path: "/personnel", icon: "Users", label: "Персонал" },
   { path: "/dispatcher", icon: "Radio", label: "Диспетчерская" },
   { path: "/medical", icon: "HeartPulse", label: "Медконтроль" },
+  { path: "/lampa", icon: "Lightbulb", label: "Ламповая" },
   { path: "/scanner", icon: "ScanLine", label: "Сканирование" },
   { path: "/aho", icon: "Building2", label: "АХО" },
   { path: "/reports", icon: "BarChart3", label: "Отчёты" },

@@ -7,6 +7,7 @@ const API = {
   scanner: "https://functions.poehali.dev/58bc1a4c-940f-4d64-ba57-f78ad93367b1",
   reports: "https://functions.poehali.dev/fdbae00e-f203-48ec-97ae-6e89fc47a5cf",
   aho: "https://functions.poehali.dev/4fe7a896-fe95-4550-81d3-a5412844f65e",
+  lampRoom: "https://functions.poehali.dev/a93fd43f-fb15-4e41-a64b-ccff98c24ca5",
 };
 
 function getToken(): string | null {
@@ -239,6 +240,25 @@ export const scannerApi = {
       params: { action: "checkin" },
     }),
   getRecent: () => request(API.scanner, "", { params: { action: "recent" } }),
+};
+
+export const lampRoomApi = {
+  getIssues: (params?: Record<string, string>) =>
+    request(API.lampRoom, "", { params: { action: "list", ...params } }),
+  getStats: () =>
+    request(API.lampRoom, "", { params: { action: "stats" } }),
+  search: (q: string) =>
+    request(API.lampRoom, "", { params: { action: "search", q } }),
+  getDenials: (params?: Record<string, string>) =>
+    request(API.lampRoom, "", { params: { action: "denials", ...params } }),
+  identify: (code: string) =>
+    request(API.lampRoom, "", { method: "POST", body: { code }, params: { action: "identify" } }),
+  issue: (body: Record<string, unknown>) =>
+    request(API.lampRoom, "", { method: "POST", body, params: { action: "issue" } }),
+  returnItem: (issue_id: number, condition?: string) =>
+    request(API.lampRoom, "", { method: "POST", body: { issue_id, condition: condition || "normal" }, params: { action: "return" } }),
+  deny: (body: Record<string, unknown>) =>
+    request(API.lampRoom, "", { method: "POST", body, params: { action: "deny" } }),
 };
 
 export default API;

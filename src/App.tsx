@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import Personnel from "./pages/Personnel";
 import Dispatcher from "./pages/Dispatcher";
 import Medical from "./pages/Medical";
+import Lampa from "./pages/Lampa";
 import Scanner from "./pages/Scanner";
 import Reports from "./pages/Reports";
 import Aho from "./pages/Aho";
@@ -46,6 +47,7 @@ const AppRoutes = () => (
     <Route path="/personnel" element={<ProtectedRoute><Personnel /></ProtectedRoute>} />
     <Route path="/dispatcher" element={<ProtectedRoute><Dispatcher /></ProtectedRoute>} />
     <Route path="/medical" element={<ProtectedRoute><Medical /></ProtectedRoute>} />
+    <Route path="/lampa" element={<ProtectedRoute><Lampa /></ProtectedRoute>} />
     <Route path="/scanner" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
     <Route path="/aho" element={<ProtectedRoute><Aho /></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />

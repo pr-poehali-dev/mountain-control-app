@@ -1,0 +1,42 @@
+{
+  "tests": [
+    {
+      "name": "Get issues list",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 200,
+      "expectedBody": {"issues": "array"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get stats",
+      "method": "GET",
+      "path": "/?action=stats",
+      "expectedStatus": 200,
+      "expectedBody": {"active": "number"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get denials",
+      "method": "GET",
+      "path": "/?action=denials",
+      "expectedStatus": 200,
+      "expectedBody": {"denials": "array"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Search person",
+      "method": "GET",
+      "path": "/?action=search&q=test",
+      "expectedStatus": 200,
+      "expectedBody": {"results": "array"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}
