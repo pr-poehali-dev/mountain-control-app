@@ -177,7 +177,7 @@ def get_detail(params):
             WHERE i.returned_at >= CURRENT_DATE
             ORDER BY i.returned_at DESC
         """)
-    elif detail_type == 'denials':
+    elif detail_type in ('denials', 'today_denied'):
         cur.execute("""
             SELECT d.id, d.person_code, d.person_name, d.reason, d.denied_at, d.denied_by, d.tabular_number
             FROM lamp_room_denials d
