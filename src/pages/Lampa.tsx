@@ -193,7 +193,14 @@ const Lampa = () => {
       setIdentifiedPerson(data.person);
       setActiveIssues(data.active_issues || []);
 
-      if (scanMode === "return" && data.active_issues?.length > 0) {
+      const hasActive = data.active_issues && data.active_issues.length > 0;
+
+      if (scanMode === "return") {
+        if (!hasActive) {
+          playDenied();
+          setError(`${data.person.full_name} (${data.person.personal_code}) — нет активных выдач, нечего принимать`);
+          return;
+        }
         const firstIssue = data.active_issues[0];
         const mockRecord: IssueRecord = {
           id: firstIssue.id,
@@ -211,13 +218,25 @@ const Lampa = () => {
         };
         setShowReturnDialog(mockRecord);
         setReturnCondition("normal");
+        playSuccess();
       } else {
         setShowIssueDialog(true);
         setItemType("both");
         setLanternNum("");
         setRescuerNum("");
+        if (hasActive) {
+          playDenied();
+          const items = data.active_issues.map((ai: ActiveIssue) => {
+            const parts = [];
+            if (ai.lantern_number) parts.push(`Фонарь ${ai.lantern_number}`);
+            if (ai.rescuer_number) parts.push(`СС ${ai.rescuer_number}`);
+            return parts.join(" + ");
+          }).join(", ");
+          setIssueError(`Уже выдано: ${items}. Можно выдать дополнительно или сначала принять.`);
+        } else {
+          playSuccess();
+        }
       }
-      playSuccess();
     } catch (err: unknown) {
       playDenied();
       setError(err instanceof Error ? err.message : "Сотрудник не найден");
