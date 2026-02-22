@@ -81,6 +81,13 @@ const itemTypeLabels: Record<string, string> = {
   both: "Фонарь + СС",
 };
 
+const conditionLabels: Record<string, string> = {
+  normal: "Исправно",
+  damaged: "Повреждено",
+  needs_repair: "Требует ремонта",
+  needs_charging: "Требует зарядки",
+};
+
 function formatTime(dateStr?: string): string {
   if (!dateStr) return "—";
   try {
@@ -546,7 +553,7 @@ const Lampa = () => {
                           <td className="px-3 py-3 text-xs text-muted-foreground font-mono whitespace-nowrap">
                             {formatTime(r.returned_at)}
                           </td>
-                          <td className="px-3 py-3 text-xs text-muted-foreground">{r.condition || "—"}</td>
+                          <td className="px-3 py-3 text-xs text-muted-foreground">{conditionLabels[r.condition] || r.condition || "—"}</td>
                           <td className="px-3 py-3">
                             {r.status === "issued" && (
                               <Button
