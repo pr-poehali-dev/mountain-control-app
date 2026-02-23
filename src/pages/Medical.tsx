@@ -65,6 +65,8 @@ interface MedicalRecord {
   direction_label?: string;
   shift_date?: string;
   notes?: string;
+  position?: string;
+  is_itr?: boolean;
 }
 
 interface ScanResult {
@@ -87,11 +89,20 @@ interface ScanResult {
   };
 }
 
+interface CategoryStats {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+}
+
 interface MedicalStats {
   passed?: number;
   failed?: number;
   pending?: number;
   total?: number;
+  itr?: CategoryStats;
+  workers?: CategoryStats;
   period?: { passed: number; failed: number };
   by_shift?: Record<string, { passed: number; failed: number }>;
 }
@@ -149,6 +160,7 @@ const Medical = () => {
   const [dateTo, setDateTo] = useState(getTodayStr());
   const [filterShift, setFilterShift] = useState("all");
   const [filterDirection, setFilterDirection] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all");
 
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState("");
@@ -310,6 +322,8 @@ const Medical = () => {
       return `<tr>
         <td>${code}</td>
         <td>${name}</td>
+        <td>${r.is_itr ? "ИТР" : "Рабочий"}</td>
+        <td>${r.position || "—"}</td>
         <td>${r.department || "—"}</td>
         <td>${r.organization || "—"}</td>
         <td>${r.shift_label || shiftLabels[r.shift_type || ""] || "—"}</td>
@@ -324,7 +338,7 @@ const Medical = () => {
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Медицинский контроль</title>
 <style>body{font-family:Arial,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f5f5f5;font-weight:600}h1{font-size:18px}h2{font-size:14px;color:#666;margin-top:4px}@media print{body{padding:0}}</style>
 </head><body><h1>Медицинский контроль — Журнал осмотров</h1><h2>${dateRange}${shiftTitle ? " | " + shiftTitle : ""}</h2>
-<table><thead><tr><th>Код</th><th>ФИО</th><th>Подразделение</th><th>Организация</th><th>Смена</th><th>Направл.</th><th>Результат</th><th>Дата</th><th>Время</th><th>Примечание</th></tr></thead>
+<table><thead><tr><th>Код</th><th>ФИО</th><th>Категория</th><th>Должность</th><th>Подразделение</th><th>Организация</th><th>Смена</th><th>Направл.</th><th>Результат</th><th>Дата</th><th>Время</th><th>Примечание</th></tr></thead>
 <tbody>${rows}</tbody></table>
 <p style="margin-top:16px;font-size:11px;color:#999">Сформировано: ${new Date().toLocaleString("ru-RU")}</p>
 <script>window.print()<${"/"}script></body></html>`;
@@ -341,11 +355,14 @@ const Medical = () => {
   const waiting = stats.pending ?? 0;
   const total = stats.total || passed + failed + waiting || 1;
 
-  const filtered = records.filter(
-    (r) =>
-      (r.person_name || r.full_name || "").toLowerCase().includes(search.toLowerCase()) ||
-      (r.person_code || r.personal_code || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = records.filter((r) => {
+    const matchSearch = (r.person_name || r.full_name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (r.person_code || r.personal_code || "").toLowerCase().includes(search.toLowerCase());
+    const matchCategory = filterCategory === "all" ||
+      (filterCategory === "itr" && r.is_itr) ||
+      (filterCategory === "worker" && !r.is_itr);
+    return matchSearch && matchCategory;
+  });
 
   return (
     <AppLayout
@@ -389,47 +406,99 @@ const Medical = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-xl border border-mine-green/20 bg-mine-green/5 p-5 glow-green">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Icon name="CheckCircle2" size={20} className="text-mine-green" />
-                <span className="text-sm font-medium text-foreground">Допущены</span>
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+          {[
+            { label: "Всего", value: total, icon: "Users", border: "border-mine-cyan/20", bg: "bg-mine-cyan/5", iconBg: "bg-mine-cyan/10", iconText: "text-mine-cyan", valueText: "text-mine-cyan" },
+            { label: "Рабочие", value: stats.workers?.total ?? 0, icon: "HardHat", border: "border-mine-amber/20", bg: "bg-mine-amber/5", iconBg: "bg-mine-amber/10", iconText: "text-mine-amber", valueText: "text-mine-amber" },
+            { label: "ИТР", value: stats.itr?.total ?? 0, icon: "GraduationCap", border: "border-indigo-400/20", bg: "bg-indigo-400/5", iconBg: "bg-indigo-400/10", iconText: "text-indigo-400", valueText: "text-indigo-400" },
+            { label: "Допущены", value: passed, icon: "CheckCircle2", border: "border-mine-green/20", bg: "bg-mine-green/5", iconBg: "bg-mine-green/10", iconText: "text-mine-green", valueText: "text-mine-green" },
+            { label: "Не допущ.", value: failed, icon: "XCircle", border: "border-mine-red/20", bg: "bg-mine-red/5", iconBg: "bg-mine-red/10", iconText: "text-mine-red", valueText: "text-mine-red" },
+            { label: "Ожидают", value: waiting, icon: "Clock", border: "border-mine-amber/20", bg: "bg-mine-amber/5", iconBg: "bg-mine-amber/10", iconText: "text-mine-amber", valueText: "text-mine-amber" },
+          ].map((card) => (
+            <div key={card.label} className={`rounded-xl border ${card.border} ${card.bg} p-3 flex items-center gap-2.5`}>
+              <div className={`w-8 h-8 rounded-lg ${card.iconBg} flex items-center justify-center shrink-0`}>
+                <Icon name={card.icon} size={16} className={card.iconText} />
               </div>
-              <span className="text-3xl font-bold text-mine-green">{passed}</span>
+              <div className="min-w-0">
+                <p className="text-[10px] text-muted-foreground leading-tight truncate">{card.label}</p>
+                <p className={`text-lg font-bold ${card.valueText} leading-tight`}>{card.value}</p>
+              </div>
             </div>
-            <Progress value={(passed / total) * 100} className="h-1.5" />
-            <p className="text-xs text-muted-foreground mt-2">
-              {Math.round((passed / total) * 100)}% от списка
-            </p>
-          </div>
+          ))}
+        </div>
 
-          <div className="rounded-xl border border-mine-red/20 bg-mine-red/5 p-5 glow-red">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Icon name="XCircle" size={20} className="text-mine-red" />
-                <span className="text-sm font-medium text-foreground">Не допущены</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-mine-amber/20 bg-card p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-mine-amber/10 flex items-center justify-center">
+                <Icon name="HardHat" size={18} className="text-mine-amber" />
               </div>
-              <span className="text-3xl font-bold text-mine-red">{failed}</span>
+              <span className="text-sm font-semibold text-foreground">Рабочие</span>
+              <span className="text-sm font-bold text-mine-amber ml-auto">{stats.workers?.total ?? 0}</span>
             </div>
-            <Progress value={(failed / total) * 100} className="h-1.5" />
-            <p className="text-xs text-muted-foreground mt-2">
-              {Math.round((failed / total) * 100)}% от списка
-            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-mine-green">
+                  <Icon name="CheckCircle2" size={12} />
+                  Допущены
+                </span>
+                <span className="font-medium text-mine-green">{stats.workers?.passed ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-mine-red">
+                  <Icon name="XCircle" size={12} />
+                  Не допущ.
+                </span>
+                <span className="font-medium text-mine-red">{stats.workers?.failed ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-mine-amber">
+                  <Icon name="Clock" size={12} />
+                  Ожидают
+                </span>
+                <span className="font-medium text-mine-amber">{stats.workers?.pending ?? 0}</span>
+              </div>
+            </div>
+            <div>
+              <Progress value={(stats.workers?.total ?? 0) > 0 ? Math.round(((stats.workers?.passed ?? 0) / (stats.workers?.total ?? 1)) * 100) : 0} className="h-1.5" />
+              <p className="text-[10px] text-muted-foreground mt-1">{(stats.workers?.total ?? 0) > 0 ? Math.round(((stats.workers?.passed ?? 0) / (stats.workers?.total ?? 1)) * 100) : 0}% допущены</p>
+            </div>
           </div>
-
-          <div className="rounded-xl border border-mine-amber/20 bg-mine-amber/5 p-5 glow-amber">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Icon name="Clock" size={20} className="text-mine-amber" />
-                <span className="text-sm font-medium text-foreground">Ожидают</span>
+          <div className="rounded-xl border border-indigo-400/20 bg-card p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-indigo-400/10 flex items-center justify-center">
+                <Icon name="GraduationCap" size={18} className="text-indigo-400" />
               </div>
-              <span className="text-3xl font-bold text-mine-amber">{waiting}</span>
+              <span className="text-sm font-semibold text-foreground">ИТР</span>
+              <span className="text-sm font-bold text-indigo-400 ml-auto">{stats.itr?.total ?? 0}</span>
             </div>
-            <Progress value={(waiting / total) * 100} className="h-1.5" />
-            <p className="text-xs text-muted-foreground mt-2">
-              {Math.round((waiting / total) * 100)}% от списка
-            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-mine-green">
+                  <Icon name="CheckCircle2" size={12} />
+                  Допущены
+                </span>
+                <span className="font-medium text-mine-green">{stats.itr?.passed ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-mine-red">
+                  <Icon name="XCircle" size={12} />
+                  Не допущ.
+                </span>
+                <span className="font-medium text-mine-red">{stats.itr?.failed ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-mine-amber">
+                  <Icon name="Clock" size={12} />
+                  Ожидают
+                </span>
+                <span className="font-medium text-mine-amber">{stats.itr?.pending ?? 0}</span>
+              </div>
+            </div>
+            <div>
+              <Progress value={(stats.itr?.total ?? 0) > 0 ? Math.round(((stats.itr?.passed ?? 0) / (stats.itr?.total ?? 1)) * 100) : 0} className="h-1.5" />
+              <p className="text-[10px] text-muted-foreground mt-1">{(stats.itr?.total ?? 0) > 0 ? Math.round(((stats.itr?.passed ?? 0) / (stats.itr?.total ?? 1)) * 100) : 0}% допущены</p>
+            </div>
           </div>
         </div>
 
@@ -736,6 +805,19 @@ const Medical = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Категория</label>
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="w-36 h-9 bg-secondary/50 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все</SelectItem>
+                  <SelectItem value="worker">Рабочие</SelectItem>
+                  <SelectItem value="itr">ИТР</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="relative flex-1 min-w-[180px]">
               <label className="text-[10px] text-muted-foreground block mb-1">Поиск</label>
               <div className="relative">
@@ -782,7 +864,7 @@ const Medical = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Дата", "Код", "ФИО", "Организация", "Смена", "Направл.", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Примечание"].map((h) => (
+                    {["Дата", "Код", "ФИО", "Категория", "Должность", "Организация", "Смена", "Направл.", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Примечание"].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3"
@@ -815,6 +897,14 @@ const Medical = () => {
                         </td>
                         <td className="px-3 py-3 text-sm font-medium text-foreground whitespace-nowrap">
                           {name}
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge variant="outline" className={`text-[10px] ${r.is_itr ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" : "bg-mine-amber/20 text-mine-amber border-mine-amber/30"}`}>
+                            {r.is_itr ? "ИТР" : "Рабочий"}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {r.position || "—"}
                         </td>
                         <td className="px-3 py-3 text-xs text-muted-foreground">
                           {r.organization || "—"}
@@ -864,7 +954,7 @@ const Medical = () => {
                   })}
                   {filtered.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={13} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={15} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет записей о медосмотрах за выбранный период
                       </td>
                     </tr>

@@ -255,17 +255,21 @@ def get_checks(params):
 
     where_sql = ' AND '.join(where)
 
+    itr_where = build_itr_where(cur)
+
     cur.execute("""
         SELECT mc.id, mc.check_type, mc.status, mc.blood_pressure, mc.pulse,
                mc.alcohol_level, mc.temperature, mc.doctor_name, mc.checked_at, mc.notes,
                p.full_name, p.personal_code, p.department, p.organization,
-               mc.shift_type, mc.check_direction, mc.shift_date
+               mc.shift_type, mc.check_direction, mc.shift_date,
+               p.position,
+               CASE WHEN %s THEN TRUE ELSE FALSE END as is_itr
         FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
         WHERE %s
         ORDER BY mc.checked_at DESC
         LIMIT %d
-    """ % (where_sql, limit))
+    """ % (itr_where, where_sql, limit))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -284,10 +288,24 @@ def get_checks(params):
             'shift_label': SHIFT_LABELS.get(r[14] or 'day', ''),
             'check_direction': r[15] or 'to_shift',
             'direction_label': DIRECTION_LABELS.get(r[15] or 'to_shift', ''),
-            'shift_date': r[16]
+            'shift_date': r[16],
+            'position': r[17] or '',
+            'is_itr': r[18],
         })
 
     return json_response(200, {'checks': checks, 'total': len(checks)})
+
+def build_itr_where(cur, table_alias='p'):
+    cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
+    row = cur.fetchone()
+    itr_positions = row[0] if row else []
+    conditions = []
+    for pos in itr_positions:
+        safe_pos = pos.replace("'", "''").lower()
+        conditions.append("LOWER(COALESCE(%s.position, '')) LIKE '%%%s%%'" % (table_alias, safe_pos))
+    if conditions:
+        return "(%s)" % " OR ".join(conditions)
+    return "FALSE"
 
 def get_medical_stats(params):
     date_from = params.get('date_from', '')
@@ -295,6 +313,8 @@ def get_medical_stats(params):
 
     conn = get_db()
     cur = conn.cursor()
+
+    itr_where = build_itr_where(cur)
 
     date_filter = "checked_at::date = CURRENT_DATE"
     if date_from and date_to:
@@ -325,17 +345,25 @@ def get_medical_stats(params):
             by_shift[key] = {'passed': 0, 'failed': 0}
         by_shift[key][r[2]] = by_shift[key].get(r[2], 0) + r[3]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE")
-    total_personnel = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND medical_status = 'passed'")
-    med_passed = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND medical_status = 'failed'")
-    med_failed = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND medical_status IN ('pending', '')")
-    med_pending = cur.fetchone()[0]
+    base_where = "p.status != 'archived' AND p.is_hidden = FALSE"
+    cur.execute("""
+        SELECT
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE p.medical_status = 'passed') as passed,
+            COUNT(*) FILTER (WHERE p.medical_status = 'failed') as failed,
+            COUNT(*) FILTER (WHERE p.medical_status IN ('pending', '')) as pending,
+            COUNT(*) FILTER (WHERE %s) as itr_total,
+            COUNT(*) FILTER (WHERE NOT (%s)) as worker_total,
+            COUNT(*) FILTER (WHERE %s AND p.medical_status = 'passed') as itr_passed,
+            COUNT(*) FILTER (WHERE %s AND p.medical_status = 'failed') as itr_failed,
+            COUNT(*) FILTER (WHERE %s AND p.medical_status IN ('pending', '')) as itr_pending,
+            COUNT(*) FILTER (WHERE NOT (%s) AND p.medical_status = 'passed') as worker_passed,
+            COUNT(*) FILTER (WHERE NOT (%s) AND p.medical_status = 'failed') as worker_failed,
+            COUNT(*) FILTER (WHERE NOT (%s) AND p.medical_status IN ('pending', '')) as worker_pending
+        FROM personnel p
+        WHERE %s
+    """ % (itr_where, itr_where, itr_where, itr_where, itr_where, itr_where, itr_where, itr_where, base_where))
+    r = cur.fetchone()
 
     cur.close()
     conn.close()
@@ -346,10 +374,16 @@ def get_medical_stats(params):
             'failed': period.get('failed', 0),
         },
         'by_shift': by_shift,
-        'passed': med_passed,
-        'failed': med_failed,
-        'pending': med_pending,
-        'total': total_personnel
+        'total': r[0],
+        'passed': r[1],
+        'failed': r[2],
+        'pending': r[3],
+        'itr': {
+            'total': r[4], 'passed': r[6], 'failed': r[7], 'pending': r[8]
+        },
+        'workers': {
+            'total': r[5], 'passed': r[9], 'failed': r[10], 'pending': r[11]
+        }
     })
 
 def scan_medical(body):
@@ -614,16 +648,19 @@ def export_csv(params):
 
     where_sql = ' AND '.join(where)
 
+    itr_where = build_itr_where(cur)
+
     cur.execute("""
         SELECT mc.shift_date, mc.shift_type, mc.check_direction, mc.status,
                p.full_name, p.personal_code, p.department, p.organization,
                mc.blood_pressure, mc.pulse, mc.alcohol_level, mc.temperature,
-               mc.doctor_name, mc.notes, mc.checked_at
+               mc.doctor_name, mc.notes, mc.checked_at, p.position,
+               CASE WHEN %s THEN 'ИТР' ELSE 'Рабочий' END as worker_type
         FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
         WHERE %s
         ORDER BY mc.shift_date DESC, mc.checked_at DESC
-    """ % where_sql)
+    """ % (itr_where, where_sql))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -631,7 +668,7 @@ def export_csv(params):
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output, delimiter=';')
-    writer.writerow(['Дата', 'Смена', 'Направление', 'Результат', 'ФИО', 'Код', 'Подразделение', 'Организация', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время'])
+    writer.writerow(['Дата', 'Смена', 'Направление', 'Результат', 'Категория', 'ФИО', 'Должность', 'Код', 'Подразделение', 'Организация', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время'])
 
     status_map = {'passed': 'Допущен', 'failed': 'Не допущен'}
     for r in rows:
@@ -640,7 +677,8 @@ def export_csv(params):
             SHIFT_LABELS.get(r[1] or 'day', ''),
             DIRECTION_LABELS.get(r[2] or 'to_shift', ''),
             status_map.get(r[3], r[3]),
-            r[4], r[5], r[6], r[7] or '',
+            r[16],
+            r[4], r[15] or '', r[5], r[6], r[7] or '',
             r[8] or '', r[9] or '', r[10] or '', r[11] or '',
             r[12] or '', r[13] or '', r[14]
         ])
