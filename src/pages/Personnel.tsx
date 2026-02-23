@@ -109,6 +109,7 @@ interface PersonnelItem {
   shift?: string;
   organization?: string;
   organization_type?: string;
+  tab_number?: string;
 }
 
 interface HistoryEvent {
@@ -192,6 +193,7 @@ const Personnel = () => {
   const [editMedical, setEditMedical] = useState("");
   const [editOrg, setEditOrg] = useState("");
   const [editOrgType, setEditOrgType] = useState("");
+  const [editTabNum, setEditTabNum] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
@@ -320,6 +322,7 @@ const Personnel = () => {
     setEditMedical(selectedPerson.medical_status || "pending");
     setEditOrg(selectedPerson.organization || "");
     setEditOrgType(selectedPerson.organization_type || "");
+    setEditTabNum(selectedPerson.tab_number || "");
     setEditError("");
     setEditing(true);
   };
@@ -350,6 +353,7 @@ const Personnel = () => {
         medical_status: editMedical,
         organization: editOrg.trim(),
         organization_type: editOrgType,
+        tab_number: editTabNum.trim(),
       });
       const updated = {
         ...selectedPerson,
@@ -364,6 +368,7 @@ const Personnel = () => {
         medical_status: editMedical,
         organization: editOrg.trim(),
         organization_type: editOrgType,
+        tab_number: editTabNum.trim(),
       };
       setSelectedPerson(updated);
       setEditing(false);
@@ -768,7 +773,7 @@ const Personnel = () => {
                         className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer"
                       />
                     </th>
-                    {["Код", "QR", "ФИО", "Организация", "Должность", "Подразделение", "Категория", "Медосмотр", "Статус", ""].map((h) => (
+                    {["Код", "QR", "ФИО", "Таб. №", "Организация", "Должность", "Подразделение", "Категория", "Медосмотр", "Статус", ""].map((h) => (
                       <th
                         key={h || "actions"}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
@@ -820,6 +825,9 @@ const Personnel = () => {
                         </td>
                         <td className="px-4 py-3 text-sm font-medium text-foreground">
                           {p.full_name}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
+                          {p.tab_number || "—"}
                         </td>
                         <td className="px-4 py-3">
                           {p.organization ? (
@@ -874,7 +882,7 @@ const Personnel = () => {
                   })}
                   {personnel.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет данных
                       </td>
                     </tr>
@@ -964,6 +972,12 @@ const Personnel = () => {
                               </Badge>
                             )}
                           </p>
+                        </div>
+                      )}
+                      {selectedPerson.tab_number && (
+                        <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                          <p className="text-[10px] text-muted-foreground">Табельный №</p>
+                          <p className="text-sm font-medium text-foreground font-mono">{selectedPerson.tab_number}</p>
                         </div>
                       )}
                       {selectedPerson.phone && (
@@ -1133,6 +1147,10 @@ const Personnel = () => {
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Комната</label>
                   <Input value={editRoom} onChange={(e) => setEditRoom(e.target.value)} className="bg-secondary/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Табельный №</label>
+                  <Input value={editTabNum} onChange={(e) => setEditTabNum(e.target.value)} className="bg-secondary/50" placeholder="12345" />
                 </div>
               </div>
               <div className="flex gap-2">

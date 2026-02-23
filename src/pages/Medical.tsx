@@ -67,6 +67,7 @@ interface MedicalRecord {
   notes?: string;
   position?: string;
   is_itr?: boolean;
+  tab_number?: string;
 }
 
 interface ScanResult {
@@ -864,7 +865,7 @@ const Medical = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Дата", "Код", "ФИО", "Категория", "Должность", "Организация", "Смена", "Направл.", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Примечание"].map((h) => (
+                    {["Дата", "Код", "ФИО", "Таб. №", "Категория", "Должность", "Организация", "Смена", "Направл.", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Примечание"].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3"
@@ -897,6 +898,9 @@ const Medical = () => {
                         </td>
                         <td className="px-3 py-3 text-sm font-medium text-foreground whitespace-nowrap">
                           {name}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground font-mono">
+                          {r.tab_number || "—"}
                         </td>
                         <td className="px-3 py-3">
                           <Badge variant="outline" className={`text-[10px] ${r.is_itr ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" : "bg-mine-amber/20 text-mine-amber border-mine-amber/30"}`}>
@@ -954,7 +958,7 @@ const Medical = () => {
                   })}
                   {filtered.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={15} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={16} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет записей о медосмотрах за выбранный период
                       </td>
                     </tr>

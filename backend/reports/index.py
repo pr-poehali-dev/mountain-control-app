@@ -89,7 +89,7 @@ def report_attendance(params):
 
     cur.execute("""
         SELECT p.full_name, p.personal_code, p.department, p.category, p.organization,
-               p.status, p.medical_status, p.shift,
+               p.status, p.medical_status, p.shift, COALESCE(p.tab_number, ''),
                (SELECT COUNT(*) FROM medical_checks mc
                 WHERE mc.personnel_id = p.id AND mc.shift_date >= '%s' AND mc.shift_date <= '%s'
                 AND mc.check_direction = 'to_shift' AND mc.status = 'passed' %s) as check_in_count,
@@ -133,7 +133,7 @@ def report_attendance(params):
             'full_name': r[0], 'personal_code': r[1], 'department': r[2],
             'category': r[3], 'organization': r[4] or '',
             'status': r[5], 'medical_status': r[6], 'shift': r[7] or '',
-            'check_in_count': r[8], 'check_out_count': r[9]
+            'tab_number': r[8] or '', 'check_in_count': r[9], 'check_out_count': r[10]
         })
 
     return json_response(200, {
@@ -164,6 +164,7 @@ def report_medical(params):
 
     cur.execute("""
         SELECT mc.id, p.full_name, p.personal_code, p.department, p.organization,
+               COALESCE(p.tab_number, ''),
                mc.status, mc.check_type, mc.shift_type, mc.check_direction, mc.shift_date,
                mc.blood_pressure, mc.pulse, mc.alcohol_level, mc.temperature,
                mc.doctor_name, mc.notes, mc.checked_at
@@ -200,14 +201,15 @@ def report_medical(params):
         items.append({
             'id': r[0], 'full_name': r[1], 'personal_code': r[2],
             'department': r[3], 'organization': r[4] or '',
-            'status': r[5], 'check_type': r[6],
-            'shift_type': r[7], 'shift_label': shift_labels.get(r[7] or '', ''),
-            'check_direction': r[8], 'direction_label': dir_labels.get(r[8] or '', ''),
-            'shift_date': r[9],
-            'blood_pressure': r[10], 'pulse': r[11],
-            'alcohol_level': float(r[12]) if r[12] else 0,
-            'temperature': float(r[13]) if r[13] else 0,
-            'doctor_name': r[14], 'notes': r[15], 'checked_at': r[16]
+            'tab_number': r[5] or '',
+            'status': r[6], 'check_type': r[7],
+            'shift_type': r[8], 'shift_label': shift_labels.get(r[8] or '', ''),
+            'check_direction': r[9], 'direction_label': dir_labels.get(r[9] or '', ''),
+            'shift_date': r[10],
+            'blood_pressure': r[11], 'pulse': r[12],
+            'alcohol_level': float(r[13]) if r[13] else 0,
+            'temperature': float(r[14]) if r[14] else 0,
+            'doctor_name': r[15], 'notes': r[16], 'checked_at': r[17]
         })
 
     total = sum(by_status.values())
@@ -233,7 +235,7 @@ def report_equipment(params):
     cur.execute("""
         SELECT l.id, l.lantern_number, l.rescuer_number, l.status, l.condition,
                l.issued_at, l.returned_at,
-               p.full_name, p.personal_code, p.department
+               p.full_name, p.personal_code, p.department, COALESCE(p.tab_number, '')
         FROM lanterns l
         LEFT JOIN personnel p ON l.assigned_to = p.id
         ORDER BY l.status = 'issued' DESC, l.lantern_number
@@ -267,7 +269,8 @@ def report_equipment(params):
             'id': r[0], 'lantern_number': r[1], 'rescuer_number': r[2],
             'status': r[3], 'condition': r[4],
             'issued_at': r[5], 'returned_at': r[6],
-            'person_name': r[7], 'person_code': r[8], 'department': r[9] or ''
+            'person_name': r[7], 'person_code': r[8], 'department': r[9] or '',
+            'tab_number': r[10] or ''
         })
 
     total = sum(by_status.values())
@@ -341,7 +344,8 @@ def report_personnel_summary(params):
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
                p.category, p.organization, p.organization_type, p.status,
-               p.medical_status, p.shift, p.room, p.phone, p.created_at
+               p.medical_status, p.shift, p.room, p.phone, p.created_at,
+               COALESCE(p.tab_number, '')
         FROM personnel p
         WHERE p.status != 'archived'
         ORDER BY p.department, p.full_name
@@ -384,7 +388,8 @@ def report_personnel_summary(params):
             'org_type_label': org_labels.get(r[7] or '', ''),
             'status': r[8], 'status_label': status_labels.get(r[8], r[8]),
             'medical_status': r[9], 'shift': r[10] or '',
-            'room': r[11] or '', 'phone': r[12] or '', 'created_at': r[13]
+            'room': r[11] or '', 'phone': r[12] or '', 'created_at': r[13],
+            'tab_number': r[14] or ''
         })
 
     return json_response(200, {
@@ -463,13 +468,13 @@ def report_events_log(params):
 EXPORT_CONFIGS = {
     'attendance': {
         'filename': 'attendance_report.csv',
-        'headers': ['ФИО', 'Код', 'Подразделение', 'Категория', 'Организация', 'Статус', 'Медосмотр', 'Смена', 'Явок', 'Уходов'],
-        'fields': ['full_name', 'personal_code', 'department', 'category', 'organization', 'status', 'medical_status', 'shift', 'check_in_count', 'check_out_count']
+        'headers': ['ФИО', 'Таб. №', 'Код', 'Подразделение', 'Категория', 'Организация', 'Статус', 'Медосмотр', 'Смена', 'Явок', 'Уходов'],
+        'fields': ['full_name', 'tab_number', 'personal_code', 'department', 'category', 'organization', 'status', 'medical_status', 'shift', 'check_in_count', 'check_out_count']
     },
     'medical': {
         'filename': 'medical_report.csv',
-        'headers': ['ФИО', 'Код', 'Подразделение', 'Организация', 'Статус', 'Смена', 'Направление', 'Дата', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время'],
-        'fields': ['full_name', 'personal_code', 'department', 'organization', 'status', 'shift_label', 'direction_label', 'shift_date', 'blood_pressure', 'pulse', 'alcohol_level', 'temperature', 'doctor_name', 'notes', 'checked_at']
+        'headers': ['ФИО', 'Таб. №', 'Код', 'Подразделение', 'Организация', 'Статус', 'Смена', 'Направление', 'Дата', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время'],
+        'fields': ['full_name', 'tab_number', 'personal_code', 'department', 'organization', 'status', 'shift_label', 'direction_label', 'shift_date', 'blood_pressure', 'pulse', 'alcohol_level', 'temperature', 'doctor_name', 'notes', 'checked_at']
     },
     'equipment': {
         'filename': 'equipment_report.csv',
@@ -483,8 +488,8 @@ EXPORT_CONFIGS = {
     },
     'personnel-summary': {
         'filename': 'personnel_report.csv',
-        'headers': ['Код', 'ФИО', 'Должность', 'Подразделение', 'Категория', 'Организация', 'Тип орг.', 'Статус', 'Медосмотр', 'Смена', 'Комната', 'Телефон'],
-        'fields': ['personal_code', 'full_name', 'position', 'department', 'category_label', 'organization', 'org_type_label', 'status_label', 'medical_status', 'shift', 'room', 'phone']
+        'headers': ['Код', 'ФИО', 'Таб. №', 'Должность', 'Подразделение', 'Категория', 'Организация', 'Тип орг.', 'Статус', 'Медосмотр', 'Смена', 'Комната', 'Телефон'],
+        'fields': ['personal_code', 'full_name', 'tab_number', 'position', 'department', 'category_label', 'organization', 'org_type_label', 'status_label', 'medical_status', 'shift', 'room', 'phone']
     },
     'events-log': {
         'filename': 'events_report.csv',

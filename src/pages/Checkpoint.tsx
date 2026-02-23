@@ -29,6 +29,7 @@ interface JournalItem {
   medical_ok: boolean;
   notes: string;
   created_at: string;
+  tab_number?: string;
 }
 
 interface OnSiteItem {
@@ -41,6 +42,7 @@ interface OnSiteItem {
   department: string;
   organization: string;
   organization_type: string;
+  tab_number?: string;
 }
 
 interface Stats {
@@ -473,6 +475,7 @@ const Checkpoint = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Дата/время</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">ФИО</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Таб. №</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Направление</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">КПП</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Медосмотр</th>
@@ -484,6 +487,7 @@ const Checkpoint = () => {
                         <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(item.created_at)}</td>
                         <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{item.tab_number || "—"}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                             item.direction_raw === "in"
@@ -504,7 +508,7 @@ const Checkpoint = () => {
                     ))}
                     {journal.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">
                           Нет записей за выбранный период
                         </td>
                       </tr>
@@ -555,6 +559,7 @@ const Checkpoint = () => {
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">ФИО</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Таб. №</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Должность</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Организация</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">КПП</th>
@@ -566,6 +571,7 @@ const Checkpoint = () => {
                       <tr key={item.personnel_id} className="hover:bg-secondary/30 transition-colors">
                         <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{item.tab_number || "—"}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{item.position}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{item.organization}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{item.checkpoint_name}</td>
@@ -574,7 +580,7 @@ const Checkpoint = () => {
                     ))}
                     {onSite.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">
                           Нет людей на территории
                         </td>
                       </tr>

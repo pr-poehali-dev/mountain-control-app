@@ -263,7 +263,8 @@ def get_checks(params):
                p.full_name, p.personal_code, p.department, p.organization,
                mc.shift_type, mc.check_direction, mc.shift_date,
                p.position,
-               CASE WHEN %s THEN TRUE ELSE FALSE END as is_itr
+               CASE WHEN %s THEN TRUE ELSE FALSE END as is_itr,
+               COALESCE(p.tab_number, '')
         FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
         WHERE %s
@@ -291,6 +292,7 @@ def get_checks(params):
             'shift_date': r[16],
             'position': r[17] or '',
             'is_itr': r[18],
+            'tab_number': r[19] or '',
         })
 
     return json_response(200, {'checks': checks, 'total': len(checks)})
@@ -660,7 +662,8 @@ def export_csv(params):
                p.full_name, p.personal_code, p.department, p.organization,
                mc.blood_pressure, mc.pulse, mc.alcohol_level, mc.temperature,
                mc.doctor_name, mc.notes, mc.checked_at, p.position,
-               CASE WHEN %s THEN 'ИТР' ELSE 'Рабочий' END as worker_type
+               CASE WHEN %s THEN 'ИТР' ELSE 'Рабочий' END as worker_type,
+               COALESCE(p.tab_number, '')
         FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
         WHERE %s
@@ -673,7 +676,7 @@ def export_csv(params):
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output, delimiter=';')
-    writer.writerow(['Дата', 'Смена', 'Направление', 'Результат', 'Категория', 'ФИО', 'Должность', 'Код', 'Подразделение', 'Организация', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время'])
+    writer.writerow(['Дата', 'Смена', 'Направление', 'Результат', 'Категория', 'ФИО', 'Таб. №', 'Должность', 'Код', 'Подразделение', 'Организация', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время'])
 
     status_map = {'passed': 'Допущен', 'failed': 'Не допущен'}
     for r in rows:
@@ -683,7 +686,7 @@ def export_csv(params):
             DIRECTION_LABELS.get(r[2] or 'to_shift', ''),
             status_map.get(r[3], r[3]),
             r[16],
-            r[4], r[15] or '', r[5], r[6], r[7] or '',
+            r[4], r[17] or '', r[15] or '', r[5], r[6], r[7] or '',
             r[8] or '', r[9] or '', r[10] or '', r[11] or '',
             r[12] or '', r[13] or '', r[14]
         ])

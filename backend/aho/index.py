@@ -1051,7 +1051,7 @@ def export_all_data():
     cur = conn.cursor()
 
     tables_cols = {
-        'personnel': ['id','personal_code','full_name','position','department','category','phone','room','status','qr_code','medical_status','shift','organization','organization_type','is_hidden','created_at','updated_at'],
+        'personnel': ['id','personal_code','full_name','position','department','category','phone','room','status','qr_code','medical_status','shift','organization','organization_type','tab_number','is_hidden','created_at','updated_at'],
         'aho_arrivals': ['id','batch_id','personnel_id','full_name','position','department','organization','organization_type','phone','arrival_date','departure_date','arrival_status','check_in_at','check_out_at','room','building','medical_status','personal_code','notes','is_hidden','created_at','updated_at'],
         'aho_batches': ['id','batch_id','file_name','total_count','arrived_count','departed_count','arrival_date','departure_date','is_hidden','created_at'],
         'medical_checks': ['id','personnel_id','check_type','status','blood_pressure','pulse','temperature','alcohol_level','shift_type','check_direction','shift_date','doctor_name','notes','is_hidden','checked_at'],

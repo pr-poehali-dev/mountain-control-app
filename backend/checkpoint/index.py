@@ -215,8 +215,10 @@ def get_journal(params):
 
     cur.execute("""
         SELECT cp.id, cp.personnel_id, cp.personal_code, cp.full_name,
-               cp.direction, cp.checkpoint_name, cp.medical_ok, cp.notes, cp.created_at
+               cp.direction, cp.checkpoint_name, cp.medical_ok, cp.notes, cp.created_at,
+               COALESCE(p.tab_number, '')
         FROM checkpoint_passes cp
+        LEFT JOIN personnel p ON cp.personnel_id = p.id
         %s
         ORDER BY cp.created_at DESC
         LIMIT %d OFFSET %d
@@ -234,7 +236,8 @@ def get_journal(params):
         'checkpoint_name': r[5],
         'medical_ok': r[6],
         'notes': r[7] or '',
-        'created_at': r[8]
+        'created_at': r[8],
+        'tab_number': r[9] or ''
     } for r in rows]
 
     return json_response(200, {
@@ -291,7 +294,8 @@ def get_on_site(params):
         SELECT DISTINCT ON (cp.personnel_id)
             cp.personnel_id, cp.personal_code, cp.full_name, cp.direction,
             cp.checkpoint_name, cp.created_at,
-            p.position, p.department, p.organization, p.organization_type
+            p.position, p.department, p.organization, p.organization_type,
+            COALESCE(p.tab_number, '')
         FROM checkpoint_passes cp
         LEFT JOIN personnel p ON cp.personnel_id = p.id
         WHERE cp.personnel_id IS NOT NULL
@@ -314,7 +318,8 @@ def get_on_site(params):
                 'checkpoint_name': r[4], 'entered_at': r[5],
                 'position': r[6] or '—', 'department': r[7] or '—',
                 'organization': r[8] or '—',
-                'organization_type': org_type_labels.get(r[9] or '', r[9] or '—')
+                'organization_type': org_type_labels.get(r[9] or '', r[9] or '—'),
+                'tab_number': r[10] or ''
             })
 
     return json_response(200, {'items': on_site, 'total': len(on_site)})
@@ -334,8 +339,9 @@ def export_journal(params):
 
     cur.execute("""
         SELECT cp.personal_code, cp.full_name, cp.direction, cp.checkpoint_name,
-               cp.medical_ok, cp.notes, cp.created_at
+               cp.medical_ok, cp.notes, cp.created_at, COALESCE(p.tab_number, '')
         FROM checkpoint_passes cp
+        LEFT JOIN personnel p ON cp.personnel_id = p.id
         %s
         ORDER BY cp.created_at DESC
         LIMIT 5000
@@ -344,13 +350,13 @@ def export_journal(params):
     cur.close()
     conn.close()
 
-    lines = ['Код;ФИО;Направление;КПП;Медосмотр;Примечание;Дата и время']
+    lines = ['Код;ФИО;Таб. №;Направление;КПП;Медосмотр;Примечание;Дата и время']
     for r in rows:
         dt = r[6].strftime('%d.%m.%Y %H:%M') if r[6] else ''
         direction = 'Вход' if r[2] == 'in' else 'Выход'
         medical = 'Да' if r[4] else 'Нет'
-        lines.append('%s;%s;%s;%s;%s;%s;%s' % (
-            r[0], r[1], direction, r[3], medical, r[5] or '', dt
+        lines.append('%s;%s;%s;%s;%s;%s;%s;%s' % (
+            r[0], r[1], r[7] or '', direction, r[3], medical, r[5] or '', dt
         ))
 
     csv_content = '\n'.join(lines)

@@ -37,6 +37,7 @@ interface PersonnelItem {
   department: string;
   status: string;
   medical_status?: string;
+  tab_number?: string;
 }
 
 interface PersonnelTableProps {
@@ -77,6 +78,9 @@ export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
                   ФИО
                 </th>
                 <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                  Таб. №
+                </th>
+                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
                   Должность
                 </th>
                 <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
@@ -107,6 +111,9 @@ export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-foreground">
                       {p.full_name}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
+                      {p.tab_number || "—"}
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">
                       {p.position}
@@ -147,7 +154,7 @@ export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
               })}
               {personnel.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Нет данных
                   </td>
                 </tr>

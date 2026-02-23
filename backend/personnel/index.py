@@ -67,7 +67,7 @@ def get_personnel(params):
     query = """
         SELECT id, personal_code, full_name, position, department, category, 
                phone, room, status, qr_code, medical_status, shift, created_at,
-               organization, organization_type
+               organization, organization_type, COALESCE(tab_number, '')
         FROM personnel WHERE status != 'archived' AND is_hidden = FALSE
     """
     if category:
@@ -93,7 +93,8 @@ def get_personnel(params):
             'phone': r[6], 'room': r[7], 'status': r[8],
             'qr_code': r[9], 'medical_status': r[10], 'shift': r[11],
             'created_at': r[12], 'organization': r[13] or '',
-            'organization_type': r[14] or ''
+            'organization_type': r[14] or '',
+            'tab_number': r[15] or ''
         })
 
     return json_response(200, {'personnel': personnel, 'total': len(personnel)})
@@ -260,13 +261,14 @@ def search_personnel(params):
     safe_q = query_str.replace("'", "''")
     cur.execute("""
         SELECT id, personal_code, full_name, position, department, category, 
-               room, status, qr_code, medical_status, organization, organization_type
+               room, status, qr_code, medical_status, organization, organization_type, COALESCE(tab_number, '')
         FROM personnel
         WHERE status != 'archived' AND (full_name ILIKE '%%%s%%' OR personal_code ILIKE '%%%s%%' 
               OR department ILIKE '%%%s%%' OR qr_code ILIKE '%%%s%%'
-              OR organization ILIKE '%%%s%%')
+              OR organization ILIKE '%%%s%%'
+              OR tab_number ILIKE '%%%s%%')
         ORDER BY full_name LIMIT 20
-    """ % (safe_q, safe_q, safe_q, safe_q, safe_q))
+    """ % (safe_q, safe_q, safe_q, safe_q, safe_q, safe_q))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -277,7 +279,8 @@ def search_personnel(params):
             'id': r[0], 'personal_code': r[1], 'full_name': r[2],
             'position': r[3], 'department': r[4], 'category': r[5],
             'room': r[6], 'status': r[7], 'qr_code': r[8], 'medical_status': r[9],
-            'organization': r[10] or '', 'organization_type': r[11] or ''
+            'organization': r[10] or '', 'organization_type': r[11] or '',
+            'tab_number': r[12] or ''
         })
 
     return json_response(200, {'results': results, 'total': len(results)})
@@ -288,7 +291,7 @@ def edit_person(body):
         return json_response(400, {'error': 'ID обязателен'})
 
     fields = {}
-    for key in ('full_name', 'position', 'department', 'category', 'phone', 'room', 'shift', 'status', 'medical_status', 'organization', 'organization_type'):
+    for key in ('full_name', 'position', 'department', 'category', 'phone', 'room', 'shift', 'status', 'medical_status', 'organization', 'organization_type', 'tab_number'):
         if key in body:
             fields[key] = str(body[key]).strip()
 
