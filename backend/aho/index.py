@@ -1018,11 +1018,6 @@ def perform_reset(body):
             INSERT INTO reset_log (reset_type, description, affected_rows)
             VALUES ('full', 'Полный сброс системы. Администраторы сохранены. Удалено: %d записей', %d)
         """ % (affected, affected))
-        cur.execute("""
-            INSERT INTO events (event_type, description)
-            VALUES ('system_reset', 'Полный сброс системы — удалено %d записей. Администраторы сохранены.')
-        """ % affected)
-
     conn.commit()
     cur.close()
     conn.close()
