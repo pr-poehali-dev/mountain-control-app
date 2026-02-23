@@ -609,6 +609,8 @@ def update_user(event, body):
 
     if 'is_active' in body:
         updates.append("is_active = %s" % ('TRUE' if body['is_active'] else 'FALSE'))
+        if body['is_active']:
+            updates.append("email = regexp_replace(email, '_deleted_\\d+$', '')")
 
     if not updates:
         cur.close()

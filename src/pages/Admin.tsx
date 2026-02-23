@@ -246,6 +246,16 @@ const Admin = () => {
     }
   };
 
+  const handleRestoreUser = async (userId: number) => {
+    try {
+      const res = await authApi.updateUser({ user_id: userId, is_active: true });
+      toast({ title: "Пользователь восстановлен" });
+      loadUsers();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка восстановления", variant: "destructive" });
+    }
+  };
+
   const openEditUser = (u: SystemUser) => {
     setEditUser(u);
     setEditFields({ full_name: u.full_name, email: u.email, position: u.position || "", department: u.department || "", password: "" });
@@ -556,22 +566,34 @@ const Admin = () => {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {!isSelf && u.is_active && (
+                          {!isSelf && (
                             <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => openEditUser(u)}
-                                className="p-1.5 rounded-md hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
-                                title="Редактировать"
-                              >
-                                <Icon name="Pencil" size={13} />
-                              </button>
-                              <button
-                                onClick={() => setDeleteUserId(u.id)}
-                                className="p-1.5 rounded-md hover:bg-mine-red/10 text-muted-foreground hover:text-mine-red transition-colors"
-                                title="Удалить"
-                              >
-                                <Icon name="Trash2" size={13} />
-                              </button>
+                              {u.is_active ? (
+                                <>
+                                  <button
+                                    onClick={() => openEditUser(u)}
+                                    className="p-1.5 rounded-md hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
+                                    title="Редактировать"
+                                  >
+                                    <Icon name="Pencil" size={13} />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteUserId(u.id)}
+                                    className="p-1.5 rounded-md hover:bg-mine-red/10 text-muted-foreground hover:text-mine-red transition-colors"
+                                    title="Удалить"
+                                  >
+                                    <Icon name="Trash2" size={13} />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => handleRestoreUser(u.id)}
+                                  className="p-1.5 rounded-md hover:bg-mine-green/10 text-muted-foreground hover:text-mine-green transition-colors"
+                                  title="Восстановить"
+                                >
+                                  <Icon name="RotateCcw" size={13} />
+                                </button>
+                              )}
                             </div>
                           )}
                         </td>
