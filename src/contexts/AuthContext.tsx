@@ -28,7 +28,7 @@ interface AuthContextType {
   logout: () => void;
 }
 
-const ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'aho', 'reports', 'profile', 'admin'];
+const ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'security', 'checkpoint', 'aho', 'reports', 'profile', 'admin'];
 
 function getStoredPages(): string[] {
   const raw = localStorage.getItem("mc_pages");

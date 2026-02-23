@@ -10,6 +10,8 @@ const navItems = [
   { path: "/medical", page: "medical", icon: "HeartPulse", label: "Медконтроль" },
   { path: "/lampa", page: "lampa", icon: "Lightbulb", label: "Ламповая" },
   { path: "/scanner", page: "scanner", icon: "ScanLine", label: "Сканирование" },
+  { path: "/security", page: "security", icon: "ShieldCheck", label: "СБ" },
+  { path: "/checkpoint", page: "checkpoint", icon: "DoorOpen", label: "КПП" },
   { path: "/aho", page: "aho", icon: "Building2", label: "АХО" },
   { path: "/reports", page: "reports", icon: "BarChart3", label: "Отчёты" },
   { path: "/profile", page: "profile", icon: "UserCircle", label: "Кабинет" },

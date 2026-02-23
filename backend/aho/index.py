@@ -1001,7 +1001,8 @@ def perform_reset(body):
         counts = {}
         for table in ['aho_arrivals', 'aho_batches', 'medical_checks', 'events', 'notifications',
                        'dispatcher_messages', 'medical_reset_log', 'lanterns', 'rooms',
-                       'lamp_room_issues', 'lamp_room_denials']:
+                       'lamp_room_issues', 'lamp_room_denials',
+                       'security_checks', 'checkpoint_passes']:
             cur.execute("SELECT COUNT(*) FROM %s" % table)
             counts[table] = cur.fetchone()[0]
             cur.execute("DELETE FROM %s" % table)

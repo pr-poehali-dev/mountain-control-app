@@ -1,0 +1,7 @@
+{"tests": [
+  {"name": "Get stats", "method": "GET", "path": "/?action=stats", "expectedStatus": 200},
+  {"name": "Get journal", "method": "GET", "path": "/?action=journal", "expectedStatus": 200},
+  {"name": "Verify without code returns error", "method": "POST", "path": "/?action=verify", "body": {}, "expectedStatus": 400},
+  {"name": "Get person without params returns error", "method": "GET", "path": "/?action=person", "expectedStatus": 400},
+  {"name": "Export journal", "method": "GET", "path": "/?action=export", "expectedStatus": 200}
+]}

@@ -10,6 +10,8 @@ import Dispatcher from "./pages/Dispatcher";
 import Medical from "./pages/Medical";
 import Lampa from "./pages/Lampa";
 import Scanner from "./pages/Scanner";
+import Security from "./pages/Security";
+import Checkpoint from "./pages/Checkpoint";
 import Reports from "./pages/Reports";
 import Aho from "./pages/Aho";
 import Profile from "./pages/Profile";
@@ -63,6 +65,8 @@ const AppRoutes = () => (
     <Route path="/medical" element={<PageRoute page="medical"><Medical /></PageRoute>} />
     <Route path="/lampa" element={<PageRoute page="lampa"><Lampa /></PageRoute>} />
     <Route path="/scanner" element={<PageRoute page="scanner"><Scanner /></PageRoute>} />
+    <Route path="/security" element={<PageRoute page="security"><Security /></PageRoute>} />
+    <Route path="/checkpoint" element={<PageRoute page="checkpoint"><Checkpoint /></PageRoute>} />
     <Route path="/aho" element={<PageRoute page="aho"><Aho /></PageRoute>} />
     <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />
     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

@@ -8,6 +8,8 @@ const API = {
   reports: "https://functions.poehali.dev/fdbae00e-f203-48ec-97ae-6e89fc47a5cf",
   aho: "https://functions.poehali.dev/4fe7a896-fe95-4550-81d3-a5412844f65e",
   lampRoom: "https://functions.poehali.dev/a93fd43f-fb15-4e41-a64b-ccff98c24ca5",
+  security: "https://functions.poehali.dev/e757ce9d-06e6-483d-9b96-0c73ce817029",
+  checkpoint: "https://functions.poehali.dev/636f3e52-9c3b-4725-87bc-5d5cfcfebd50",
 };
 
 function getToken(): string | null {
@@ -285,6 +287,36 @@ export const lampRoomApi = {
     request(API.lampRoom, "", { method: "POST", body: { repair_id: repairId }, params: { action: "return-repair" } }),
   decommission: (repairId: number, reason: string) =>
     request(API.lampRoom, "", { method: "POST", body: { repair_id: repairId, reason }, params: { action: "decommission" } }),
+};
+
+export const securityApi = {
+  verify: (code: string, checked_by?: string) =>
+    request(API.security, "", { method: "POST", body: { code, checked_by }, params: { action: "verify" } }),
+  getPerson: (params: Record<string, string>) =>
+    request(API.security, "", { params: { action: "person", ...params } }),
+  getJournal: (params?: Record<string, string>) =>
+    request(API.security, "", { params: { action: "journal", ...params } }),
+  getStats: () =>
+    request(API.security, "", { params: { action: "stats" } }),
+  getExportUrl: (params?: Record<string, string>) => {
+    const qs = new URLSearchParams({ action: "export", ...params }).toString();
+    return `${API.security}?${qs}`;
+  },
+};
+
+export const checkpointApi = {
+  pass: (code: string, direction: string, checkpoint_name?: string) =>
+    request(API.checkpoint, "", { method: "POST", body: { code, direction, checkpoint_name }, params: { action: "pass" } }),
+  getJournal: (params?: Record<string, string>) =>
+    request(API.checkpoint, "", { params: { action: "journal", ...params } }),
+  getStats: () =>
+    request(API.checkpoint, "", { params: { action: "stats" } }),
+  getOnSite: () =>
+    request(API.checkpoint, "", { params: { action: "on-site" } }),
+  getExportUrl: (params?: Record<string, string>) => {
+    const qs = new URLSearchParams({ action: "export", ...params }).toString();
+    return `${API.checkpoint}?${qs}`;
+  },
 };
 
 export default API;

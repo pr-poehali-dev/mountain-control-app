@@ -32,9 +32,9 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
-ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'aho', 'reports', 'profile', 'admin']
+ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'security', 'checkpoint', 'aho', 'reports', 'profile', 'admin']
 
-VALID_ROLES = ['admin', 'operator', 'dispatcher', 'doctor', 'aho_specialist', 'security']
+VALID_ROLES = ['admin', 'operator', 'dispatcher', 'doctor', 'aho_specialist', 'security', 'checkpoint_officer']
 
 DEFAULT_PERMISSIONS = {
     'admin': ALL_PAGES[:],
@@ -42,7 +42,8 @@ DEFAULT_PERMISSIONS = {
     'dispatcher': ['dashboard', 'profile'],
     'doctor': ['dashboard', 'profile'],
     'aho_specialist': ['dashboard', 'profile'],
-    'security': ['dashboard', 'profile'],
+    'security': ['dashboard', 'security', 'profile'],
+    'checkpoint_officer': ['dashboard', 'checkpoint', 'profile'],
 }
 
 
