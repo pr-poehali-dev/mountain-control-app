@@ -299,10 +299,15 @@ def build_itr_where(cur, table_alias='p'):
     cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
     row = cur.fetchone()
     itr_positions = row[0] if row else []
-    conditions = []
+    keywords = set()
     for pos in itr_positions:
-        safe_pos = pos.replace("'", "''").lower()
-        conditions.append("LOWER(COALESCE(%s.position, '')) LIKE '%%%s%%'" % (table_alias, safe_pos))
+        first_word = pos.strip().split()[0] if pos.strip() else ''
+        if first_word:
+            keywords.add(first_word.lower())
+    conditions = []
+    for kw in keywords:
+        safe_kw = kw.replace("'", "''")
+        conditions.append("LOWER(COALESCE(%s.position, '')) LIKE '%%%s%%'" % (table_alias, safe_kw))
     if conditions:
         return "(%s)" % " OR ".join(conditions)
     return "FALSE"

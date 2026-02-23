@@ -774,10 +774,15 @@ def get_medical_itr_stats(params):
     row = cur.fetchone()
     itr_positions = row[0] if row else []
 
-    itr_conditions = []
+    keywords = set()
     for pos in itr_positions:
-        safe_pos = pos.replace("'", "''").lower()
-        itr_conditions.append("LOWER(COALESCE(a.position, '')) LIKE '%%%s%%'" % safe_pos)
+        first_word = pos.strip().split()[0] if pos.strip() else ''
+        if first_word:
+            keywords.add(first_word.lower())
+    itr_conditions = []
+    for kw in keywords:
+        safe_kw = kw.replace("'", "''")
+        itr_conditions.append("LOWER(COALESCE(a.position, '')) LIKE '%%%s%%'" % safe_kw)
 
     if itr_conditions:
         itr_where = "(%s)" % " OR ".join(itr_conditions)
