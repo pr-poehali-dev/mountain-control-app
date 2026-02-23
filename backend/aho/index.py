@@ -870,7 +870,7 @@ def get_medical_itr_stats(params):
 def perform_reset(body):
     """Обнуление данных системы. Soft-delete скрывает с экрана, full — удаляет из БД"""
     reset_type = body.get('reset_type', '')
-    valid_types = ['personnel', 'aho_arrivals', 'aho_departures', 'delete_aho_arrivals', 'delete_aho_departures', 'medical', 'full']
+    valid_types = ['personnel', 'aho_arrivals', 'aho_departures', 'delete_aho_arrivals', 'delete_aho_departures', 'medical', 'lamp_room', 'full']
     if reset_type not in valid_types:
         return json_response(400, {'error': 'Неизвестный тип обнуления. Допустимые: %s' % ', '.join(valid_types)})
 
@@ -981,10 +981,27 @@ def perform_reset(body):
             VALUES ('system_reset', 'Обнуление медосмотров — скрыто %d записей')
         """ % affected)
 
+    elif reset_type == 'lamp_room':
+        affected = 0
+        for table in ['lamp_room_issues', 'lamp_room_denials']:
+            cur.execute("SELECT COUNT(*) FROM %s" % table)
+            affected += cur.fetchone()[0]
+            cur.execute("DELETE FROM %s" % table)
+        cur.execute("UPDATE lamp_room_equipment SET status = 'available', notes = NULL WHERE status = 'issued'")
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('lamp_room', 'Обнуление ламповой — удалено %d записей выдачи/приёма', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Обнуление ламповой — удалено %d записей выдачи и приёма фонарей/самоспасателей')
+        """ % affected)
+
     elif reset_type == 'full':
         counts = {}
         for table in ['aho_arrivals', 'aho_batches', 'medical_checks', 'events', 'notifications',
-                       'dispatcher_messages', 'medical_reset_log', 'lanterns', 'rooms']:
+                       'dispatcher_messages', 'medical_reset_log', 'lanterns', 'rooms',
+                       'lamp_room_issues', 'lamp_room_denials']:
             cur.execute("SELECT COUNT(*) FROM %s" % table)
             counts[table] = cur.fetchone()[0]
             cur.execute("DELETE FROM %s" % table)
@@ -1016,6 +1033,7 @@ def perform_reset(body):
         'delete_aho_arrivals': 'Список заехавших по АХО удалён из базы',
         'delete_aho_departures': 'Список выехавших по АХО удалён из базы',
         'medical': 'Списки медосмотров обнулены',
+        'lamp_room': 'Списки ламповой обнулены',
         'full': 'Система полностью сброшена до заводских настроек',
     }
 
