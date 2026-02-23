@@ -94,6 +94,7 @@ def parse_excel(file_bytes):
         'дата прибытия': 'arrival_date', 'дата приезда': 'arrival_date', 'заезд': 'arrival_date', 'прибытие': 'arrival_date',
         'дата отъезда': 'departure_date', 'дата убытия': 'departure_date', 'выезд': 'departure_date', 'отъезд': 'departure_date',
         'примечание': 'notes', 'примечания': 'notes', 'комментарий': 'notes',
+        'табельный №': 'tab_number', 'табельный номер': 'tab_number', 'таб. №': 'tab_number', 'таб №': 'tab_number', 'таб.№': 'tab_number', 'табельный': 'tab_number', 'таб. номер': 'tab_number',
     }
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
@@ -178,14 +179,19 @@ def upload_excel(body):
         organization = item.get('organization', '')
         phone = item.get('phone', '')
         notes = item.get('notes', '')
+        tab_number = item.get('tab_number', '')
         item_arrival = item.get('arrival_date') or arrival_date or datetime.now().strftime('%Y-%m-%d')
         item_departure = item.get('departure_date') or departure_date or None
 
         personal_code, qr_code = generate_code(cur)
 
+        tab_sql = "NULL"
+        if tab_number:
+            tab_sql = "'%s'" % tab_number.replace("'", "''")
+
         cur.execute("""
-            INSERT INTO personnel (personal_code, full_name, position, department, category, phone, status, qr_code, organization, organization_type, medical_status)
-            VALUES ('%s', '%s', '%s', '%s', '%s', '%s', 'expected', '%s', '%s', '%s', 'pending')
+            INSERT INTO personnel (personal_code, full_name, position, department, category, phone, status, qr_code, organization, organization_type, medical_status, tab_number)
+            VALUES ('%s', '%s', '%s', '%s', '%s', '%s', 'expected', '%s', '%s', '%s', 'pending', %s)
             RETURNING id
         """ % (
             personal_code,
@@ -197,6 +203,7 @@ def upload_excel(body):
             qr_code,
             organization.replace("'", "''"),
             org_type.replace("'", "''"),
+            tab_sql,
         ))
         person_id = cur.fetchone()[0]
 
@@ -573,8 +580,8 @@ def get_template():
     ws = wb.active
     ws.title = "Список въезжающих"
 
-    headers = ["ФИО", "Должность", "Подразделение", "Организация", "Телефон", "Дата прибытия", "Дата отъезда", "Примечание"]
-    col_widths = [35, 25, 25, 30, 18, 16, 16, 30]
+    headers = ["ФИО", "Табельный №", "Должность", "Подразделение", "Организация", "Телефон", "Дата прибытия", "Дата отъезда", "Примечание"]
+    col_widths = [35, 16, 25, 25, 30, 18, 16, 16, 30]
 
     header_font = Font(name="Arial", bold=True, size=11, color="FFFFFF")
     header_fill = PatternFill(start_color="2D5A27", end_color="2D5A27", fill_type="solid")
@@ -599,9 +606,9 @@ def get_template():
     ws.row_dimensions[1].height = 30
 
     examples = [
-        ["Иванов Иван Иванович", "Горный мастер", "Участок №1", "ООО Рудник", "+7 900 123-45-67", "2026-03-01", "2026-03-15", ""],
-        ["Петров Пётр Петрович", "Электрослесарь", "Энергоцех", "ООО Рудник", "+7 900 765-43-21", "2026-03-01", "2026-03-15", ""],
-        ["Сидорова Анна Сергеевна", "Инженер ОТ", "ОТиПБ", "ООО Подрядчик", "+7 900 111-22-33", "2026-03-01", "2026-03-08", "Командировка"],
+        ["Иванов Иван Иванович", "Т-001", "Горный мастер", "Участок №1", "ООО Рудник", "+7 900 123-45-67", "2026-03-01", "2026-03-15", ""],
+        ["Петров Пётр Петрович", "Т-002", "Электрослесарь", "Энергоцех", "ООО Рудник", "+7 900 765-43-21", "2026-03-01", "2026-03-15", ""],
+        ["Сидорова Анна Сергеевна", "Т-003", "Инженер ОТ", "ОТиПБ", "ООО Подрядчик", "+7 900 111-22-33", "2026-03-01", "2026-03-08", "Командировка"],
     ]
 
     example_fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
@@ -635,6 +642,7 @@ def get_template():
         "• ФИО — полное имя сотрудника",
         "",
         "НЕОБЯЗАТЕЛЬНЫЕ ПОЛЯ:",
+        "• Табельный № — табельный номер сотрудника",
         "• Должность, Подразделение, Организация, Телефон",
         "• Дата прибытия/отъезда — формат ГГГГ-ММ-ДД (можно указать при загрузке)",
         "• Примечание — любая дополнительная информация",
