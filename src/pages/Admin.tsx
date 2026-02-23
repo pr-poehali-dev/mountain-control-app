@@ -112,6 +112,22 @@ const resetOptions = [
     danger: false,
   },
   {
+    value: "delete_aho_arrivals",
+    label: "Удалить список заехавших по АХО",
+    description: "Полностью удаляет все загруженные файлы и записи о заехавших из базы данных. Данные НЕ подлежат восстановлению.",
+    icon: "FileX",
+    color: "text-mine-red",
+    danger: true,
+  },
+  {
+    value: "delete_aho_departures",
+    label: "Удалить список выехавших по АХО",
+    description: "Полностью удаляет все записи о выехавших из базы данных. Данные НЕ подлежат восстановлению.",
+    icon: "FileX",
+    color: "text-mine-red",
+    danger: true,
+  },
+  {
     value: "medical",
     label: "Обнулить списки по медосмотрам",
     description: "Скрывает все результаты медосмотров и сбрасывает статусы. Данные сохраняются в БД.",

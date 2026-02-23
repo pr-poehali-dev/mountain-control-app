@@ -870,7 +870,7 @@ def get_medical_itr_stats(params):
 def perform_reset(body):
     """Обнуление данных системы. Soft-delete скрывает с экрана, full — удаляет из БД"""
     reset_type = body.get('reset_type', '')
-    valid_types = ['personnel', 'aho_arrivals', 'aho_departures', 'medical', 'full']
+    valid_types = ['personnel', 'aho_arrivals', 'aho_departures', 'delete_aho_arrivals', 'delete_aho_departures', 'medical', 'full']
     if reset_type not in valid_types:
         return json_response(400, {'error': 'Неизвестный тип обнуления. Допустимые: %s' % ', '.join(valid_types)})
 
@@ -930,6 +930,38 @@ def perform_reset(body):
             VALUES ('system_reset', 'Обнуление списка выехавших АХО — скрыто %d записей')
         """ % affected)
 
+    elif reset_type == 'delete_aho_arrivals':
+        cur.execute("""
+            SELECT COUNT(*) FROM aho_arrivals WHERE arrival_status IN ('expected', 'arrived')
+        """)
+        affected = cur.fetchone()[0]
+        cur.execute("DELETE FROM aho_arrivals WHERE arrival_status IN ('expected', 'arrived')")
+        cur.execute("DELETE FROM aho_batches WHERE batch_id NOT IN (SELECT DISTINCT batch_id FROM aho_arrivals)")
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('delete_aho_arrivals', 'Удаление списка заехавших АХО (удалено %d записей)', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Удаление списка заехавших АХО — удалено %d записей из базы')
+        """ % affected)
+
+    elif reset_type == 'delete_aho_departures':
+        cur.execute("""
+            SELECT COUNT(*) FROM aho_arrivals WHERE arrival_status = 'departed'
+        """)
+        affected = cur.fetchone()[0]
+        cur.execute("DELETE FROM aho_arrivals WHERE arrival_status = 'departed'")
+        cur.execute("DELETE FROM aho_batches WHERE batch_id NOT IN (SELECT DISTINCT batch_id FROM aho_arrivals)")
+        cur.execute("""
+            INSERT INTO reset_log (reset_type, description, affected_rows)
+            VALUES ('delete_aho_departures', 'Удаление списка выехавших АХО (удалено %d записей)', %d)
+        """ % (affected, affected))
+        cur.execute("""
+            INSERT INTO events (event_type, description)
+            VALUES ('system_reset', 'Удаление списка выехавших АХО — удалено %d записей из базы')
+        """ % affected)
+
     elif reset_type == 'medical':
         cur.execute("""
             UPDATE medical_checks SET is_hidden = TRUE
@@ -981,6 +1013,8 @@ def perform_reset(body):
         'personnel': 'Список персонала обнулён',
         'aho_arrivals': 'Список заехавших по АХО обнулён',
         'aho_departures': 'Список выехавших по АХО обнулён',
+        'delete_aho_arrivals': 'Список заехавших по АХО удалён из базы',
+        'delete_aho_departures': 'Список выехавших по АХО удалён из базы',
         'medical': 'Списки медосмотров обнулены',
         'full': 'Система полностью сброшена до заводских настроек',
     }
