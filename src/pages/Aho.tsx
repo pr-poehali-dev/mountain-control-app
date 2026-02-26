@@ -164,6 +164,14 @@ const Aho = () => {
   const [batchTo, setBatchTo] = useState("");
   const [batchCapacity, setBatchCapacity] = useState("2");
 
+  const [editingBuilding, setEditingBuilding] = useState<number | null>(null);
+  const [editBuildingName, setEditBuildingName] = useState("");
+  const [editBuildingNumber, setEditBuildingNumber] = useState("");
+
+  const [assignFromRoom, setAssignFromRoom] = useState<{ room_number: string; building_name: string } | null>(null);
+  const [unhoustedList, setUnhoustedList] = useState<ArrivalItem[]>([]);
+  const [unhoustedLoading, setUnhoustedLoading] = useState(false);
+
   useEffect(() => {
     loadStats();
     loadBatches();
@@ -419,6 +427,43 @@ const Aho = () => {
       await ahoApi.updateRoom({ id: roomId, is_active: false });
       openBuilding(selectedBuilding);
       loadBuildings();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleSaveBuilding = async (id: number) => {
+    if (!editBuildingName.trim()) return;
+    try {
+      await ahoApi.updateBuilding({ id, name: editBuildingName.trim(), number: editBuildingNumber.trim() || editBuildingName.trim() });
+      toast({ title: "Здание обновлено" });
+      setEditingBuilding(null);
+      loadBuildings();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const openAssignFromRoom = async (room_number: string, building_name: string) => {
+    setAssignFromRoom({ room_number, building_name });
+    setUnhoustedLoading(true);
+    try {
+      const data = await ahoApi.getList({ status: "arrived" });
+      setUnhoustedList((data.items || []).filter((a: ArrivalItem) => !a.room));
+    } catch { /* */ }
+    finally { setUnhoustedLoading(false); }
+  };
+
+  const handleAssignFromRoom = async (arrivalId: number) => {
+    if (!assignFromRoom) return;
+    try {
+      await ahoApi.assignRoom(arrivalId, assignFromRoom.room_number, assignFromRoom.building_name);
+      toast({ title: "Заселён в комнату " + assignFromRoom.room_number });
+      const data = await ahoApi.getList({ status: "arrived" });
+      setUnhoustedList((data.items || []).filter((a: ArrivalItem) => !a.room));
+      if (selectedBuilding) openBuilding(selectedBuilding);
+      loadBuildings();
+      loadArrivals();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -1143,14 +1188,45 @@ const Aho = () => {
             ) : (
               <div className="space-y-2">
                 {buildings.map(b => (
-                  <div key={b.id} className="rounded-lg border border-border p-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{b.name}</p>
-                      <p className="text-xs text-muted-foreground">{b.number} · {b.actual_rooms} комнат · {b.actual_capacity} мест</p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="h-7 text-mine-red hover:text-mine-red" onClick={() => handleDeleteBuilding(b.id)}>
-                      <Icon name="Trash2" size={14} />
-                    </Button>
+                  <div key={b.id} className="rounded-lg border border-border p-3">
+                    {editingBuilding === b.id ? (
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          value={editBuildingName}
+                          onChange={e => setEditBuildingName(e.target.value)}
+                          placeholder="Название"
+                          className="bg-secondary/50 flex-1 h-8 text-sm"
+                          autoFocus
+                        />
+                        <Input
+                          value={editBuildingNumber}
+                          onChange={e => setEditBuildingNumber(e.target.value)}
+                          placeholder="Номер"
+                          className="bg-secondary/50 w-24 h-8 text-sm"
+                        />
+                        <Button size="sm" className="h-8 gap-1 bg-mine-green text-white hover:bg-mine-green/90" onClick={() => handleSaveBuilding(b.id)}>
+                          <Icon name="Check" size={14} />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingBuilding(null)}>
+                          <Icon name="X" size={14} />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">{b.name}</p>
+                          <p className="text-xs text-muted-foreground">{b.number} · {b.actual_rooms} комнат · {b.actual_capacity} мест</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" className="h-7" onClick={() => { setEditingBuilding(b.id); setEditBuildingName(b.name); setEditBuildingNumber(b.number); }}>
+                            <Icon name="Pencil" size={14} />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 text-mine-red hover:text-mine-red" onClick={() => handleDeleteBuilding(b.id)}>
+                            <Icon name="Trash2" size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1242,15 +1318,60 @@ const Aho = () => {
                           <Icon name="X" size={12} />
                         </button>
                       </div>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Icon name="Users" size={10} className="text-muted-foreground" />
-                        <span className={`text-xs font-medium ${isFull ? "text-mine-red" : "text-muted-foreground"}`}>
-                          {r.occupied}/{r.capacity}
-                        </span>
+                      <div className="flex items-center justify-between mt-1">
+                        <div className="flex items-center gap-1">
+                          <Icon name="Users" size={10} className="text-muted-foreground" />
+                          <span className={`text-xs font-medium ${isFull ? "text-mine-red" : "text-muted-foreground"}`}>
+                            {r.occupied}/{r.capacity}
+                          </span>
+                        </div>
+                        {!isFull && (
+                          <button
+                            onClick={() => openAssignFromRoom(r.room_number, r.building_name)}
+                            className="text-[10px] text-mine-cyan hover:underline"
+                          >
+                            Заселить
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!assignFromRoom} onOpenChange={(open) => { if (!open) setAssignFromRoom(null); }}>
+        <DialogContent className="sm:max-w-md max-h-[70vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon name="UserPlus" size={18} className="text-mine-cyan" />
+              Заселить в комнату {assignFromRoom?.room_number}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto -mx-6 px-6">
+            {unhoustedLoading ? (
+              <div className="flex justify-center py-8">
+                <Icon name="Loader2" size={20} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : unhoustedList.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Все прибывшие уже заселены</p>
+            ) : (
+              <div className="space-y-1">
+                {unhoustedList.map(a => (
+                  <div key={a.id} className="rounded-lg border border-border p-2.5 flex items-center justify-between hover:bg-secondary/20">
+                    <div>
+                      <p className="text-sm font-medium">{a.full_name}</p>
+                      <p className="text-xs text-muted-foreground">{a.personal_code} · {a.organization || "—"}</p>
+                    </div>
+                    <Button size="sm" className="h-7 text-[11px] gap-1 bg-mine-green text-white hover:bg-mine-green/90" onClick={() => handleAssignFromRoom(a.id)}>
+                      <Icon name="UserPlus" size={12} />
+                      Заселить
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
