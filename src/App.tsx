@@ -14,6 +14,7 @@ import Security from "./pages/Security";
 import Checkpoint from "./pages/Checkpoint";
 import Reports from "./pages/Reports";
 import Aho from "./pages/Aho";
+import Ohs from "./pages/Ohs";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
@@ -68,6 +69,7 @@ const AppRoutes = () => (
     <Route path="/security" element={<PageRoute page="security"><Security /></PageRoute>} />
     <Route path="/checkpoint" element={<PageRoute page="checkpoint"><Checkpoint /></PageRoute>} />
     <Route path="/aho" element={<PageRoute page="aho"><Aho /></PageRoute>} />
+    <Route path="/ohs" element={<PageRoute page="ohs"><Ohs /></PageRoute>} />
     <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />
     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
     <Route path="/admin" element={<PageRoute page="admin"><Admin /></PageRoute>} />

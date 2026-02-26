@@ -1,0 +1,35 @@
+{"tests": [
+  {
+    "name": "Get documents list",
+    "method": "GET",
+    "path": "/?action=documents",
+    "expectedStatus": 200,
+    "expectedBody": {},
+    "bodyMatcher": "partial"
+  },
+  {
+    "name": "Get document not found",
+    "method": "GET",
+    "path": "/?action=document&id=999999",
+    "expectedStatus": 404,
+    "expectedBody": {"error": "string"},
+    "bodyMatcher": "partial"
+  },
+  {
+    "name": "Upload without file returns error",
+    "method": "POST",
+    "path": "/?action=upload",
+    "body": {},
+    "expectedStatus": 400,
+    "expectedBody": {"error": "string"},
+    "bodyMatcher": "partial"
+  },
+  {
+    "name": "Unknown action returns error",
+    "method": "GET",
+    "path": "/?action=unknown",
+    "expectedStatus": 400,
+    "expectedBody": {"error": "string"},
+    "bodyMatcher": "partial"
+  }
+]}

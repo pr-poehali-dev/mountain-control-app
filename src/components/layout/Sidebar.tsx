@@ -13,6 +13,7 @@ const navItems = [
   { path: "/security", page: "security", icon: "ShieldCheck", label: "СБ" },
   { path: "/checkpoint", page: "checkpoint", icon: "DoorOpen", label: "КПП" },
   { path: "/aho", page: "aho", icon: "Building2", label: "АХО" },
+  { path: "/ohs", page: "ohs", icon: "HardHat", label: "ОТ и ПБ" },
   { path: "/reports", page: "reports", icon: "BarChart3", label: "Отчёты" },
   { path: "/profile", page: "profile", icon: "UserCircle", label: "Кабинет" },
   { path: "/admin", page: "admin", icon: "Shield", label: "Админ" },

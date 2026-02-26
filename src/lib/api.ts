@@ -10,6 +10,7 @@ const API = {
   lampRoom: "https://functions.poehali.dev/a93fd43f-fb15-4e41-a64b-ccff98c24ca5",
   security: "https://functions.poehali.dev/e757ce9d-06e6-483d-9b96-0c73ce817029",
   checkpoint: "https://functions.poehali.dev/636f3e52-9c3b-4725-87bc-5d5cfcfebd50",
+  ohs: "https://functions.poehali.dev/bbbb23f3-816f-4c4f-a010-571fbf96b0be",
 };
 
 function getToken(): string | null {
@@ -317,6 +318,19 @@ export const checkpointApi = {
     const qs = new URLSearchParams({ action: "export", ...params }).toString();
     return `${API.checkpoint}?${qs}`;
   },
+};
+
+export const ohsApi = {
+  upload: (body: Record<string, unknown>) =>
+    request(API.ohs, "", { method: "POST", body, params: { action: "upload" } }),
+  getDocuments: (params?: Record<string, string>) =>
+    request(API.ohs, "", { params: { action: "documents", ...params } }),
+  getDocument: (id: number) =>
+    request(API.ohs, "", { params: { action: "document", id: String(id) } }),
+  updateCell: (body: Record<string, unknown>) =>
+    request(API.ohs, "", { method: "PUT", body, params: { action: "cell" } }),
+  deleteDocument: (document_id: number) =>
+    request(API.ohs, "", { method: "POST", body: { document_id }, params: { action: "delete" } }),
 };
 
 export default API;
