@@ -85,6 +85,8 @@ def handler(event, context):
         return update_room(body)
     elif method == 'POST' and action == 'rooms-batch':
         return create_rooms_batch(body)
+    elif method == 'GET' and action == 'housing-stats':
+        return get_housing_stats(params)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -1355,3 +1357,119 @@ def update_building_totals(cur, building_id):
             updated_at = NOW()
         WHERE id = %d
     """ % (building_id, building_id, building_id))
+
+
+def get_housing_stats(params):
+    """Статистика расселения: общежития, места, жильцы"""
+    detail = params.get('detail', '')
+    building_id = params.get('building_id', '')
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT b.id, b.name, b.number,
+               (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as rooms_count,
+               (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as total_beds,
+               (SELECT COUNT(*) FROM aho_arrivals a WHERE a.building = b.name AND a.arrival_status = 'arrived' AND a.room IS NOT NULL AND a.room != '') as occupied_beds
+        FROM buildings b
+        WHERE b.is_active = TRUE
+        ORDER BY b.sort_order, b.id
+    """)
+    brows = cur.fetchall()
+
+    buildings_list = []
+    total_buildings = 0
+    total_beds = 0
+    total_occupied = 0
+
+    for r in brows:
+        total_buildings += 1
+        beds = r[4]
+        occ = r[5]
+        total_beds += beds
+        total_occupied += occ
+        buildings_list.append({
+            'id': r[0], 'name': r[1], 'number': r[2],
+            'rooms_count': r[3], 'total_beds': beds,
+            'occupied_beds': occ, 'free_beds': beds - occ,
+        })
+
+    result = {
+        'total_buildings': total_buildings,
+        'total_beds': total_beds,
+        'occupied_beds': total_occupied,
+        'free_beds': total_beds - total_occupied,
+        'buildings': buildings_list,
+    }
+
+    if detail == 'building-rooms' and building_id:
+        bid = int(building_id)
+        cur.execute("""
+            SELECT b.name FROM buildings b WHERE b.id = %d
+        """ % bid)
+        bname_row = cur.fetchone()
+        bname = bname_row[0] if bname_row else ''
+
+        cur.execute("""
+            SELECT r.id, r.room_number, r.capacity, r.floor
+            FROM rooms r
+            WHERE r.building_id = %d AND r.is_active = TRUE
+            ORDER BY r.floor, r.room_number
+        """ % bid)
+        room_rows = cur.fetchall()
+
+        safe_bname = bname.replace("'", "''")
+        cur.execute("""
+            SELECT a.room, a.id, a.full_name, a.position, a.organization, a.personal_code
+            FROM aho_arrivals a
+            WHERE a.building = '%s' AND a.arrival_status = 'arrived'
+              AND a.room IS NOT NULL AND a.room != '' AND a.is_hidden = FALSE
+            ORDER BY a.room, a.full_name
+        """ % safe_bname)
+        residents = cur.fetchall()
+
+        res_map = {}
+        for res in residents:
+            rm = res[0]
+            if rm not in res_map:
+                res_map[rm] = []
+            res_map[rm].append({
+                'id': res[1], 'full_name': res[2], 'position': res[3] or '',
+                'organization': res[4] or '', 'personal_code': res[5] or '',
+            })
+
+        rooms_detail = []
+        for rr in room_rows:
+            rnum = rr[1]
+            room_residents = res_map.get(rnum, [])
+            rooms_detail.append({
+                'id': rr[0], 'room_number': rnum, 'capacity': rr[2], 'floor': rr[3],
+                'occupied': len(room_residents), 'free': rr[2] - len(room_residents),
+                'residents': room_residents,
+            })
+
+        result['building_detail'] = {
+            'building_id': bid, 'building_name': bname,
+            'rooms': rooms_detail,
+        }
+
+    if detail == 'all-residents':
+        cur.execute("""
+            SELECT a.id, a.full_name, a.position, a.organization, a.personal_code,
+                   a.room, a.building
+            FROM aho_arrivals a
+            WHERE a.arrival_status = 'arrived' AND a.is_hidden = FALSE
+              AND a.room IS NOT NULL AND a.room != ''
+            ORDER BY a.building, a.room, a.full_name
+        """)
+        all_res = cur.fetchall()
+        result['all_residents'] = [{
+            'id': r[0], 'full_name': r[1], 'position': r[2] or '',
+            'organization': r[3] or '', 'personal_code': r[4] or '',
+            'room': r[5], 'building': r[6] or '',
+        } for r in all_res]
+
+    cur.close()
+    conn.close()
+    return json_response(200, result)

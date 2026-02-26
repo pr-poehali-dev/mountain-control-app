@@ -1,0 +1,1 @@
+UPDATE buildings SET is_active = FALSE WHERE name = 'Тестовое здание';

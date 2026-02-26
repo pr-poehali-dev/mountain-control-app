@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import Icon from "@/components/ui/icon";
+import HousingStats from "@/components/aho/HousingStats";
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -733,6 +734,8 @@ const Aho = () => {
 
         {/* === РАССЕЛЕНИЕ === */}
         <TabsContent value="housing" className="space-y-4">
+          <HousingStats />
+
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">Жилые здания</h3>
             <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => setShowBuildingSettings(true)}>

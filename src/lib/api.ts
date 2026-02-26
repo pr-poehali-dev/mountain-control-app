@@ -259,6 +259,8 @@ export const ahoApi = {
     request(API.aho, "", { method: "PUT", body, params: { action: "rooms" } }),
   createRoomsBatch: (building_id: number, rooms: Array<{ room_number: string; capacity?: number; floor?: number }>) =>
     request(API.aho, "", { method: "POST", body: { building_id, rooms }, params: { action: "rooms-batch" } }),
+  getHousingStats: (params?: Record<string, string>) =>
+    request(API.aho, "", { params: { action: "housing-stats", ...params } }),
 };
 
 export const scannerApi = {

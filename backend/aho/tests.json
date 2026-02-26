@@ -69,6 +69,12 @@
       "method": "GET",
       "path": "/?action=rooms",
       "expectedStatus": 400
+    },
+    {
+      "name": "Get housing stats",
+      "method": "GET",
+      "path": "/?action=housing-stats",
+      "expectedStatus": 200
     }
   ]
 }
