@@ -174,6 +174,8 @@ const Medical = () => {
   const [denyLoading, setDenyLoading] = useState(false);
   const [denyResult, setDenyResult] = useState<ScanResult | null>(null);
 
+  const [cardFilter, setCardFilter] = useState<string | null>(null);
+
   const [showSchedule, setShowSchedule] = useState(false);
   const [schedDayStart, setSchedDayStart] = useState("05:00");
   const [schedDayEnd, setSchedDayEnd] = useState("17:00");
@@ -356,6 +358,46 @@ const Medical = () => {
   const waiting = stats.pending ?? 0;
   const total = stats.total || passed + failed + waiting || 1;
 
+  const cardFilteredRecords = records.filter((r) => {
+    if (!cardFilter) return true;
+    switch (cardFilter) {
+      case "total": return true;
+      case "workers": return !r.is_itr;
+      case "itr": return r.is_itr;
+      case "passed": return r.status === "passed";
+      case "failed": return r.status === "failed";
+      case "pending": return r.status === "pending";
+      default: return true;
+    }
+  });
+
+  const cardFilterLabels: Record<string, string> = {
+    total: "Все сотрудники",
+    workers: "Рабочие",
+    itr: "ИТР",
+    passed: "Допущены к работе",
+    failed: "Не допущены",
+    pending: "Ожидают медосмотр",
+  };
+
+  const cardFilterIcons: Record<string, string> = {
+    total: "Users",
+    workers: "HardHat",
+    itr: "GraduationCap",
+    passed: "CheckCircle2",
+    failed: "XCircle",
+    pending: "Clock",
+  };
+
+  const cardFilterColors: Record<string, string> = {
+    total: "text-mine-cyan",
+    workers: "text-mine-amber",
+    itr: "text-indigo-400",
+    passed: "text-mine-green",
+    failed: "text-mine-red",
+    pending: "text-mine-amber",
+  };
+
   const filtered = records.filter((r) => {
     const matchSearch = (r.person_name || r.full_name || "").toLowerCase().includes(search.toLowerCase()) ||
       (r.person_code || r.personal_code || "").toLowerCase().includes(search.toLowerCase());
@@ -409,14 +451,18 @@ const Medical = () => {
 
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
           {[
-            { label: "Всего", value: total, icon: "Users", border: "border-mine-cyan/20", bg: "bg-mine-cyan/5", iconBg: "bg-mine-cyan/10", iconText: "text-mine-cyan", valueText: "text-mine-cyan" },
-            { label: "Рабочие", value: stats.workers?.total ?? 0, icon: "HardHat", border: "border-mine-amber/20", bg: "bg-mine-amber/5", iconBg: "bg-mine-amber/10", iconText: "text-mine-amber", valueText: "text-mine-amber" },
-            { label: "ИТР", value: stats.itr?.total ?? 0, icon: "GraduationCap", border: "border-indigo-400/20", bg: "bg-indigo-400/5", iconBg: "bg-indigo-400/10", iconText: "text-indigo-400", valueText: "text-indigo-400" },
-            { label: "Допущены", value: passed, icon: "CheckCircle2", border: "border-mine-green/20", bg: "bg-mine-green/5", iconBg: "bg-mine-green/10", iconText: "text-mine-green", valueText: "text-mine-green" },
-            { label: "Не допущ.", value: failed, icon: "XCircle", border: "border-mine-red/20", bg: "bg-mine-red/5", iconBg: "bg-mine-red/10", iconText: "text-mine-red", valueText: "text-mine-red" },
-            { label: "Ожидают", value: waiting, icon: "Clock", border: "border-mine-amber/20", bg: "bg-mine-amber/5", iconBg: "bg-mine-amber/10", iconText: "text-mine-amber", valueText: "text-mine-amber" },
+            { label: "Всего", value: total, icon: "Users", filterKey: "total", border: "border-mine-cyan/20", bg: "bg-mine-cyan/5", iconBg: "bg-mine-cyan/10", iconText: "text-mine-cyan", valueText: "text-mine-cyan" },
+            { label: "Рабочие", value: stats.workers?.total ?? 0, icon: "HardHat", filterKey: "workers", border: "border-mine-amber/20", bg: "bg-mine-amber/5", iconBg: "bg-mine-amber/10", iconText: "text-mine-amber", valueText: "text-mine-amber" },
+            { label: "ИТР", value: stats.itr?.total ?? 0, icon: "GraduationCap", filterKey: "itr", border: "border-indigo-400/20", bg: "bg-indigo-400/5", iconBg: "bg-indigo-400/10", iconText: "text-indigo-400", valueText: "text-indigo-400" },
+            { label: "Допущены", value: passed, icon: "CheckCircle2", filterKey: "passed", border: "border-mine-green/20", bg: "bg-mine-green/5", iconBg: "bg-mine-green/10", iconText: "text-mine-green", valueText: "text-mine-green" },
+            { label: "Не допущ.", value: failed, icon: "XCircle", filterKey: "failed", border: "border-mine-red/20", bg: "bg-mine-red/5", iconBg: "bg-mine-red/10", iconText: "text-mine-red", valueText: "text-mine-red" },
+            { label: "Ожидают", value: waiting, icon: "Clock", filterKey: "pending", border: "border-mine-amber/20", bg: "bg-mine-amber/5", iconBg: "bg-mine-amber/10", iconText: "text-mine-amber", valueText: "text-mine-amber" },
           ].map((card) => (
-            <div key={card.label} className={`rounded-xl border ${card.border} ${card.bg} p-3 flex items-center gap-2.5`}>
+            <button
+              key={card.label}
+              onClick={() => setCardFilter(card.filterKey)}
+              className={`rounded-xl border ${card.border} ${card.bg} p-3 flex items-center gap-2.5 cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg hover:shadow-black/10 active:scale-[0.98] text-left`}
+            >
               <div className={`w-8 h-8 rounded-lg ${card.iconBg} flex items-center justify-center shrink-0`}>
                 <Icon name={card.icon} size={16} className={card.iconText} />
               </div>
@@ -424,7 +470,7 @@ const Medical = () => {
                 <p className="text-[10px] text-muted-foreground leading-tight truncate">{card.label}</p>
                 <p className={`text-lg font-bold ${card.valueText} leading-tight`}>{card.value}</p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -969,6 +1015,94 @@ const Medical = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!cardFilter} onOpenChange={(open) => { if (!open) setCardFilter(null); }}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {cardFilter && (
+                <>
+                  <Icon name={cardFilterIcons[cardFilter] || "Users"} size={18} className={cardFilterColors[cardFilter] || "text-mine-cyan"} />
+                  {cardFilterLabels[cardFilter] || "Список"}
+                  <Badge variant="outline" className="ml-2 text-xs">{cardFilteredRecords.length}</Badge>
+                </>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto -mx-6 px-6">
+            {cardFilteredRecords.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+                  <Icon name="UserX" size={24} className="text-muted-foreground/50" />
+                </div>
+                <p className="text-sm text-muted-foreground">Нет записей в этой категории</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {cardFilteredRecords.map((r, i) => {
+                  const statusText = medicalStatusLabels[r.status] || r.status;
+                  const code = r.person_code || r.personal_code || "";
+                  const name = r.person_name || r.full_name || "";
+                  return (
+                    <div
+                      key={(r.id || i)}
+                      className={`rounded-lg border p-3 flex items-center gap-3 animate-fade-in ${
+                        r.status === "failed" ? "border-mine-red/20 bg-mine-red/5" :
+                        r.status === "passed" ? "border-mine-green/10 bg-card" :
+                        "border-mine-amber/10 bg-card"
+                      }`}
+                      style={{ animationDelay: `${i * 20}ms` }}
+                    >
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                        r.is_itr ? "bg-indigo-400/10" : "bg-mine-amber/10"
+                      }`}>
+                        <Icon
+                          name={r.is_itr ? "GraduationCap" : "HardHat"}
+                          size={16}
+                          className={r.is_itr ? "text-indigo-400" : "text-mine-amber"}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground truncate">{name}</p>
+                          <code className="text-[10px] text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded shrink-0">{code}</code>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground truncate">{r.position || "—"}</span>
+                          {r.department && (
+                            <>
+                              <span className="text-muted-foreground/30">·</span>
+                              <span className="text-xs text-muted-foreground truncate">{r.department}</span>
+                            </>
+                          )}
+                          {r.organization && (
+                            <>
+                              <span className="text-muted-foreground/30">·</span>
+                              <span className="text-xs text-muted-foreground truncate">{r.organization}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {r.tab_number && (
+                          <span className="text-[10px] text-muted-foreground font-mono">Таб. {r.tab_number}</span>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${statusColors[statusText] || ""}`}
+                        >
+                          {statusText}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground font-mono">{formatTime(r.checked_at)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showSchedule} onOpenChange={setShowSchedule}>
         <DialogContent className="sm:max-w-md">
