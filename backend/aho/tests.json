@@ -43,6 +43,32 @@
       "method": "GET",
       "path": "/?action=export-all",
       "expectedStatus": 200
+    },
+    {
+      "name": "Get buildings list",
+      "method": "GET",
+      "path": "/?action=buildings",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Create building",
+      "method": "POST",
+      "path": "/?action=buildings",
+      "body": {"name": "Тестовое здание", "number": "Т-1"},
+      "expectedStatus": 200
+    },
+    {
+      "name": "Create building requires name",
+      "method": "POST",
+      "path": "/?action=buildings",
+      "body": {},
+      "expectedStatus": 400
+    },
+    {
+      "name": "Get rooms requires building_id",
+      "method": "GET",
+      "path": "/?action=rooms",
+      "expectedStatus": 400
     }
   ]
 }

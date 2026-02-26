@@ -245,6 +245,20 @@ export const ahoApi = {
     request(API.aho, "", { method: "POST", body: { reset_type: resetType }, params: { action: "reset" } }),
   exportAllData: () =>
     request(API.aho, "", { params: { action: "export-all" } }),
+  getBuildings: () =>
+    request(API.aho, "", { params: { action: "buildings" } }),
+  createBuilding: (body: { name: string; number?: string }) =>
+    request(API.aho, "", { method: "POST", body, params: { action: "buildings" } }),
+  updateBuilding: (body: Record<string, unknown>) =>
+    request(API.aho, "", { method: "PUT", body, params: { action: "buildings" } }),
+  getRooms: (building_id: number) =>
+    request(API.aho, "", { params: { action: "rooms", building_id: String(building_id) } }),
+  createRoom: (body: Record<string, unknown>) =>
+    request(API.aho, "", { method: "POST", body, params: { action: "rooms" } }),
+  updateRoom: (body: Record<string, unknown>) =>
+    request(API.aho, "", { method: "PUT", body, params: { action: "rooms" } }),
+  createRoomsBatch: (building_id: number, rooms: Array<{ room_number: string; capacity?: number; floor?: number }>) =>
+    request(API.aho, "", { method: "POST", body: { building_id, rooms }, params: { action: "rooms-batch" } }),
 };
 
 export const scannerApi = {

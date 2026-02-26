@@ -71,6 +71,20 @@ def handler(event, context):
         return perform_reset(body)
     elif method == 'GET' and action == 'export-all':
         return export_all_data()
+    elif method == 'GET' and action == 'buildings':
+        return get_buildings()
+    elif method == 'POST' and action == 'buildings':
+        return create_building(body)
+    elif method == 'PUT' and action == 'buildings':
+        return update_building(body)
+    elif method == 'GET' and action == 'rooms':
+        return get_rooms(params)
+    elif method == 'POST' and action == 'rooms':
+        return create_room(body)
+    elif method == 'PUT' and action == 'rooms':
+        return update_room(body)
+    elif method == 'POST' and action == 'rooms-batch':
+        return create_rooms_batch(body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -1090,3 +1104,254 @@ def export_all_data():
         'exported_at': datetime.now().isoformat(),
         'message': 'Полная выгрузка всех данных (включая скрытые)',
     })
+
+
+def get_buildings():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT b.id, b.name, b.number, b.total_rooms, b.total_capacity, b.sort_order, b.is_active,
+               (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as actual_rooms,
+               (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as actual_capacity,
+               (SELECT COUNT(*) FROM aho_arrivals a WHERE a.building = b.name AND a.arrival_status = 'arrived' AND a.room != '' AND a.room IS NOT NULL) as occupied_people
+        FROM buildings b
+        WHERE b.is_active = TRUE
+        ORDER BY b.sort_order, b.id
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    buildings = []
+    for r in rows:
+        buildings.append({
+            'id': r[0], 'name': r[1], 'number': r[2],
+            'total_rooms': r[3], 'total_capacity': r[4],
+            'sort_order': r[5], 'is_active': r[6],
+            'actual_rooms': r[7], 'actual_capacity': r[8],
+            'occupied_people': r[9],
+        })
+    return json_response(200, {'buildings': buildings})
+
+
+def create_building(body):
+    name = body.get('name', '').strip()
+    number = body.get('number', '').strip()
+    if not name:
+        return json_response(400, {'error': 'Укажите название здания'})
+    if not number:
+        number = name
+
+    conn = get_db()
+    cur = conn.cursor()
+    safe_name = name.replace("'", "''")
+    safe_number = number.replace("'", "''")
+    cur.execute("""
+        INSERT INTO buildings (name, number, sort_order)
+        VALUES ('%s', '%s', (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM buildings))
+        RETURNING id
+    """ % (safe_name, safe_number))
+    building_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'id': building_id, 'message': 'Здание добавлено'})
+
+
+def update_building(body):
+    building_id = body.get('id')
+    if not building_id:
+        return json_response(400, {'error': 'Не указан id здания'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    sets = []
+    if 'name' in body:
+        sets.append("name = '%s'" % str(body['name']).replace("'", "''"))
+    if 'number' in body:
+        sets.append("number = '%s'" % str(body['number']).replace("'", "''"))
+    if 'is_active' in body:
+        sets.append("is_active = %s" % ('TRUE' if body['is_active'] else 'FALSE'))
+    if 'sort_order' in body:
+        sets.append("sort_order = %d" % int(body['sort_order']))
+
+    if not sets:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Нечего обновлять'})
+
+    sets.append("updated_at = NOW()")
+    cur.execute("UPDATE buildings SET %s WHERE id = %d" % (', '.join(sets), int(building_id)))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Здание обновлено'})
+
+
+def get_rooms(params):
+    building_id = params.get('building_id', '')
+    if not building_id:
+        return json_response(400, {'error': 'Не указан building_id'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT r.id, r.room_number, r.capacity, r.floor, r.notes, r.is_active,
+               b.name as building_name
+        FROM rooms r
+        JOIN buildings b ON r.building_id = b.id
+        WHERE r.building_id = %d AND r.is_active = TRUE
+        ORDER BY r.floor, r.room_number
+    """ % int(building_id))
+    rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT a.room, COUNT(*) FROM aho_arrivals a
+        JOIN buildings b ON a.building = b.name
+        WHERE b.id = %d AND a.arrival_status = 'arrived' AND a.room IS NOT NULL AND a.room != ''
+        GROUP BY a.room
+    """ % int(building_id))
+    occupied_map = {r[0]: r[1] for r in cur.fetchall()}
+
+    cur.close()
+    conn.close()
+
+    rooms = []
+    for r in rows:
+        room_num = r[1]
+        rooms.append({
+            'id': r[0], 'room_number': room_num, 'capacity': r[2],
+            'floor': r[3], 'notes': r[4] or '', 'is_active': r[5],
+            'building_name': r[6],
+            'occupied': occupied_map.get(room_num, 0),
+        })
+    return json_response(200, {'rooms': rooms})
+
+
+def create_room(body):
+    building_id = body.get('building_id')
+    room_number = body.get('room_number', '').strip()
+    capacity = int(body.get('capacity', 2))
+    floor = int(body.get('floor', 1))
+    notes = body.get('notes', '').strip()
+
+    if not building_id or not room_number:
+        return json_response(400, {'error': 'Укажите building_id и room_number'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    safe_num = room_number.replace("'", "''")
+    safe_notes = notes.replace("'", "''")
+
+    cur.execute("SELECT id FROM rooms WHERE building_id = %d AND room_number = '%s'" % (int(building_id), safe_num))
+    if cur.fetchone():
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Комната %s уже существует в этом здании' % room_number})
+
+    cur.execute("""
+        INSERT INTO rooms (building_id, room_number, capacity, floor, notes)
+        VALUES (%d, '%s', %d, %d, '%s') RETURNING id
+    """ % (int(building_id), safe_num, capacity, floor, safe_notes))
+    room_id = cur.fetchone()[0]
+
+    update_building_totals(cur, int(building_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'id': room_id, 'message': 'Комната добавлена'})
+
+
+def update_room(body):
+    room_id = body.get('id')
+    if not room_id:
+        return json_response(400, {'error': 'Не указан id комнаты'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    sets = []
+    if 'room_number' in body:
+        sets.append("room_number = '%s'" % str(body['room_number']).replace("'", "''"))
+    if 'capacity' in body:
+        sets.append("capacity = %d" % int(body['capacity']))
+    if 'floor' in body:
+        sets.append("floor = %d" % int(body['floor']))
+    if 'notes' in body:
+        sets.append("notes = '%s'" % str(body['notes']).replace("'", "''"))
+    if 'is_active' in body:
+        sets.append("is_active = %s" % ('TRUE' if body['is_active'] else 'FALSE'))
+
+    if not sets:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Нечего обновлять'})
+
+    sets.append("updated_at = NOW()")
+    cur.execute("UPDATE rooms SET %s WHERE id = %d" % (', '.join(sets), int(room_id)))
+
+    cur.execute("SELECT building_id FROM rooms WHERE id = %d" % int(room_id))
+    row = cur.fetchone()
+    if row:
+        update_building_totals(cur, row[0])
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Комната обновлена'})
+
+
+def create_rooms_batch(body):
+    building_id = body.get('building_id')
+    rooms_list = body.get('rooms', [])
+
+    if not building_id or not rooms_list:
+        return json_response(400, {'error': 'Укажите building_id и список rooms'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    created = 0
+
+    for rm in rooms_list:
+        room_number = str(rm.get('room_number', '')).strip()
+        capacity = int(rm.get('capacity', 2))
+        floor = int(rm.get('floor', 1))
+        notes = str(rm.get('notes', '')).strip()
+
+        if not room_number:
+            continue
+
+        safe_num = room_number.replace("'", "''")
+        safe_notes = notes.replace("'", "''")
+
+        cur.execute("SELECT id FROM rooms WHERE building_id = %d AND room_number = '%s'" % (int(building_id), safe_num))
+        if cur.fetchone():
+            continue
+
+        cur.execute("""
+            INSERT INTO rooms (building_id, room_number, capacity, floor, notes)
+            VALUES (%d, '%s', %d, %d, '%s')
+        """ % (int(building_id), safe_num, capacity, floor, safe_notes))
+        created += 1
+
+    update_building_totals(cur, int(building_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'created': created, 'message': 'Добавлено комнат: %d' % created})
+
+
+def update_building_totals(cur, building_id):
+    cur.execute("""
+        UPDATE buildings SET
+            total_rooms = (SELECT COUNT(*) FROM rooms WHERE building_id = %d AND is_active = TRUE),
+            total_capacity = (SELECT COALESCE(SUM(capacity), 0) FROM rooms WHERE building_id = %d AND is_active = TRUE),
+            updated_at = NOW()
+        WHERE id = %d
+    """ % (building_id, building_id, building_id))

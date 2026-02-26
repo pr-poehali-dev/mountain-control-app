@@ -142,9 +142,32 @@ const Aho = () => {
   const [uploadOrgType, setUploadOrgType] = useState("contractor");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [buildings, setBuildings] = useState<Array<{
+    id: number; name: string; number: string; total_rooms: number;
+    total_capacity: number; actual_rooms: number; actual_capacity: number;
+    occupied_people: number; sort_order: number; is_active: boolean;
+  }>>([]);
+  const [buildingsLoading, setBuildingsLoading] = useState(false);
+  const [showBuildingSettings, setShowBuildingSettings] = useState(false);
+  const [newBuildingName, setNewBuildingName] = useState("");
+  const [newBuildingNumber, setNewBuildingNumber] = useState("");
+
+  const [selectedBuilding, setSelectedBuilding] = useState<number | null>(null);
+  const [buildingRooms, setBuildingRooms] = useState<Array<{
+    id: number; room_number: string; capacity: number; floor: number;
+    notes: string; is_active: boolean; building_name: string; occupied: number;
+  }>>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [newRoomNumber, setNewRoomNumber] = useState("");
+  const [newRoomCapacity, setNewRoomCapacity] = useState("2");
+  const [batchFrom, setBatchFrom] = useState("");
+  const [batchTo, setBatchTo] = useState("");
+  const [batchCapacity, setBatchCapacity] = useState("2");
+
   useEffect(() => {
     loadStats();
     loadBatches();
+    loadBuildings();
   }, []);
 
   useEffect(() => {
@@ -303,6 +326,99 @@ const Aho = () => {
       setRoomValue("");
       setBuildingValue("");
       loadArrivals();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const loadBuildings = async () => {
+    setBuildingsLoading(true);
+    try {
+      const res = await ahoApi.getBuildings();
+      setBuildings(res.buildings || []);
+    } catch { /* */ }
+    finally { setBuildingsLoading(false); }
+  };
+
+  const handleCreateBuilding = async () => {
+    if (!newBuildingName.trim()) return;
+    try {
+      await ahoApi.createBuilding({ name: newBuildingName.trim(), number: newBuildingNumber.trim() || undefined });
+      toast({ title: "Здание добавлено" });
+      setNewBuildingName("");
+      setNewBuildingNumber("");
+      loadBuildings();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteBuilding = async (id: number) => {
+    try {
+      await ahoApi.updateBuilding({ id, is_active: false });
+      toast({ title: "Здание удалено" });
+      loadBuildings();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const openBuilding = async (buildingId: number) => {
+    setSelectedBuilding(buildingId);
+    setRoomsLoading(true);
+    try {
+      const res = await ahoApi.getRooms(buildingId);
+      setBuildingRooms(res.rooms || []);
+    } catch { /* */ }
+    finally { setRoomsLoading(false); }
+  };
+
+  const handleAddRoom = async () => {
+    if (!selectedBuilding || !newRoomNumber.trim()) return;
+    try {
+      await ahoApi.createRoom({
+        building_id: selectedBuilding,
+        room_number: newRoomNumber.trim(),
+        capacity: parseInt(newRoomCapacity) || 2,
+      });
+      setNewRoomNumber("");
+      openBuilding(selectedBuilding);
+      loadBuildings();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleBatchRooms = async () => {
+    if (!selectedBuilding || !batchFrom || !batchTo) return;
+    const from = parseInt(batchFrom);
+    const to = parseInt(batchTo);
+    if (isNaN(from) || isNaN(to) || from > to || to - from > 200) {
+      toast({ title: "Некорректный диапазон", variant: "destructive" });
+      return;
+    }
+    const rooms = [];
+    for (let i = from; i <= to; i++) {
+      rooms.push({ room_number: String(i), capacity: parseInt(batchCapacity) || 2 });
+    }
+    try {
+      const res = await ahoApi.createRoomsBatch(selectedBuilding, rooms);
+      toast({ title: res.message });
+      setBatchFrom("");
+      setBatchTo("");
+      openBuilding(selectedBuilding);
+      loadBuildings();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteRoom = async (roomId: number) => {
+    if (!selectedBuilding) return;
+    try {
+      await ahoApi.updateRoom({ id: roomId, is_active: false });
+      openBuilding(selectedBuilding);
+      loadBuildings();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -572,84 +688,166 @@ const Aho = () => {
 
         {/* === РАССЕЛЕНИЕ === */}
         <TabsContent value="housing" className="space-y-4">
-          <div className="flex gap-3 flex-wrap">
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[160px] bg-secondary/50 h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все</SelectItem>
-                <SelectItem value="arrived">На территории</SelectItem>
-                <SelectItem value="expected">Ожидается</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={loadArrivals} disabled={loading}>
-              <Icon name="RefreshCw" size={14} />
-              Обновить
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Жилые здания</h3>
+            <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => setShowBuildingSettings(true)}>
+              <Icon name="Settings" size={14} />
+              Настройка зданий
             </Button>
           </div>
 
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            {arrivals.length === 0 ? (
-              <div className="p-12 text-center">
-                <Icon name="Home" size={32} className="text-muted-foreground/20 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Нет записей</p>
+          {buildingsLoading ? (
+            <div className="flex justify-center py-8">
+              <Icon name="Loader2" size={20} className="animate-spin text-muted-foreground" />
+            </div>
+          ) : buildings.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-8 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+                <Icon name="Building2" size={24} className="text-muted-foreground/40" />
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-secondary/30">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Статус</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Комната</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Корпус</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {arrivals.map(item => {
-                      const st = STATUS_MAP[item.arrival_status] || STATUS_MAP.expected;
-                      return (
-                        <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20">
-                          <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
-                          <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
-                          <td className="px-3 py-2">
-                            <span className={`text-xs ${st.color}`}>{st.label}</span>
-                          </td>
-                          <td className="px-3 py-2 text-xs font-medium">
-                            {item.room ? (
-                              <span className="text-mine-green">{item.room}</span>
-                            ) : (
-                              <span className="text-mine-amber">Не заселён</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">{item.building || "—"}</td>
-                          <td className="px-3 py-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-[11px] gap-1"
-                              onClick={() => {
-                                setRoomDialog(item);
-                                setRoomValue(item.room || "");
-                                setBuildingValue(item.building || "");
-                              }}
-                            >
-                              <Icon name="Home" size={12} />
-                              {item.room ? "Переселить" : "Заселить"}
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <p className="text-sm text-muted-foreground mb-2">Жилые здания не настроены</p>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowBuildingSettings(true)}>
+                <Icon name="Plus" size={14} />
+                Добавить здание
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {buildings.map(b => {
+                const occupancyPct = b.actual_capacity > 0 ? Math.round((b.occupied_people / b.actual_capacity) * 100) : 0;
+                const occupancyColor = occupancyPct >= 90 ? "text-mine-red" : occupancyPct >= 60 ? "text-mine-amber" : "text-mine-green";
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => openBuilding(b.id)}
+                    className="rounded-xl border border-border bg-card p-4 text-left hover:border-mine-cyan/30 hover:shadow-lg hover:shadow-mine-cyan/5 transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-lg bg-mine-cyan/10 flex items-center justify-center">
+                          <Icon name="Building2" size={18} className="text-mine-cyan" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground group-hover:text-mine-cyan transition-colors">{b.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{b.number}</p>
+                        </div>
+                      </div>
+                      <Icon name="ChevronRight" size={16} className="text-muted-foreground/30 group-hover:text-mine-cyan/50 transition-colors mt-1" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-foreground">{b.actual_rooms}</p>
+                        <p className="text-[10px] text-muted-foreground">Комнат</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-foreground">{b.actual_capacity}</p>
+                        <p className="text-[10px] text-muted-foreground">Мест</p>
+                      </div>
+                      <div className="text-center">
+                        <p className={`text-lg font-bold ${occupancyColor}`}>{b.occupied_people}</p>
+                        <p className="text-[10px] text-muted-foreground">Заселено</p>
+                      </div>
+                    </div>
+                    {b.actual_capacity > 0 && (
+                      <div className="mt-3">
+                        <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${occupancyPct >= 90 ? "bg-mine-red" : occupancyPct >= 60 ? "bg-mine-amber" : "bg-mine-green"}`}
+                            style={{ width: `${Math.min(occupancyPct, 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1 text-right">{occupancyPct}% занято</p>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="border-t border-border pt-4 mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-foreground">Список расселения</h3>
+              <div className="flex gap-3 flex-wrap">
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-[160px] bg-secondary/50 h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все</SelectItem>
+                    <SelectItem value="arrived">На территории</SelectItem>
+                    <SelectItem value="expected">Ожидается</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={loadArrivals} disabled={loading}>
+                  <Icon name="RefreshCw" size={14} />
+                  Обновить
+                </Button>
               </div>
-            )}
+            </div>
+
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              {arrivals.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Icon name="Home" size={32} className="text-muted-foreground/20 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Нет записей</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/30">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Статус</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Комната</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Корпус</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {arrivals.map(item => {
+                        const st = STATUS_MAP[item.arrival_status] || STATUS_MAP.expected;
+                        return (
+                          <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20">
+                            <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
+                            <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
+                            <td className="px-3 py-2">
+                              <span className={`text-xs ${st.color}`}>{st.label}</span>
+                            </td>
+                            <td className="px-3 py-2 text-xs font-medium">
+                              {item.room ? (
+                                <span className="text-mine-green">{item.room}</span>
+                              ) : (
+                                <span className="text-mine-amber">Не заселён</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{item.building || "—"}</td>
+                            <td className="px-3 py-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-[11px] gap-1"
+                                onClick={() => {
+                                  setRoomDialog(item);
+                                  setRoomValue(item.room || "");
+                                  setBuildingValue(item.building || "");
+                                }}
+                              >
+                                <Icon name="Home" size={12} />
+                                {item.room ? "Переселить" : "Заселить"}
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </TabsContent>
 
@@ -911,6 +1109,153 @@ const Aho = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showBuildingSettings} onOpenChange={setShowBuildingSettings}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon name="Building2" size={18} className="text-mine-cyan" />
+              Настройка жилых зданий
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto -mx-6 px-6 space-y-4">
+            <div className="flex gap-2">
+              <Input
+                value={newBuildingName}
+                onChange={e => setNewBuildingName(e.target.value)}
+                placeholder="Название здания"
+                className="bg-secondary/50 flex-1"
+              />
+              <Input
+                value={newBuildingNumber}
+                onChange={e => setNewBuildingNumber(e.target.value)}
+                placeholder="Номер"
+                className="bg-secondary/50 w-24"
+              />
+              <Button onClick={handleCreateBuilding} disabled={!newBuildingName.trim()} className="gap-1 bg-mine-cyan text-white hover:bg-mine-cyan/90 shrink-0">
+                <Icon name="Plus" size={14} />
+                Добавить
+              </Button>
+            </div>
+
+            {buildings.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Зданий пока нет</p>
+            ) : (
+              <div className="space-y-2">
+                {buildings.map(b => (
+                  <div key={b.id} className="rounded-lg border border-border p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{b.name}</p>
+                      <p className="text-xs text-muted-foreground">{b.number} · {b.actual_rooms} комнат · {b.actual_capacity} мест</p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-mine-red hover:text-mine-red" onClick={() => handleDeleteBuilding(b.id)}>
+                      <Icon name="Trash2" size={14} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedBuilding} onOpenChange={(open) => { if (!open) setSelectedBuilding(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon name="DoorOpen" size={18} className="text-mine-cyan" />
+              {buildings.find(b => b.id === selectedBuilding)?.name || "Здание"} — Комнаты
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto -mx-6 px-6 space-y-4">
+            <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground">Добавить комнату</p>
+              <div className="flex gap-2">
+                <Input
+                  value={newRoomNumber}
+                  onChange={e => setNewRoomNumber(e.target.value)}
+                  placeholder="Номер комнаты"
+                  className="bg-secondary/50 w-32"
+                />
+                <Input
+                  value={newRoomCapacity}
+                  onChange={e => setNewRoomCapacity(e.target.value)}
+                  placeholder="Мест"
+                  type="number"
+                  className="bg-secondary/50 w-20"
+                />
+                <Button onClick={handleAddRoom} disabled={!newRoomNumber.trim()} size="sm" className="gap-1 bg-mine-green text-white hover:bg-mine-green/90">
+                  <Icon name="Plus" size={14} />
+                  Добавить
+                </Button>
+              </div>
+              <div className="border-t border-border/50 pt-3">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">Массовое добавление</p>
+                <div className="flex gap-2 items-center">
+                  <span className="text-xs text-muted-foreground">С</span>
+                  <Input
+                    value={batchFrom}
+                    onChange={e => setBatchFrom(e.target.value)}
+                    placeholder="1"
+                    type="number"
+                    className="bg-secondary/50 w-20"
+                  />
+                  <span className="text-xs text-muted-foreground">по</span>
+                  <Input
+                    value={batchTo}
+                    onChange={e => setBatchTo(e.target.value)}
+                    placeholder="20"
+                    type="number"
+                    className="bg-secondary/50 w-20"
+                  />
+                  <span className="text-xs text-muted-foreground">мест:</span>
+                  <Input
+                    value={batchCapacity}
+                    onChange={e => setBatchCapacity(e.target.value)}
+                    placeholder="2"
+                    type="number"
+                    className="bg-secondary/50 w-16"
+                  />
+                  <Button onClick={handleBatchRooms} disabled={!batchFrom || !batchTo} size="sm" className="gap-1 bg-mine-cyan text-white hover:bg-mine-cyan/90 shrink-0">
+                    <Icon name="Layers" size={14} />
+                    Создать
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {roomsLoading ? (
+              <div className="flex justify-center py-8">
+                <Icon name="Loader2" size={20} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : buildingRooms.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Комнат пока нет</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {buildingRooms.map(r => {
+                  const isFull = r.occupied >= r.capacity;
+                  return (
+                    <div key={r.id} className={`rounded-lg border p-2.5 relative group ${isFull ? "border-mine-red/20 bg-mine-red/5" : r.occupied > 0 ? "border-mine-amber/20 bg-mine-amber/5" : "border-border bg-card"}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold">{r.room_number}</span>
+                        <button onClick={() => handleDeleteRoom(r.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-mine-red/60 hover:text-mine-red">
+                          <Icon name="X" size={12} />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1">
+                        <Icon name="Users" size={10} className="text-muted-foreground" />
+                        <span className={`text-xs font-medium ${isFull ? "text-mine-red" : "text-muted-foreground"}`}>
+                          {r.occupied}/{r.capacity}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: Назначение комнаты */}
       <Dialog open={!!roomDialog} onOpenChange={() => setRoomDialog(null)}>
