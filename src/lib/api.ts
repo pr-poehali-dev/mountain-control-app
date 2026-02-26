@@ -187,6 +187,8 @@ export const medicalApi = {
     request(API.medical, "", { params: { action: "schedule" } }),
   saveSchedule: (body: { day_start: string; day_end: string; night_start: string; night_end: string }) =>
     request(API.medical, "", { method: "POST", body, params: { action: "schedule" } }),
+  getPersonnelList: (filter: string) =>
+    request(API.medical, "", { params: { action: "personnel_list", filter } }),
 };
 
 export const eventsApi = {

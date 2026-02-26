@@ -184,6 +184,8 @@ def handler(event, context):
         return get_schedule()
     elif method == 'POST' and action == 'schedule':
         return save_schedule(body)
+    elif method == 'GET' and action == 'personnel_list':
+        return get_personnel_list(params)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -392,6 +394,57 @@ def get_medical_stats(params):
             'total': r[5], 'passed': r[9], 'failed': r[10], 'pending': r[11]
         }
     })
+
+def get_personnel_list(params):
+    """Возвращает список сотрудников по категории для карточек статистики"""
+    filter_key = params.get('filter', 'total')
+
+    conn = get_db()
+    cur = conn.cursor()
+    itr_where = build_itr_where(cur)
+
+    base_where = "p.status != 'archived' AND p.is_hidden = FALSE"
+
+    extra = ""
+    if filter_key == 'workers':
+        extra = " AND NOT (%s)" % itr_where
+    elif filter_key == 'itr':
+        extra = " AND %s" % itr_where
+    elif filter_key == 'passed':
+        extra = " AND p.medical_status = 'passed'"
+    elif filter_key == 'failed':
+        extra = " AND p.medical_status = 'failed'"
+    elif filter_key == 'pending':
+        extra = " AND p.medical_status IN ('pending', '')"
+
+    cur.execute("""
+        SELECT p.id, p.full_name, p.personal_code, p.position, p.department,
+               p.organization, p.medical_status, p.tab_number,
+               CASE WHEN %s THEN TRUE ELSE FALSE END as is_itr
+        FROM personnel p
+        WHERE %s%s
+        ORDER BY p.full_name
+    """ % (itr_where, base_where, extra))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    items = []
+    for r in rows:
+        items.append({
+            'id': r[0],
+            'full_name': r[1],
+            'personal_code': r[2],
+            'position': r[3] or '',
+            'department': r[4] or '',
+            'organization': r[5] or '',
+            'medical_status': r[6] or 'pending',
+            'tab_number': r[7] or '',
+            'is_itr': r[8],
+        })
+
+    return json_response(200, {'personnel': items, 'total': len(items)})
+
 
 def scan_medical(body):
     raw_code = body.get('code', '').strip()

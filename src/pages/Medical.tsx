@@ -175,6 +175,12 @@ const Medical = () => {
   const [denyResult, setDenyResult] = useState<ScanResult | null>(null);
 
   const [cardFilter, setCardFilter] = useState<string | null>(null);
+  const [cardPersonnel, setCardPersonnel] = useState<Array<{
+    id: number; full_name: string; personal_code: string; position: string;
+    department: string; organization: string; medical_status: string;
+    tab_number: string; is_itr: boolean;
+  }>>([]);
+  const [cardPersonnelLoading, setCardPersonnelLoading] = useState(false);
 
   const [showSchedule, setShowSchedule] = useState(false);
   const [schedDayStart, setSchedDayStart] = useState("05:00");
@@ -358,18 +364,19 @@ const Medical = () => {
   const waiting = stats.pending ?? 0;
   const total = stats.total || passed + failed + waiting || 1;
 
-  const cardFilteredRecords = records.filter((r) => {
-    if (!cardFilter) return true;
-    switch (cardFilter) {
-      case "total": return true;
-      case "workers": return !r.is_itr;
-      case "itr": return r.is_itr;
-      case "passed": return r.status === "passed";
-      case "failed": return r.status === "failed";
-      case "pending": return r.status === "pending";
-      default: return true;
+  const openCardFilter = async (filterKey: string) => {
+    setCardFilter(filterKey);
+    setCardPersonnel([]);
+    setCardPersonnelLoading(true);
+    try {
+      const res = await medicalApi.getPersonnelList(filterKey);
+      setCardPersonnel(res.personnel || []);
+    } catch {
+      setCardPersonnel([]);
+    } finally {
+      setCardPersonnelLoading(false);
     }
-  });
+  };
 
   const cardFilterLabels: Record<string, string> = {
     total: "Все сотрудники",
@@ -460,7 +467,7 @@ const Medical = () => {
           ].map((card) => (
             <button
               key={card.label}
-              onClick={() => setCardFilter(card.filterKey)}
+              onClick={() => openCardFilter(card.filterKey)}
               className={`rounded-xl border ${card.border} ${card.bg} p-3 flex items-center gap-2.5 cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg hover:shadow-black/10 active:scale-[0.98] text-left`}
             >
               <div className={`w-8 h-8 rounded-lg ${card.iconBg} flex items-center justify-center shrink-0`}>
@@ -1024,31 +1031,34 @@ const Medical = () => {
                 <>
                   <Icon name={cardFilterIcons[cardFilter] || "Users"} size={18} className={cardFilterColors[cardFilter] || "text-mine-cyan"} />
                   {cardFilterLabels[cardFilter] || "Список"}
-                  <Badge variant="outline" className="ml-2 text-xs">{cardFilteredRecords.length}</Badge>
+                  <Badge variant="outline" className="ml-2 text-xs">{cardPersonnel.length}</Badge>
                 </>
               )}
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-auto -mx-6 px-6">
-            {cardFilteredRecords.length === 0 ? (
+            {cardPersonnelLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Icon name="Loader2" size={24} className="text-mine-cyan animate-spin mb-3" />
+                <p className="text-sm text-muted-foreground">Загрузка списка...</p>
+              </div>
+            ) : cardPersonnel.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
                   <Icon name="UserX" size={24} className="text-muted-foreground/50" />
                 </div>
-                <p className="text-sm text-muted-foreground">Нет записей в этой категории</p>
+                <p className="text-sm text-muted-foreground">Нет сотрудников в этой категории</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {cardFilteredRecords.map((r, i) => {
-                  const statusText = medicalStatusLabels[r.status] || r.status;
-                  const code = r.person_code || r.personal_code || "";
-                  const name = r.person_name || r.full_name || "";
+                {cardPersonnel.map((r, i) => {
+                  const statusText = medicalStatusLabels[r.medical_status] || r.medical_status;
                   return (
                     <div
-                      key={(r.id || i)}
+                      key={r.id}
                       className={`rounded-lg border p-3 flex items-center gap-3 animate-fade-in ${
-                        r.status === "failed" ? "border-mine-red/20 bg-mine-red/5" :
-                        r.status === "passed" ? "border-mine-green/10 bg-card" :
+                        r.medical_status === "failed" ? "border-mine-red/20 bg-mine-red/5" :
+                        r.medical_status === "passed" ? "border-mine-green/10 bg-card" :
                         "border-mine-amber/10 bg-card"
                       }`}
                       style={{ animationDelay: `${i * 20}ms` }}
@@ -1064,8 +1074,8 @@ const Medical = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground truncate">{name}</p>
-                          <code className="text-[10px] text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded shrink-0">{code}</code>
+                          <p className="text-sm font-medium text-foreground truncate">{r.full_name}</p>
+                          <code className="text-[10px] text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded shrink-0">{r.personal_code}</code>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground truncate">{r.position || "—"}</span>
@@ -1093,7 +1103,6 @@ const Medical = () => {
                         >
                           {statusText}
                         </Badge>
-                        <span className="text-xs text-muted-foreground font-mono">{formatTime(r.checked_at)}</span>
                       </div>
                     </div>
                   );
