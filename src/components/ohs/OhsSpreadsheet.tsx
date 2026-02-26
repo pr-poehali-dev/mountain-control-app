@@ -189,8 +189,6 @@ export default function OhsSpreadsheet({ sheet, documentId, onCellUpdate }: Prop
     }
   };
 
-  const formulaCount = Object.keys(localFormulas).length;
-
   const matchesSearch = useCallback(
     (rowIdx: number) => {
       if (!searchText.trim()) return true;
@@ -218,12 +216,7 @@ export default function OhsSpreadsheet({ sheet, documentId, onCellUpdate }: Prop
             <Icon name="Columns3" size={14} />
             {sheet.headers.length} столбцов
           </span>
-          {formulaCount > 0 && (
-            <span className="flex items-center gap-1.5 text-amber-400">
-              <Icon name="Function" size={14} />
-              {formulaCount} формул
-            </span>
-          )}
+        
         </div>
 
         <div className="relative">
@@ -243,18 +236,7 @@ export default function OhsSpreadsheet({ sheet, documentId, onCellUpdate }: Prop
           <span className="font-mono text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">
             {colLetter(selectedCell.col)}{selectedCell.row + 2}
           </span>
-          {getCellFormula(selectedCell.row, selectedCell.col) ? (
-            <span className="flex items-center gap-1.5 text-amber-400">
-              <Icon name="Function" size={14} />
-              <span className="font-mono text-xs">
-                {getCellFormula(selectedCell.row, selectedCell.col)}
-              </span>
-              <span className="text-muted-foreground mx-1">=</span>
-              <span className="text-foreground">{getCellDisplay(selectedCell.row, selectedCell.col)}</span>
-            </span>
-          ) : (
-            <span className="text-foreground">{getCellDisplay(selectedCell.row, selectedCell.col)}</span>
-          )}
+          <span className="text-foreground">{getCellDisplay(selectedCell.row, selectedCell.col)}</span>
         </div>
       )}
 
@@ -300,7 +282,6 @@ export default function OhsSpreadsheet({ sheet, documentId, onCellUpdate }: Prop
                 {sheet.headers.map((_, colIdx) => {
                   const isEditing = editingCell?.row === rowIdx && editingCell?.col === colIdx;
                   const isSelected = selectedCell?.row === rowIdx && selectedCell?.col === colIdx;
-                  const hasFormula = !!getCellFormula(rowIdx, colIdx);
                   const displayVal = getCellDisplay(rowIdx, colIdx);
                   const isNumber = !isNaN(Number(displayVal)) && displayVal.trim() !== "";
 
@@ -309,7 +290,7 @@ export default function OhsSpreadsheet({ sheet, documentId, onCellUpdate }: Prop
                       key={colIdx}
                       className={`px-1 py-0 border-r border-border/40 relative cursor-cell ${
                         isSelected ? "ring-2 ring-primary/60 ring-inset bg-primary/5" : ""
-                      } ${hasFormula && !isEditing ? "bg-amber-500/5" : ""}`}
+                      }`}
                       onClick={() => {
                         setSelectedCell({ row: rowIdx, col: colIdx });
                         if (!isEditing) setEditingCell(null);
@@ -327,10 +308,10 @@ export default function OhsSpreadsheet({ sheet, documentId, onCellUpdate }: Prop
                         />
                       ) : (
                         <div
-                          className={`px-2 py-1.5 truncate text-sm ${
+                          className={`px-2 py-1.5 truncate text-sm text-foreground ${
                             isNumber ? "text-right font-mono tabular-nums" : ""
-                          } ${hasFormula ? "text-amber-300/90" : "text-foreground"}`}
-                          title={hasFormula ? `Formula: ${getCellFormula(rowIdx, colIdx)}` : displayVal}
+                          }`}
+                          title={displayVal}
                         >
                           {displayVal || "\u00A0"}
                         </div>
@@ -350,14 +331,7 @@ export default function OhsSpreadsheet({ sheet, documentId, onCellUpdate }: Prop
         )}
       </div>
 
-      {formulaCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-lg text-xs text-amber-400/80">
-          <Icon name="Info" size={14} />
-          <span>
-            Ячейки с формулами подсвечены. Двойной клик для редактирования. Расчёты выполняются автоматически.
-          </span>
-        </div>
-      )}
+    
     </div>
   );
 }
