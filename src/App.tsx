@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { DemoProvider } from "@/contexts/DemoContext";
+import DemoBanner from "@/components/demo/DemoBanner";
 import Index from "./pages/Index";
 import Personnel from "./pages/Personnel";
 import Dispatcher from "./pages/Dispatcher";
@@ -18,6 +20,7 @@ import Ohs from "./pages/Ohs";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
+import DemoEntry from "./pages/DemoEntry";
 import NotFound from "./pages/NotFound";
 import { ReactNode } from "react";
 
@@ -58,23 +61,27 @@ function PublicRoute({ children }: { children: ReactNode }) {
 }
 
 const AppRoutes = () => (
-  <Routes>
-    <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-    <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-    <Route path="/personnel" element={<PageRoute page="personnel"><Personnel /></PageRoute>} />
-    <Route path="/dispatcher" element={<PageRoute page="dispatcher"><Dispatcher /></PageRoute>} />
-    <Route path="/medical" element={<PageRoute page="medical"><Medical /></PageRoute>} />
-    <Route path="/lampa" element={<PageRoute page="lampa"><Lampa /></PageRoute>} />
-    <Route path="/scanner" element={<PageRoute page="scanner"><Scanner /></PageRoute>} />
-    <Route path="/security" element={<PageRoute page="security"><Security /></PageRoute>} />
-    <Route path="/checkpoint" element={<PageRoute page="checkpoint"><Checkpoint /></PageRoute>} />
-    <Route path="/aho" element={<PageRoute page="aho"><Aho /></PageRoute>} />
-    <Route path="/ohs" element={<PageRoute page="ohs"><Ohs /></PageRoute>} />
-    <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />
-    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-    <Route path="/admin" element={<PageRoute page="admin"><Admin /></PageRoute>} />
-    <Route path="*" element={<NotFound />} />
-  </Routes>
+  <>
+    <DemoBanner />
+    <Routes>
+      <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+      <Route path="/demo/:token" element={<DemoEntry />} />
+      <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+      <Route path="/personnel" element={<PageRoute page="personnel"><Personnel /></PageRoute>} />
+      <Route path="/dispatcher" element={<PageRoute page="dispatcher"><Dispatcher /></PageRoute>} />
+      <Route path="/medical" element={<PageRoute page="medical"><Medical /></PageRoute>} />
+      <Route path="/lampa" element={<PageRoute page="lampa"><Lampa /></PageRoute>} />
+      <Route path="/scanner" element={<PageRoute page="scanner"><Scanner /></PageRoute>} />
+      <Route path="/security" element={<PageRoute page="security"><Security /></PageRoute>} />
+      <Route path="/checkpoint" element={<PageRoute page="checkpoint"><Checkpoint /></PageRoute>} />
+      <Route path="/aho" element={<PageRoute page="aho"><Aho /></PageRoute>} />
+      <Route path="/ohs" element={<PageRoute page="ohs"><Ohs /></PageRoute>} />
+      <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="/admin" element={<PageRoute page="admin"><Admin /></PageRoute>} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  </>
 );
 
 const App = () => (
@@ -83,9 +90,11 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AuthProvider>
-          <AppRoutes />
-        </AuthProvider>
+        <DemoProvider>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </DemoProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

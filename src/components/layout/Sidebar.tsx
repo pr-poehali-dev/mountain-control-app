@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Icon from "@/components/ui/icon";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDemo } from "@/contexts/DemoContext";
 
 const navItems = [
   { path: "/", page: "dashboard", icon: "LayoutDashboard", label: "Дашборд" },
@@ -24,9 +25,14 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, allowedPages } = useAuth();
+  const { isDemo, exitDemo } = useDemo();
 
   const handleLogout = () => {
-    logout();
+    if (isDemo) {
+      exitDemo();
+    } else {
+      logout();
+    }
     navigate("/login");
   };
 
@@ -34,9 +40,9 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-screen bg-card border-r border-border flex flex-col z-50 transition-all duration-300 ${
+      className={`fixed left-0 h-screen bg-card border-r border-border flex flex-col z-40 transition-all duration-300 ${
         collapsed ? "w-16" : "w-60"
-      }`}
+      } ${isDemo ? "top-10" : "top-0"}`}
     >
       <div className="flex items-center gap-3 p-4 border-b border-border min-h-[64px]">
         <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">

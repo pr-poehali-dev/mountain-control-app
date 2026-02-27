@@ -3,6 +3,7 @@ import Icon from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDemo } from "@/contexts/DemoContext";
 import { eventsApi } from "@/lib/api";
 
 interface HeaderProps {
@@ -77,14 +78,15 @@ function formatAgo(dateStr: string): string {
 
 export default function Header({ title, subtitle }: HeaderProps) {
   const { user } = useAuth();
+  const { isDemo } = useDemo();
   const { time, date } = useLiveClock();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const displayName = user?.full_name || user?.email || "Оператор";
-  const displayRole = user?.role ? (roleLabels[user.role] || user.role) : "Смена А";
+  const displayName = isDemo ? "Демо-пользователь" : (user?.full_name || user?.email || "Оператор");
+  const displayRole = isDemo ? "Демо-доступ" : (user?.role ? (roleLabels[user.role] || user.role) : "Смена А");
 
   const fetchNotifications = useCallback(async () => {
     try {

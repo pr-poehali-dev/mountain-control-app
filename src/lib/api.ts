@@ -40,6 +40,16 @@ export function setStoredUser(user: Record<string, unknown>) {
   localStorage.setItem("mc_user", JSON.stringify(user));
 }
 
+const DEMO_ALLOWED_ACTIONS = [
+  "me", "login", "login-code", "logout", "demo-enter", "demo-validate",
+  "list", "stats", "dashboard", "notifications", "shift", "schedule",
+  "batches", "search", "available", "buildings", "rooms", "housing-stats",
+  "medical-status", "medical-itr-stats", "itr-positions", "settings",
+  "denials", "detail", "repairs", "journal", "on-site", "messages",
+  "documents", "document", "users", "permissions", "demo-list",
+  "personnel_list", "recent", "person",
+];
+
 async function request(
   base: string,
   path: string,
@@ -51,6 +61,14 @@ async function request(
 ) {
   const { method = "GET", body, params } = options;
   const token = getToken();
+
+  if (localStorage.getItem("mc_demo") === "true" && method !== "GET") {
+    const action = params?.action || "";
+    const isAdminDemoAction = action.startsWith("demo-");
+    if (!isAdminDemoAction && !["login", "login-code", "logout", "demo-enter"].includes(action)) {
+      throw new Error("Демо-режим: сохранение данных доступно только в приобретённой версии");
+    }
+  }
 
   let url = `${base}${path}`;
   if (params) {
@@ -349,6 +367,21 @@ export const ohsApi = {
     request(API.ohs, "", { method: "PUT", body, params: { action: "cell" } }),
   deleteDocument: (document_id: number) =>
     request(API.ohs, "", { method: "POST", body: { document_id }, params: { action: "delete" } }),
+};
+
+export const demoApi = {
+  create: (body: { name?: string; days?: number; max_visits?: number }) =>
+    request(API.auth, "", { method: "POST", body, params: { action: "demo-create" } }),
+  list: () =>
+    request(API.auth, "", { params: { action: "demo-list" } }),
+  toggle: (id: number) =>
+    request(API.auth, "", { method: "POST", body: { id }, params: { action: "demo-toggle" } }),
+  remove: (id: number) =>
+    request(API.auth, "", { method: "DELETE", body: { id }, params: { action: "demo-delete" } }),
+  enter: (token: string) =>
+    request(API.auth, "", { method: "POST", body: { token }, params: { action: "demo-enter" } }),
+  validate: (demo_token: string) =>
+    request(API.auth, "", { params: { action: "demo-validate", demo_token } }),
 };
 
 export default API;

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
 import { useState, useEffect } from "react";
-import { ahoApi, authApi } from "@/lib/api";
+import { ahoApi, authApi, demoApi } from "@/lib/api";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -176,6 +176,12 @@ const Admin = () => {
   const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
   const [editUser, setEditUser] = useState<SystemUser | null>(null);
   const [editFields, setEditFields] = useState({ full_name: "", email: "", position: "", department: "", password: "" });
+  const [demoLinks, setDemoLinks] = useState<Array<{id: number; token: string; name: string; is_active: boolean; expires_at: string; max_visits: number; visit_count: number; created_at: string}>>([]);
+  const [demoLoading, setDemoLoading] = useState(true);
+  const [showAddDemo, setShowAddDemo] = useState(false);
+  const [newDemo, setNewDemo] = useState({ name: "", days: "7", max_visits: "0" });
+  const [addingDemo, setAddingDemo] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const loadPermissions = async () => {
     try {
@@ -285,10 +291,68 @@ const Admin = () => {
     setEditFields({ full_name: u.full_name, email: u.email, position: u.position || "", department: u.department || "", password: "" });
   };
 
+  const loadDemoLinks = async () => {
+    try {
+      const data = await demoApi.list();
+      setDemoLinks(data.links || []);
+    } catch { /* ignore */ }
+    finally { setDemoLoading(false); }
+  };
+
+  const handleCreateDemo = async () => {
+    if (!newDemo.name.trim()) {
+      toast({ title: "Введите название ссылки", variant: "destructive" });
+      return;
+    }
+    setAddingDemo(true);
+    try {
+      await demoApi.create({
+        name: newDemo.name.trim(),
+        days: parseInt(newDemo.days) || 7,
+        max_visits: parseInt(newDemo.max_visits) || 0,
+      });
+      toast({ title: "Демо-ссылка создана" });
+      setShowAddDemo(false);
+      setNewDemo({ name: "", days: "7", max_visits: "0" });
+      loadDemoLinks();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка создания", variant: "destructive" });
+    } finally { setAddingDemo(false); }
+  };
+
+  const handleToggleDemo = async (id: number) => {
+    try {
+      const res = await demoApi.toggle(id);
+      toast({ title: res.message });
+      loadDemoLinks();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteDemo = async (id: number) => {
+    try {
+      await demoApi.remove(id);
+      toast({ title: "Ссылка удалена" });
+      loadDemoLinks();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка удаления", variant: "destructive" });
+    }
+  };
+
+  const copyDemoLink = (token: string) => {
+    const url = `${window.location.origin}/demo/${token}`;
+    navigator.clipboard.writeText(url);
+    setCopiedToken(token);
+    toast({ title: "Ссылка скопирована" });
+    setTimeout(() => setCopiedToken(null), 2000);
+  };
+
   useEffect(() => {
     loadUsers();
     loadItrPositions();
     loadPermissions();
+    loadDemoLinks();
   }, []);
 
   const loadItrPositions = async () => {
@@ -811,6 +875,128 @@ const Admin = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Icon name="ExternalLink" size={18} className="text-mine-cyan" />
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Демо-ссылки</h3>
+              <p className="text-xs text-muted-foreground">Ссылки для ознакомительного доступа к системе без возможности сохранения</p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            className="gap-1.5 h-8 bg-mine-cyan text-white hover:bg-mine-cyan/90"
+            onClick={() => setShowAddDemo(!showAddDemo)}
+          >
+            <Icon name={showAddDemo ? "X" : "Plus"} size={14} />
+            {showAddDemo ? "Отмена" : "Создать"}
+          </Button>
+        </div>
+
+        {showAddDemo && (
+          <div className="p-4 border-b border-border bg-secondary/20 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input
+                placeholder="Название (напр. Для клиента Алмаз)"
+                value={newDemo.name}
+                onChange={(e) => setNewDemo({ ...newDemo, name: e.target.value })}
+                className="bg-secondary/50 text-xs"
+              />
+              <Input
+                type="number"
+                placeholder="Срок (дней)"
+                value={newDemo.days}
+                onChange={(e) => setNewDemo({ ...newDemo, days: e.target.value })}
+                className="bg-secondary/50 text-xs"
+              />
+              <Input
+                type="number"
+                placeholder="Лимит посещений (0 = без лимита)"
+                value={newDemo.max_visits}
+                onChange={(e) => setNewDemo({ ...newDemo, max_visits: e.target.value })}
+                className="bg-secondary/50 text-xs"
+              />
+            </div>
+            <Button
+              size="sm"
+              className="bg-mine-cyan text-white hover:bg-mine-cyan/90 gap-1.5"
+              onClick={handleCreateDemo}
+              disabled={addingDemo}
+            >
+              <Icon name="Plus" size={14} />
+              {addingDemo ? "Создание..." : "Создать ссылку"}
+            </Button>
+          </div>
+        )}
+
+        <div className="divide-y divide-border">
+          {demoLoading ? (
+            <div className="p-8 text-center">
+              <div className="w-6 h-6 border-2 border-mine-cyan border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          ) : demoLinks.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              <Icon name="Link" size={24} className="mx-auto mb-2 opacity-30" />
+              Демо-ссылки не созданы
+            </div>
+          ) : (
+            demoLinks.map((link) => {
+              const expired = new Date(link.expires_at) < new Date();
+              const limitReached = link.max_visits > 0 && link.visit_count >= link.max_visits;
+              const isAvailable = link.is_active && !expired && !limitReached;
+
+              return (
+                <div key={link.id} className="p-3 flex items-center gap-3 hover:bg-secondary/20 transition-colors">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${isAvailable ? "bg-mine-green animate-pulse-glow" : "bg-muted-foreground/30"}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground truncate">{link.name}</span>
+                      {!link.is_active && <Badge variant="outline" className="text-[10px] text-muted-foreground">откл</Badge>}
+                      {expired && <Badge variant="outline" className="text-[10px] text-mine-red">истекла</Badge>}
+                      {limitReached && <Badge variant="outline" className="text-[10px] text-mine-amber">лимит</Badge>}
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+                      <span>Посещений: {link.visit_count}{link.max_visits > 0 ? `/${link.max_visits}` : ""}</span>
+                      <span>До: {new Date(link.expires_at).toLocaleDateString("ru-RU")}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => copyDemoLink(link.token)}
+                      title="Копировать ссылку"
+                    >
+                      <Icon name={copiedToken === link.token ? "Check" : "Copy"} size={14} className={copiedToken === link.token ? "text-mine-green" : "text-muted-foreground"} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => handleToggleDemo(link.id)}
+                      title={link.is_active ? "Деактивировать" : "Активировать"}
+                    >
+                      <Icon name={link.is_active ? "Pause" : "Play"} size={14} className={link.is_active ? "text-mine-amber" : "text-mine-green"} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => handleDeleteDemo(link.id)}
+                      title="Удалить"
+                    >
+                      <Icon name="Trash2" size={14} className="text-mine-red" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

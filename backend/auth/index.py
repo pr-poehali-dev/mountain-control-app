@@ -98,6 +98,18 @@ def handler(event, context):
         return delete_user(event, body)
     elif method == 'PUT' and action == 'update-user':
         return update_user(event, body)
+    elif method == 'POST' and action == 'demo-create':
+        return demo_create(event, body)
+    elif method == 'GET' and action == 'demo-list':
+        return demo_list(event)
+    elif method == 'POST' and action == 'demo-toggle':
+        return demo_toggle(event, body)
+    elif method == 'DELETE' and action == 'demo-delete':
+        return demo_delete(event, body)
+    elif method == 'POST' and action == 'demo-enter':
+        return demo_enter(body)
+    elif method == 'GET' and action == 'demo-validate':
+        return demo_validate(event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -624,3 +636,209 @@ def update_user(event, body):
     conn.close()
 
     return json_response(200, {'message': 'Данные пользователя обновлены'})
+
+
+def demo_create(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    name = body.get('name', '').strip() or 'Демо-ссылка'
+    days = int(body.get('days', 7))
+    max_visits = int(body.get('max_visits', 0))
+
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now() + timedelta(days=days)
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO demo_links (token, name, expires_at, max_visits, created_by)
+        VALUES ('%s', '%s', '%s', %d, %d)
+        RETURNING id, token, created_at
+    """ % (token, name.replace("'", "''"), expires.isoformat(), max_visits, caller['id']))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'message': 'Демо-ссылка создана',
+        'link': {
+            'id': row[0], 'token': row[1], 'name': name,
+            'is_active': True, 'expires_at': expires,
+            'max_visits': max_visits, 'visit_count': 0,
+            'created_at': row[2]
+        }
+    })
+
+
+def demo_list(event):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, token, name, is_active, expires_at, max_visits, visit_count, created_at
+        FROM demo_links ORDER BY created_at DESC
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    links = []
+    for r in rows:
+        links.append({
+            'id': r[0], 'token': r[1], 'name': r[2],
+            'is_active': r[3], 'expires_at': r[4],
+            'max_visits': r[5], 'visit_count': r[6],
+            'created_at': r[7]
+        })
+
+    return json_response(200, {'links': links})
+
+
+def demo_toggle(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    link_id = body.get('id')
+    if not link_id:
+        return json_response(400, {'error': 'Укажите id ссылки'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE demo_links SET is_active = NOT is_active WHERE id = %d RETURNING is_active" % int(link_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Ссылка не найдена'})
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    status = 'активирована' if row[0] else 'деактивирована'
+    return json_response(200, {'message': 'Ссылка %s' % status, 'is_active': row[0]})
+
+
+def demo_delete(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    link_id = body.get('id')
+    if not link_id:
+        return json_response(400, {'error': 'Укажите id ссылки'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM demo_links WHERE id = %d" % int(link_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {'message': 'Ссылка удалена'})
+
+
+def demo_enter(body):
+    token = body.get('token', '').strip()
+    if not token:
+        return json_response(400, {'error': 'Укажите токен демо-ссылки'})
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, name, is_active, expires_at, max_visits, visit_count
+        FROM demo_links WHERE token = '%s'
+    """ % token.replace("'", "''"))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Демо-ссылка не найдена'})
+
+    if not row[2]:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Демо-ссылка деактивирована'})
+
+    if row[3] < datetime.now():
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Срок действия демо-ссылки истёк'})
+
+    if row[4] > 0 and row[5] >= row[4]:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Достигнут лимит посещений демо-ссылки'})
+
+    cur.execute("UPDATE demo_links SET visit_count = visit_count + 1 WHERE id = %d" % row[0])
+
+    session_token = secrets.token_hex(32)
+    expires = datetime.now() + timedelta(hours=24)
+    cur.execute("""
+        INSERT INTO sessions (user_id, token, expires_at)
+        VALUES (
+            (SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE ORDER BY id LIMIT 1),
+            '%s', '%s'
+        )
+    """ % (session_token, expires.isoformat()))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'token': session_token,
+        'demo': True,
+        'demo_name': row[1],
+        'user': {
+            'id': 0,
+            'email': 'demo@gornycontrol.ru',
+            'full_name': 'Демо-пользователь',
+            'position': 'Просмотр системы',
+            'department': 'Демо-доступ',
+            'personal_code': 'DEMO-001',
+            'qr_code': 'DEMO-QR-001',
+            'role': 'admin',
+            'organization': '',
+            'organization_type': ''
+        },
+        'allowed_pages': ALL_PAGES[:]
+    })
+
+
+def demo_validate(event):
+    params = event.get('queryStringParameters') or {}
+    demo_token = params.get('demo_token', '').strip()
+    if not demo_token:
+        return json_response(400, {'error': 'Укажите demo_token'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, name, is_active, expires_at, max_visits, visit_count
+        FROM demo_links WHERE token = '%s'
+    """ % demo_token.replace("'", "''"))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        return json_response(404, {'error': 'Демо-ссылка не найдена'})
+
+    valid = row[2] and row[3] >= datetime.now() and (row[4] == 0 or row[5] < row[4])
+
+    return json_response(200, {
+        'valid': valid,
+        'name': row[1],
+        'expires_at': row[3],
+        'visit_count': row[5],
+        'max_visits': row[4]
+    })

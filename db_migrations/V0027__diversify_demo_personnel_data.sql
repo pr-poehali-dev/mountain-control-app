@@ -1,0 +1,12 @@
+UPDATE personnel SET status = 'on_shift', medical_status = 'passed' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id LIMIT 12);
+UPDATE personnel SET status = 'arrived', medical_status = 'passed' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 12 LIMIT 10);
+UPDATE personnel SET status = 'arrived', medical_status = 'pending' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 22 LIMIT 8);
+UPDATE personnel SET status = 'arrived', medical_status = 'denied' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 30 LIMIT 3);
+UPDATE personnel SET status = 'day_off' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 33 LIMIT 4);
+UPDATE personnel SET status = 'departed' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 37 LIMIT 3);
+UPDATE personnel SET room = '101', shift = 'day' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id LIMIT 4);
+UPDATE personnel SET room = '102', shift = 'day' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 4 LIMIT 4);
+UPDATE personnel SET room = '201', shift = 'night' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 8 LIMIT 4);
+UPDATE personnel SET room = '202', shift = 'night' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 12 LIMIT 4);
+UPDATE personnel SET room = '301', shift = 'day' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 16 LIMIT 4);
+UPDATE personnel SET room = '302', shift = 'day' WHERE id IN (SELECT id FROM personnel WHERE is_hidden = FALSE ORDER BY id OFFSET 20 LIMIT 4);
