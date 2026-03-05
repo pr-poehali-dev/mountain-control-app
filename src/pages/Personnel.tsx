@@ -132,6 +132,8 @@ function buildQrPayload(p: PersonnelItem) {
   return p.personal_code;
 }
 
+const PROTECTED_CODE = "АД-001";
+
 const Personnel = () => {
   const [search, setSearch] = useState("");
   const [personnel, setPersonnel] = useState<PersonnelItem[]>([]);
@@ -800,7 +802,8 @@ const Personnel = () => {
                             type="checkbox"
                             checked={selectedIds.has(p.id)}
                             onChange={() => toggleSelect(p.id)}
-                            className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer"
+                            disabled={p.personal_code === PROTECTED_CODE}
+                            className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -992,9 +995,15 @@ const Personnel = () => {
               </div>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 gap-2" onClick={startEdit}>
-                  <Icon name="Pencil" size={14} />
-                  Редактировать
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={startEdit}
+                  disabled={selectedPerson.personal_code === PROTECTED_CODE}
+                  title={selectedPerson.personal_code === PROTECTED_CODE ? "Данные администратора защищены" : "Редактировать"}
+                >
+                  <Icon name={selectedPerson.personal_code === PROTECTED_CODE ? "Lock" : "Pencil"} size={14} />
+                  {selectedPerson.personal_code === PROTECTED_CODE ? "Защищён" : "Редактировать"}
                 </Button>
                 <Button
                   variant="outline"

@@ -3,6 +3,8 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+PROTECTED_CODE = 'АД-001'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -220,6 +222,13 @@ def update_status(body):
     conn = get_db()
     cur = conn.cursor()
 
+    cur.execute("SELECT personal_code FROM personnel WHERE id = %d" % int(person_id))
+    code_row = cur.fetchone()
+    if code_row and code_row[0] == PROTECTED_CODE:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Данные администратора защищены от изменений'})
+
     cur.execute("""
         UPDATE personnel SET status = '%s', updated_at = NOW()
         WHERE id = %d RETURNING full_name
@@ -300,6 +309,13 @@ def edit_person(body):
 
     conn = get_db()
     cur = conn.cursor()
+
+    cur.execute("SELECT personal_code FROM personnel WHERE id = %d" % int(person_id))
+    code_row = cur.fetchone()
+    if code_row and code_row[0] == PROTECTED_CODE:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Данные администратора защищены от изменений'})
 
     new_medical = fields.get('medical_status', '')
 
