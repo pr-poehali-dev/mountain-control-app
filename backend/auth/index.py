@@ -516,10 +516,23 @@ def create_user(event, body):
         conn.close()
         return json_response(400, {'error': 'Пользователь с таким email уже существует'})
 
-    cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
-    next_id = cur.fetchone()[0]
-    personal_code = 'УС-%03d' % next_id
-    qr_code = 'QR-US-%03d' % next_id
+    cur.execute("SELECT personal_code, qr_code FROM personnel WHERE LOWER(TRIM(full_name)) = LOWER(TRIM('%s')) LIMIT 1" % full_name.replace("'", "''"))
+    existing_personnel = cur.fetchone()
+    if existing_personnel:
+        personal_code = existing_personnel[0]
+        qr_code = existing_personnel[1]
+    else:
+        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
+        next_id = cur.fetchone()[0]
+        personal_code = 'УС-%03d' % next_id
+        qr_code = 'QR-US-%03d' % next_id
+
+    cur.execute("SELECT id FROM users WHERE personal_code = '%s'" % personal_code.replace("'", "''"))
+    if cur.fetchone():
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Пользователь с таким личным номером уже существует'})
+
     password_hash = hash_password(password)
 
     cur.execute("""

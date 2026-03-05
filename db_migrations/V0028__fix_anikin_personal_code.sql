@@ -1,0 +1,1 @@
+UPDATE users SET personal_code = 'МК-017', qr_code = 'QR-MK-017' WHERE full_name = 'Аникин Александр Михайлович';
