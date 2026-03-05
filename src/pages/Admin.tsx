@@ -599,7 +599,7 @@ const Admin = () => {
                           {u.email}
                         </td>
                         <td className="px-4 py-3">
-                          {isSelf ? (
+                          {isSelf || u.role === "admin" ? (
                             <Badge
                               variant="outline"
                               className={`text-[11px] ${roleColors[u.role] || "bg-secondary text-muted-foreground"}`}
@@ -654,7 +654,7 @@ const Admin = () => {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {!isSelf && (
+                          {!isSelf && u.role !== "admin" && (
                             <div className="flex items-center gap-1">
                               {u.is_active ? (
                                 <>

@@ -429,6 +429,11 @@ def update_role(event, body):
         return json_response(404, {'error': 'Пользователь не найден'})
 
     old_role = row[1]
+    if old_role == 'admin':
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Нельзя изменять роль администратора'})
+
     cur.execute("UPDATE users SET role = '%s' WHERE id = %d" % (new_role, int(user_id)))
     conn.commit()
     cur.close()
@@ -583,12 +588,17 @@ def delete_user(event, body):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, full_name FROM users WHERE id = %d" % int(user_id))
+    cur.execute("SELECT id, full_name, role FROM users WHERE id = %d" % int(user_id))
     row = cur.fetchone()
     if not row:
         cur.close()
         conn.close()
         return json_response(404, {'error': 'Пользователь не найден'})
+
+    if row[2] == 'admin':
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Нельзя удалить администратора'})
 
     name = row[1]
     cur.execute("DELETE FROM sessions WHERE user_id = %d" % int(user_id))
@@ -612,11 +622,17 @@ def update_user(event, body):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT id FROM users WHERE id = %d" % int(user_id))
-    if not cur.fetchone():
+    cur.execute("SELECT id, role FROM users WHERE id = %d" % int(user_id))
+    target = cur.fetchone()
+    if not target:
         cur.close()
         conn.close()
         return json_response(404, {'error': 'Пользователь не найден'})
+
+    if target[1] == 'admin' and int(user_id) != caller['id']:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Нельзя изменять данные администратора'})
 
     updates = []
     for field in ['full_name', 'email', 'position', 'department', 'role', 'organization', 'organization_type']:
