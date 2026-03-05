@@ -53,7 +53,7 @@ const roleLabels: Record<string, string> = {
   operator: "Оператор",
   dispatcher: "Диспетчер",
   doctor: "Врач",
-  aho_specialist: "Специалист АХО",
+  aho_specialist: "АХО",
   security: "СБ",
 };
 
@@ -62,7 +62,7 @@ const roleOptions = [
   { value: "operator", label: "Оператор" },
   { value: "dispatcher", label: "Диспетчер" },
   { value: "doctor", label: "Врач" },
-  { value: "aho_specialist", label: "Специалист АХО" },
+  { value: "aho_specialist", label: "АХО" },
   { value: "security", label: "СБ" },
 ];
 

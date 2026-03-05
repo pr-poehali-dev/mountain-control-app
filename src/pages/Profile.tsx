@@ -12,7 +12,7 @@ const roleLabels: Record<string, string> = {
   doctor: "Врач",
   dispatcher: "Диспетчер",
   worker: "Сотрудник",
-  aho_specialist: "Специалист АХО",
+  aho_specialist: "АХО",
   security: "СБ",
 };
 
