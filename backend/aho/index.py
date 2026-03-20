@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime, date as date_type
 import psycopg2
 
+PROTECTED_CODE = 'АД-001'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -910,12 +912,12 @@ def perform_reset(body):
     if reset_type == 'personnel':
         cur.execute("""
             UPDATE personnel SET is_hidden = TRUE, updated_at = NOW()
-            WHERE is_hidden = FALSE AND personal_code NOT IN (
+            WHERE is_hidden = FALSE AND personal_code != '%s' AND personal_code NOT IN (
                 SELECT COALESCE(p.personal_code, '') FROM users u
                 LEFT JOIN personnel p ON p.full_name = u.full_name
                 WHERE u.role = 'admin' AND p.personal_code IS NOT NULL
             )
-        """)
+        """ % PROTECTED_CODE)
         affected = cur.rowcount
         cur.execute("""
             INSERT INTO reset_log (reset_type, description, affected_rows)
@@ -999,8 +1001,8 @@ def perform_reset(body):
         affected = cur.rowcount
         cur.execute("""
             UPDATE personnel SET medical_status = 'pending', updated_at = NOW()
-            WHERE medical_status != 'pending' AND status != 'archived'
-        """)
+            WHERE medical_status != 'pending' AND status != 'archived' AND personal_code != '%s'
+        """ % PROTECTED_CODE)
         cur.execute("""
             INSERT INTO reset_log (reset_type, description, affected_rows)
             VALUES ('medical', 'Обнуление списков медосмотров (скрыто %d записей)', %d)
@@ -1036,10 +1038,10 @@ def perform_reset(body):
             counts[table] = cur.fetchone()[0]
             cur.execute("DELETE FROM %s" % table)
 
-        cur.execute("SELECT COUNT(*) FROM personnel WHERE full_name NOT IN (SELECT full_name FROM users WHERE role = 'admin')")
+        cur.execute("SELECT COUNT(*) FROM personnel WHERE full_name NOT IN (SELECT full_name FROM users WHERE role = 'admin') AND personal_code != '%s'" % PROTECTED_CODE)
         counts['personnel'] = cur.fetchone()[0]
         cur.execute("DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users WHERE role = 'admin')")
-        cur.execute("DELETE FROM personnel WHERE full_name NOT IN (SELECT full_name FROM users WHERE role = 'admin')")
+        cur.execute("DELETE FROM personnel WHERE full_name NOT IN (SELECT full_name FROM users WHERE role = 'admin') AND personal_code != '%s'" % PROTECTED_CODE)
         cur.execute("DELETE FROM users WHERE role != 'admin'")
 
         affected = sum(counts.values())
