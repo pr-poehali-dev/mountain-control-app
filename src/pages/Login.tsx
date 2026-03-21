@@ -1,6 +1,8 @@
-import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { demoApi, setToken, setStoredUser } from "@/lib/api";
+import { useDemo } from "@/contexts/DemoContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,6 +19,28 @@ import QrScanner from "@/components/scanner/QrScanner";
 const Login = () => {
   const { login, loginByCode, register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { enterDemo } = useDemo();
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  useEffect(() => {
+    const demoToken = searchParams.get("demo");
+    if (demoToken && !demoLoading) {
+      setDemoLoading(true);
+      (async () => {
+        try {
+          const data = await demoApi.enter(demoToken);
+          setToken(data.token);
+          setStoredUser(data.user);
+          localStorage.setItem("mc_pages", JSON.stringify(data.allowed_pages));
+          enterDemo(demoToken, data.demo_name || "");
+          window.location.href = "/";
+        } catch {
+          setDemoLoading(false);
+        }
+      })();
+    }
+  }, [searchParams]);
   const [tab, setTab] = useState("login");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,6 +122,20 @@ const Login = () => {
       setLoading(false);
     }
   };
+
+  if (demoLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center space-y-4 animate-fade-in">
+          <div className="w-16 h-16 rounded-2xl bg-mine-amber/20 flex items-center justify-center mx-auto">
+            <Icon name="Eye" size={32} className="text-mine-amber" />
+          </div>
+          <h1 className="text-xl font-bold text-foreground">Подготовка демо-доступа...</h1>
+          <div className="w-10 h-10 border-2 border-mine-amber border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
