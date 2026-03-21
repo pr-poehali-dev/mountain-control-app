@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Icon from "@/components/ui/icon";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDemo } from "@/contexts/DemoContext";
 import { useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -16,9 +17,21 @@ const roleLabels: Record<string, string> = {
   security: "СБ",
 };
 
+const demoUser = {
+  full_name: "Петров Алексей Викторович",
+  position: "Главный инженер",
+  department: "Управление рудника",
+  role: "admin",
+  email: "petrov@rudnik-demo.ru",
+  personal_code: "RD-0001",
+  qr_code: "DEMO-RD-0001",
+};
+
 const Profile = () => {
-  const { user, logout } = useAuth();
+  const { user: realUser, logout } = useAuth();
+  const { isDemo } = useDemo();
   const navigate = useNavigate();
+  const user = isDemo ? { ...realUser, ...demoUser } : realUser;
 
   const handleLogout = () => {
     logout();

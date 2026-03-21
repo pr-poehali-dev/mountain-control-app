@@ -36,7 +36,11 @@ export default function Sidebar() {
     navigate("/login");
   };
 
-  const visibleItems = navItems.filter((item) => allowedPages.includes(item.page));
+  const visibleItems = navItems.filter((item) => {
+    if (!allowedPages.includes(item.page)) return false;
+    if (isDemo && item.page === "admin") return false;
+    return true;
+  });
 
   return (
     <aside
