@@ -41,6 +41,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
 function PageRoute({ page, children }: { page: string; children: ReactNode }) {
   const { user, loading, allowedPages } = useAuth();
+  const isDemo = localStorage.getItem("mc_demo") === "true";
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -50,6 +51,7 @@ function PageRoute({ page, children }: { page: string; children: ReactNode }) {
   }
   if (!user) return <Navigate to="/login" replace />;
   if (!allowedPages.includes(page)) return <Navigate to="/" replace />;
+  if (isDemo && page === "admin") return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
