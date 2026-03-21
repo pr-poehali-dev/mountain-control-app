@@ -110,6 +110,8 @@ def handler(event, context):
         return demo_enter(body)
     elif method == 'GET' and action == 'demo-validate':
         return demo_validate(event)
+    elif method == 'GET' and action == 'demo-default':
+        return demo_default()
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -871,3 +873,21 @@ def demo_validate(event):
         'visit_count': row[5],
         'max_visits': row[4]
     })
+
+
+def demo_default():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT token FROM demo_links
+        WHERE is_active = TRUE AND expires_at > NOW()
+        ORDER BY id LIMIT 1
+    """)
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        return json_response(404, {'error': 'Нет активных демо-ссылок'})
+
+    return json_response(200, {'token': row[0]})

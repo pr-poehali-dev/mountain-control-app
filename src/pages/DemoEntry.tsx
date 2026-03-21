@@ -12,19 +12,23 @@ const DemoEntry = () => {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!token) {
-      setStatus("error");
-      setError("Демо-ссылка не указана");
-      return;
-    }
-
     const enter = async () => {
       try {
-        const data = await demoApi.enter(token);
+        let demoToken = token;
+        if (!demoToken) {
+          const defaultData = await demoApi.getDefault();
+          demoToken = defaultData.token;
+        }
+        if (!demoToken) {
+          setStatus("error");
+          setError("Нет активных демо-ссылок");
+          return;
+        }
+        const data = await demoApi.enter(demoToken);
         setToken(data.token);
         setStoredUser(data.user);
         localStorage.setItem("mc_pages", JSON.stringify(data.allowed_pages));
-        enterDemo(token, data.demo_name || "");
+        enterDemo(demoToken, data.demo_name || "");
         window.location.href = "/";
       } catch (err: unknown) {
         setStatus("error");

@@ -6,11 +6,15 @@
 var path = window.location.pathname;
 var search = window.location.search;
 var hash = window.location.hash;
-var m = path.match(/^\/demo\/(.+)/);
-if (m) {
-  window.location.replace('/login?demo=' + encodeURIComponent(m[1]));
+if (path === '/demo' || path === '/demo/') {
+  window.location.replace('/login?demo=auto');
 } else {
-  window.location.replace('/' + '?redirect=' + encodeURIComponent(path + search + hash));
+  var m = path.match(/^\/demo\/(.+)/);
+  if (m) {
+    window.location.replace('/login?demo=' + encodeURIComponent(m[1]));
+  } else {
+    window.location.replace('/' + '?redirect=' + encodeURIComponent(path + search + hash));
+  }
 }
 </script>
 </head>

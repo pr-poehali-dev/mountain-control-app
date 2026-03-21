@@ -24,11 +24,16 @@ const Login = () => {
   const [demoLoading, setDemoLoading] = useState(false);
 
   useEffect(() => {
-    const demoToken = searchParams.get("demo");
-    if (demoToken && !demoLoading) {
+    const demoParam = searchParams.get("demo");
+    if (demoParam && !demoLoading) {
       setDemoLoading(true);
       (async () => {
         try {
+          let demoToken = demoParam;
+          if (demoToken === "auto") {
+            const defaultData = await demoApi.getDefault();
+            demoToken = defaultData.token;
+          }
           const data = await demoApi.enter(demoToken);
           setToken(data.token);
           setStoredUser(data.user);

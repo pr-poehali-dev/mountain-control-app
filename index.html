@@ -30,8 +30,13 @@
 <body>
 <script>
 (function(){
-  var m = window.location.pathname.match(/^\/demo\/(.+)/);
-  if (m) window.location.replace('/login?demo=' + encodeURIComponent(m[1]));
+  var p = window.location.pathname;
+  if (p === '/demo' || p === '/demo/') {
+    window.location.replace('/login?demo=auto');
+  } else {
+    var m = p.match(/^\/demo\/(.+)/);
+    if (m) window.location.replace('/login?demo=' + encodeURIComponent(m[1]));
+  }
 })();
 </script>
 <div id="root"></div>

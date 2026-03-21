@@ -65,6 +65,7 @@ const AppRoutes = () => (
     <DemoBanner />
     <Routes>
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+      <Route path="/demo" element={<DemoEntry />} />
       <Route path="/demo/:token" element={<DemoEntry />} />
       <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
       <Route path="/personnel" element={<PageRoute page="personnel"><Personnel /></PageRoute>} />
