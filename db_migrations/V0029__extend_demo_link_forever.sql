@@ -1,0 +1,1 @@
+UPDATE demo_links SET expires_at = '2126-01-01 00:00:00', max_visits = 0 WHERE token = 'cv_-qW60xWXIPP_hjTaNwg_ZUPfpBf1bAkZFAJsVoSE';
