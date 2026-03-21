@@ -1,22 +1,55 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru" class="dark">
 <head>
 <meta charset="UTF-8">
-<script>
-var path = window.location.pathname;
-var search = window.location.search;
-var hash = window.location.hash;
-if (path === '/demo' || path === '/demo/') {
-  window.location.replace('/login?demo=auto');
-} else {
-  var m = path.match(/^\/demo\/(.+)/);
-  if (m) {
-    window.location.replace('/login?demo=' + encodeURIComponent(m[1]));
-  } else {
-    window.location.replace('/' + '?redirect=' + encodeURIComponent(path + search + hash));
-  }
-}
-</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Горный контроль</title>
+<style>body{background:#0a0a0a;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.c{text-align:center;color:#fff;font-family:sans-serif}.i{font-size:24px;margin-bottom:16px}.t{font-size:16px}</style>
 </head>
-<body></body>
+<body>
+<div class="c"><div class="i">⛏️</div><div class="t" id="msg">Загрузка...</div></div>
+<script>
+(function(){
+  var AUTH = 'https://functions.poehali.dev/9ef13688-d7fb-45f4-8fd3-cdf77d286250';
+  var p = window.location.pathname;
+  var isDemo = p === '/demo' || p === '/demo/';
+  var tokenMatch = p.match(/^\/demo\/(.+)/);
+
+  if (!isDemo && !tokenMatch) {
+    window.location.replace('/');
+    return;
+  }
+
+  document.getElementById('msg').textContent = 'Подготовка демо-доступа...';
+
+  var doEnter = function(t) {
+    fetch(AUTH + '?action=demo-enter', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token: t})
+    }).then(function(r){return r.json()}).then(function(d){
+      if (d.token) {
+        localStorage.setItem('mc_token', d.token);
+        localStorage.setItem('mc_user', JSON.stringify(d.user));
+        localStorage.setItem('mc_pages', JSON.stringify(d.allowed_pages));
+        localStorage.setItem('mc_demo', 'true');
+        localStorage.setItem('mc_demo_name', d.demo_name || '');
+        window.location.replace('/');
+      } else {
+        window.location.replace('/login');
+      }
+    }).catch(function(){window.location.replace('/login')});
+  };
+
+  if (tokenMatch) {
+    doEnter(tokenMatch[1]);
+  } else {
+    fetch(AUTH + '?action=demo-default').then(function(r){return r.json()}).then(function(d){
+      if (d.token) doEnter(d.token); else window.location.replace('/login');
+    }).catch(function(){window.location.replace('/login')});
+  }
+})();
+</script>
+</body>
 </html>

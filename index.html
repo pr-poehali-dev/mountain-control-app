@@ -30,12 +30,44 @@
 <body>
 <script>
 (function(){
+  var AUTH = 'https://functions.poehali.dev/9ef13688-d7fb-45f4-8fd3-cdf77d286250';
   var p = window.location.pathname;
-  if (p === '/demo' || p === '/demo/') {
-    window.location.replace('/login?demo=auto');
-  } else {
-    var m = p.match(/^\/demo\/(.+)/);
-    if (m) window.location.replace('/login?demo=' + encodeURIComponent(m[1]));
+  var sp = new URLSearchParams(window.location.search);
+  var demoParam = sp.get('demo');
+  var isDemo = p === '/demo' || p === '/demo/';
+  var tokenMatch = p.match(/^\/demo\/(.+)/);
+
+  if (isDemo || tokenMatch || demoParam) {
+    document.documentElement.innerHTML = '<body style="background:#0a0a0a;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center;color:#fff;font-family:sans-serif"><div style="font-size:24px;margin-bottom:16px">⛏️</div><div style="font-size:16px">Подготовка демо-доступа...</div></div></body>';
+
+    var enterToken = tokenMatch ? tokenMatch[1] : (demoParam && demoParam !== 'auto' ? demoParam : null);
+
+    var doEnter = function(t) {
+      fetch(AUTH + '?action=demo-enter', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({token: t})
+      }).then(function(r){return r.json()}).then(function(d){
+        if (d.token) {
+          localStorage.setItem('mc_token', d.token);
+          localStorage.setItem('mc_user', JSON.stringify(d.user));
+          localStorage.setItem('mc_pages', JSON.stringify(d.allowed_pages));
+          localStorage.setItem('mc_demo', 'true');
+          localStorage.setItem('mc_demo_name', d.demo_name || '');
+          window.location.replace('/');
+        } else {
+          window.location.replace('/login');
+        }
+      }).catch(function(){window.location.replace('/login')});
+    };
+
+    if (enterToken) {
+      doEnter(enterToken);
+    } else {
+      fetch(AUTH + '?action=demo-default').then(function(r){return r.json()}).then(function(d){
+        if (d.token) doEnter(d.token); else window.location.replace('/login');
+      }).catch(function(){window.location.replace('/login')});
+    }
   }
 })();
 </script>
