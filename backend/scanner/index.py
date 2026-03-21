@@ -3,6 +3,10 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -22,7 +26,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -42,7 +46,7 @@ def handler(event, context):
     elif method == 'POST' and action == 'checkin':
         return checkin(body)
     elif method == 'GET' and action == 'recent':
-        return get_recent()
+        return get_recent(event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -190,9 +194,11 @@ def checkin(body):
         'medical_ok': allowed
     })
 
-def get_recent():
+def get_recent(event):
     conn = get_db()
     cur = conn.cursor()
+
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
 
     cur.execute("""
         SELECT e.id, e.event_type, e.description, e.created_at,
@@ -200,9 +206,10 @@ def get_recent():
         FROM events e
         LEFT JOIN personnel p ON e.personnel_id = p.id
         WHERE e.event_type IN ('scan_checkin', 'scan_denied')
+        AND (p.id IS NULL OR p.is_demo_data = %s)
         ORDER BY e.created_at DESC
         LIMIT 20
-    """)
+    """ % demo_val)
     rows = cur.fetchall()
     cur.close()
     conn.close()

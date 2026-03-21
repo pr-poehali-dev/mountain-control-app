@@ -3,6 +3,10 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -22,7 +26,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -47,13 +51,13 @@ def handler(event, context):
         body = json.loads(event['body'])
 
     if method == 'GET' and action == 'list':
-        return get_issues(params)
+        return get_issues(params, event)
     elif method == 'GET' and action == 'stats':
         return get_stats()
     elif method == 'GET' and action == 'detail':
-        return get_detail(params)
+        return get_detail(params, event)
     elif method == 'GET' and action == 'search':
-        return search_person(params)
+        return search_person(params, event)
     elif method == 'GET' and action == 'denials':
         return get_denials(params)
     elif method == 'POST' and action == 'identify':
@@ -79,14 +83,15 @@ def handler(event, context):
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
-def get_issues(params):
+def get_issues(params, event):
     status_filter = params.get('status', '')
     date_filter = params.get('date', '')
     item_type_filter = params.get('item_type', '')
     conn = get_db()
     cur = conn.cursor()
 
-    conditions = []
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    conditions = ["(p.id IS NULL OR p.is_demo_data = %s)" % demo_val]
     if status_filter and status_filter in ('issued', 'returned'):
         conditions.append("i.status = '%s'" % status_filter)
     if date_filter:
@@ -132,10 +137,13 @@ def get_issues(params):
 
     return json_response(200, {'issues': items, 'total': len(items)})
 
-def get_detail(params):
+def get_detail(params, event):
     detail_type = params.get('type', '')
     conn = get_db()
     cur = conn.cursor()
+
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    demo_where = "AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
 
     if detail_type == 'lanterns_out':
         cur.execute("""
@@ -144,9 +152,9 @@ def get_detail(params):
                    p.position, p.department, p.organization
             FROM lamp_room_issues i
             LEFT JOIN personnel p ON i.person_id = p.id
-            WHERE i.status = 'issued' AND i.item_type IN ('lantern', 'both')
+            WHERE i.status = 'issued' AND i.item_type IN ('lantern', 'both') %s
             ORDER BY i.issued_at DESC
-        """)
+        """ % demo_where)
     elif detail_type == 'rescuers_out':
         cur.execute("""
             SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
@@ -154,9 +162,9 @@ def get_detail(params):
                    p.position, p.department, p.organization
             FROM lamp_room_issues i
             LEFT JOIN personnel p ON i.person_id = p.id
-            WHERE i.status = 'issued' AND i.item_type IN ('rescuer', 'both')
+            WHERE i.status = 'issued' AND i.item_type IN ('rescuer', 'both') %s
             ORDER BY i.issued_at DESC
-        """)
+        """ % demo_where)
     elif detail_type == 'today_issued':
         cur.execute("""
             SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
@@ -164,9 +172,9 @@ def get_detail(params):
                    p.position, p.department, p.organization
             FROM lamp_room_issues i
             LEFT JOIN personnel p ON i.person_id = p.id
-            WHERE i.issued_at >= CURRENT_DATE
+            WHERE i.issued_at >= CURRENT_DATE %s
             ORDER BY i.issued_at DESC
-        """)
+        """ % demo_where)
     elif detail_type == 'today_returned':
         cur.execute("""
             SELECT i.id, i.person_code, i.person_name, i.lantern_number, i.rescuer_number,
@@ -174,9 +182,9 @@ def get_detail(params):
                    p.position, p.department, p.organization
             FROM lamp_room_issues i
             LEFT JOIN personnel p ON i.person_id = p.id
-            WHERE i.returned_at >= CURRENT_DATE
+            WHERE i.returned_at >= CURRENT_DATE %s
             ORDER BY i.returned_at DESC
-        """)
+        """ % demo_where)
     elif detail_type in ('denials', 'today_denied'):
         cur.execute("""
             SELECT d.id, d.person_code, d.person_name, d.reason, d.denied_at, d.denied_by, d.tabular_number
@@ -202,9 +210,9 @@ def get_detail(params):
                    p.position, p.department, p.organization
             FROM lamp_room_issues i
             LEFT JOIN personnel p ON i.person_id = p.id
-            WHERE i.status = 'issued'
+            WHERE i.status = 'issued' %s
             ORDER BY i.issued_at DESC
-        """)
+        """ % demo_where)
 
     rows = cur.fetchall()
     cur.close()
@@ -273,12 +281,13 @@ def get_stats():
         'rescuers_repair': rescuers_repair
     })
 
-def search_person(params):
+def search_person(params, event):
     q = params.get('q', '').strip()
     if not q:
         return json_response(400, {'error': 'Введите запрос'})
 
     safe_q = q.replace("'", "''")
+    demo_filter = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
     conn = get_db()
     cur = conn.cursor()
 
@@ -287,9 +296,9 @@ def search_person(params):
                p.medical_status, p.organization, p.tabular_number
         FROM personnel p
         WHERE p.status != 'archived'
-          AND (p.full_name ILIKE '%%%s%%' OR p.personal_code ILIKE '%%%s%%' OR p.qr_code ILIKE '%%%s%%')
+          AND (p.full_name ILIKE '%%%s%%' OR p.personal_code ILIKE '%%%s%%' OR p.qr_code ILIKE '%%%s%%') %s
         ORDER BY p.full_name LIMIT 15
-    """ % (safe_q, safe_q, safe_q))
+    """ % (safe_q, safe_q, safe_q, demo_filter))
     rows = cur.fetchall()
     cur.close()
     conn.close()

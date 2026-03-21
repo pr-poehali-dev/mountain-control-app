@@ -6,6 +6,10 @@ from datetime import datetime, date as date_type, timedelta
 import psycopg2
 from decimal import Decimal
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -27,7 +31,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -40,7 +44,7 @@ def csv_response(csv_text, filename):
             'Content-Disposition': 'attachment; filename="%s"' % filename,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': csv_text
     }
@@ -55,19 +59,19 @@ def handler(event, context):
     action = params.get('action', '')
 
     if method == 'GET' and action == 'attendance':
-        return report_attendance(params)
+        return report_attendance(params, event)
     elif method == 'GET' and action == 'medical':
-        return report_medical(params)
+        return report_medical(params, event)
     elif method == 'GET' and action == 'equipment':
-        return report_equipment(params)
+        return report_equipment(params, event)
     elif method == 'GET' and action == 'housing':
         return report_housing(params)
     elif method == 'GET' and action == 'personnel-summary':
-        return report_personnel_summary(params)
+        return report_personnel_summary(params, event)
     elif method == 'GET' and action == 'events-log':
-        return report_events_log(params)
+        return report_events_log(params, event)
     elif method == 'GET' and action == 'export':
-        return export_report(params)
+        return export_report(params, event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -77,11 +81,13 @@ def date_range(params):
     dt = params.get('date_to', str(today))
     return df.replace("'", ""), dt.replace("'", "")
 
-def report_attendance(params):
+def report_attendance(params, event):
     df, dt = date_range(params)
     shift = params.get('shift_type', '')
     conn = get_db()
     cur = conn.cursor()
+
+    demo_filter = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
 
     shift_filter = ""
     if shift in ('day', 'night'):
@@ -97,9 +103,9 @@ def report_attendance(params):
                 WHERE mc.personnel_id = p.id AND mc.shift_date >= '%s' AND mc.shift_date <= '%s'
                 AND mc.check_direction = 'from_shift' %s) as check_out_count
         FROM personnel p
-        WHERE p.status != 'archived'
+        WHERE p.status != 'archived' %s
         ORDER BY p.department, p.full_name
-    """ % (df, dt, shift_filter, df, dt, shift_filter))
+    """ % (df, dt, shift_filter, df, dt, shift_filter, demo_filter))
     rows = cur.fetchall()
 
     cur.execute("""
@@ -107,11 +113,11 @@ def report_attendance(params):
         FROM medical_checks mc JOIN personnel p ON mc.personnel_id = p.id
         WHERE mc.shift_date >= '%s' AND mc.shift_date <= '%s'
         AND mc.check_direction = 'to_shift' AND mc.status = 'passed'
-        AND p.status != 'archived' %s
-    """ % (df, dt, shift_filter))
+        AND p.status != 'archived' %s %s
+    """ % (df, dt, shift_filter, demo_filter))
     total_arrived = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived'")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' %s" % demo_filter.replace('p.is_demo_data', 'is_demo_data'))
     total_all = cur.fetchone()[0]
 
     cur.execute("""
@@ -119,9 +125,9 @@ def report_attendance(params):
         FROM medical_checks mc JOIN personnel p ON mc.personnel_id = p.id
         WHERE mc.shift_date >= '%s' AND mc.shift_date <= '%s'
         AND mc.check_direction = 'to_shift' AND mc.status = 'passed'
-        AND p.status != 'archived' %s
+        AND p.status != 'archived' %s %s
         GROUP BY p.category
-    """ % (df, dt, shift_filter))
+    """ % (df, dt, shift_filter, demo_filter))
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.close()
@@ -148,14 +154,15 @@ def report_attendance(params):
         }
     })
 
-def report_medical(params):
+def report_medical(params, event):
     df, dt = date_range(params)
     shift = params.get('shift_type', '')
     direction = params.get('direction', '')
     conn = get_db()
     cur = conn.cursor()
 
-    where = ["mc.shift_date >= '%s'" % df, "mc.shift_date <= '%s'" % dt, "p.status != 'archived'"]
+    demo_filter_val = "p.is_demo_data = TRUE" if is_demo_request(event) else "p.is_demo_data = FALSE"
+    where = ["mc.shift_date >= '%s'" % df, "mc.shift_date <= '%s'" % dt, "p.status != 'archived'", demo_filter_val]
     if shift in ('day', 'night'):
         where.append("mc.shift_type = '%s'" % shift)
     if direction in ('to_shift', 'from_shift'):
@@ -227,10 +234,12 @@ def report_medical(params):
         }
     })
 
-def report_equipment(params):
+def report_equipment(params, event):
     df, dt = date_range(params)
     conn = get_db()
     cur = conn.cursor()
+
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
 
     cur.execute("""
         SELECT l.id, l.lantern_number, l.rescuer_number, l.status, l.condition,
@@ -238,8 +247,9 @@ def report_equipment(params):
                p.full_name, p.personal_code, p.department, COALESCE(p.tab_number, '')
         FROM lanterns l
         LEFT JOIN personnel p ON l.assigned_to = p.id
+        WHERE (p.id IS NULL OR p.is_demo_data = %s)
         ORDER BY l.status = 'issued' DESC, l.lantern_number
-    """)
+    """ % demo_val)
     rows = cur.fetchall()
 
     cur.execute("SELECT status, COUNT(*) FROM lanterns GROUP BY status")
@@ -337,9 +347,12 @@ def report_housing(params):
         }
     })
 
-def report_personnel_summary(params):
+def report_personnel_summary(params, event):
     conn = get_db()
     cur = conn.cursor()
+
+    demo_filter = "AND is_demo_data = TRUE" if is_demo_request(event) else "AND is_demo_data = FALSE"
+    demo_filter_p = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
 
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
@@ -347,26 +360,26 @@ def report_personnel_summary(params):
                p.medical_status, p.shift, p.room, p.phone, p.created_at,
                COALESCE(p.tab_number, '')
         FROM personnel p
-        WHERE p.status != 'archived'
+        WHERE p.status != 'archived' %s
         ORDER BY p.department, p.full_name
-    """)
+    """ % demo_filter_p)
     rows = cur.fetchall()
 
-    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY category")
+    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY category" % demo_filter)
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY COALESCE(organization_type, '')")
+    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY COALESCE(organization_type, '')" % demo_filter)
     by_org_type = {}
     for r in cur.fetchall():
         by_org_type[r[0] if r[0] else 'unknown'] = r[1]
 
-    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY status")
+    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY status" % demo_filter)
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY medical_status")
+    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY medical_status" % demo_filter)
     by_medical = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT department, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY department ORDER BY COUNT(*) DESC")
+    cur.execute("SELECT department, COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY department ORDER BY COUNT(*) DESC" % demo_filter)
     by_dept = []
     for r in cur.fetchall():
         by_dept.append({'department': r[0] or 'Без подразделения', 'count': r[1]})
@@ -405,14 +418,15 @@ def report_personnel_summary(params):
         }
     })
 
-def report_events_log(params):
+def report_events_log(params, event):
     df, dt = date_range(params)
     event_type = params.get('event_type', '')
     limit = min(int(params.get('limit', '500')), 1000)
     conn = get_db()
     cur = conn.cursor()
 
-    where = ["e.created_at::date >= '%s'" % df, "e.created_at::date <= '%s'" % dt]
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    where = ["e.created_at::date >= '%s'" % df, "e.created_at::date <= '%s'" % dt, "(p.id IS NULL OR p.is_demo_data = %s)" % demo_val]
     if event_type:
         where.append("e.event_type = '%s'" % event_type.replace("'", "''"))
     where_sql = ' AND '.join(where)
@@ -429,7 +443,9 @@ def report_events_log(params):
     rows = cur.fetchall()
 
     cur.execute("""
-        SELECT e.event_type, COUNT(*) FROM events e WHERE %s GROUP BY e.event_type ORDER BY COUNT(*) DESC
+        SELECT e.event_type, COUNT(*) FROM events e
+        LEFT JOIN personnel p ON e.personnel_id = p.id
+        WHERE %s GROUP BY e.event_type ORDER BY COUNT(*) DESC
     """ % where_sql)
     by_type = []
     for r in cur.fetchall():
@@ -507,7 +523,7 @@ STATUS_LABELS = {
     'active': 'Активна', 'maintenance': 'Обслуживание'
 }
 
-def export_report(params):
+def export_report(params, event):
     report_type = params.get('report_type', '')
     if report_type not in EXPORT_CONFIGS:
         return json_response(400, {'error': 'Неизвестный тип отчёта'})
@@ -515,12 +531,12 @@ def export_report(params):
     config = EXPORT_CONFIGS[report_type]
 
     handlers = {
-        'attendance': report_attendance,
-        'medical': report_medical,
-        'equipment': report_equipment,
+        'attendance': lambda p: report_attendance(p, event),
+        'medical': lambda p: report_medical(p, event),
+        'equipment': lambda p: report_equipment(p, event),
         'housing': report_housing,
-        'personnel-summary': report_personnel_summary,
-        'events-log': report_events_log
+        'personnel-summary': lambda p: report_personnel_summary(p, event),
+        'events-log': lambda p: report_events_log(p, event)
     }
 
     raw = json.loads(handlers[report_type](params)['body'])

@@ -3,6 +3,10 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -22,7 +26,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -40,13 +44,13 @@ def handler(event, context):
     if method == 'POST' and action == 'pass':
         return register_pass(body)
     elif method == 'GET' and action == 'journal':
-        return get_journal(params)
+        return get_journal(params, event)
     elif method == 'GET' and action == 'stats':
-        return get_stats()
+        return get_stats(event)
     elif method == 'GET' and action == 'on-site':
-        return get_on_site(params)
+        return get_on_site(params, event)
     elif method == 'GET' and action == 'export':
-        return export_journal(params)
+        return export_journal(params, event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -191,7 +195,7 @@ def register_pass(body):
         }
     })
 
-def get_journal(params):
+def get_journal(params, event):
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
     direction = params.get('direction', '')
@@ -202,7 +206,8 @@ def get_journal(params):
     conn = get_db()
     cur = conn.cursor()
 
-    where = "WHERE 1=1"
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    where = "WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
     if date_from:
         where += " AND cp.created_at >= '%s 00:00:00'" % date_from.replace("'", "''")
     if date_to:
@@ -210,7 +215,7 @@ def get_journal(params):
     if direction:
         where += " AND cp.direction = '%s'" % direction.replace("'", "''")
 
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s" % where)
+    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp LEFT JOIN personnel p ON cp.personnel_id = p.id %s" % where)
     total = cur.fetchone()[0]
 
     cur.execute("""
@@ -246,33 +251,37 @@ def get_journal(params):
         'pages': (total + per_page - 1) // per_page if per_page > 0 else 1
     })
 
-def get_stats():
+def get_stats(event):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes WHERE direction = 'in' AND created_at::date = CURRENT_DATE")
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    demo_join = "JOIN personnel p ON cp.personnel_id = p.id AND p.is_demo_data = %s" % demo_val
+
+    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.direction = 'in' AND cp.created_at::date = CURRENT_DATE" % demo_join)
     today_in = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes WHERE direction = 'out' AND created_at::date = CURRENT_DATE")
+    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.direction = 'out' AND cp.created_at::date = CURRENT_DATE" % demo_join)
     today_out = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes WHERE medical_ok = FALSE AND created_at::date = CURRENT_DATE")
+    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.medical_ok = FALSE AND cp.created_at::date = CURRENT_DATE" % demo_join)
     today_denied = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes")
+    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp LEFT JOIN personnel p ON cp.personnel_id = p.id WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
     total_passes = cur.fetchone()[0]
 
     cur.execute("""
-        SELECT COUNT(DISTINCT personnel_id)
-        FROM checkpoint_passes
-        WHERE direction = 'in' AND created_at::date = CURRENT_DATE
-        AND personnel_id NOT IN (
-            SELECT DISTINCT personnel_id FROM checkpoint_passes
-            WHERE direction = 'out' AND created_at::date = CURRENT_DATE
-            AND personnel_id IS NOT NULL
+        SELECT COUNT(DISTINCT cp.personnel_id)
+        FROM checkpoint_passes cp
+        JOIN personnel p ON cp.personnel_id = p.id AND p.is_demo_data = %s
+        WHERE cp.direction = 'in' AND cp.created_at::date = CURRENT_DATE
+        AND cp.personnel_id NOT IN (
+            SELECT DISTINCT cp2.personnel_id FROM checkpoint_passes cp2
+            WHERE cp2.direction = 'out' AND cp2.created_at::date = CURRENT_DATE
+            AND cp2.personnel_id IS NOT NULL
         )
-        AND personnel_id IS NOT NULL
-    """)
+        AND cp.personnel_id IS NOT NULL
+    """ % demo_val)
     currently_on_site = cur.fetchone()[0]
 
     cur.close()
@@ -286,9 +295,11 @@ def get_stats():
         'currently_on_site': currently_on_site
     })
 
-def get_on_site(params):
+def get_on_site(params, event):
     conn = get_db()
     cur = conn.cursor()
+
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
 
     cur.execute("""
         SELECT DISTINCT ON (cp.personnel_id)
@@ -300,8 +311,9 @@ def get_on_site(params):
         LEFT JOIN personnel p ON cp.personnel_id = p.id
         WHERE cp.personnel_id IS NOT NULL
         AND cp.created_at::date = CURRENT_DATE
+        AND (p.id IS NULL OR p.is_demo_data = %s)
         ORDER BY cp.personnel_id, cp.created_at DESC
-    """)
+    """ % demo_val)
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -324,14 +336,15 @@ def get_on_site(params):
 
     return json_response(200, {'items': on_site, 'total': len(on_site)})
 
-def export_journal(params):
+def export_journal(params, event):
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
 
     conn = get_db()
     cur = conn.cursor()
 
-    where = "WHERE 1=1"
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    where = "WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
     if date_from:
         where += " AND cp.created_at >= '%s 00:00:00'" % date_from.replace("'", "''")
     if date_to:

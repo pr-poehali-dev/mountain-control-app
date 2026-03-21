@@ -27,7 +27,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -814,10 +814,10 @@ def demo_enter(body):
     session_token = secrets.token_hex(32)
     expires = datetime.now() + timedelta(hours=24)
     cur.execute("""
-        INSERT INTO sessions (user_id, token, expires_at)
+        INSERT INTO sessions (user_id, token, expires_at, is_demo)
         VALUES (
             (SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE ORDER BY id LIMIT 1),
-            '%s', '%s'
+            '%s', '%s', TRUE
         )
     """ % (session_token, expires.isoformat()))
 

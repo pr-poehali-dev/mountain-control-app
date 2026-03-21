@@ -7,6 +7,10 @@ import psycopg2
 
 PROTECTED_CODE = 'АД-001'
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -26,7 +30,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -44,7 +48,7 @@ def handler(event, context):
     if method == 'POST' and action == 'upload':
         return upload_excel(body)
     elif method == 'GET' and action == 'list':
-        return get_arrivals(params)
+        return get_arrivals(params, event)
     elif method == 'GET' and action == 'batches':
         return get_batches(params)
     elif method == 'PUT' and action == 'checkin':
@@ -54,9 +58,9 @@ def handler(event, context):
     elif method == 'PUT' and action == 'assign-room':
         return assign_room(body)
     elif method == 'GET' and action == 'stats':
-        return get_stats()
+        return get_stats(event)
     elif method == 'GET' and action == 'medical-status':
-        return get_medical_status(params)
+        return get_medical_status(params, event)
     elif method == 'GET' and action == 'template':
         return get_template()
     elif method == 'PUT' and action == 'mass-checkin':
@@ -64,7 +68,7 @@ def handler(event, context):
     elif method == 'PUT' and action == 'mass-checkout':
         return mass_check_out(body)
     elif method == 'GET' and action == 'medical-itr-stats':
-        return get_medical_itr_stats(params)
+        return get_medical_itr_stats(params, event)
     elif method == 'GET' and action == 'itr-positions':
         return get_itr_positions()
     elif method == 'PUT' and action == 'itr-positions':
@@ -278,7 +282,7 @@ def upload_excel(body):
     })
 
 
-def get_arrivals(params):
+def get_arrivals(params, event):
     conn = get_db()
     cur = conn.cursor()
 
@@ -286,6 +290,8 @@ def get_arrivals(params):
     status = params.get('status', '')
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
+
+    demo_filter = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
 
     query = """
         SELECT a.id, a.batch_id, a.personnel_id, a.full_name, a.position, a.department,
@@ -295,8 +301,8 @@ def get_arrivals(params):
                p.medical_status as current_medical, p.status as person_status, p.qr_code
         FROM aho_arrivals a
         LEFT JOIN personnel p ON a.personnel_id = p.id
-        WHERE a.is_hidden = FALSE
-    """
+        WHERE a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s)
+    """ % ('TRUE' if is_demo_request(event) else 'FALSE')
     if batch_id:
         query += " AND a.batch_id = '%s'" % batch_id.replace("'", "''")
     if status:
@@ -477,41 +483,43 @@ def assign_room(body):
     return json_response(200, {'message': '%s заселён в комнату %s' % (row[1], room)})
 
 
-def get_stats():
+def get_stats(event):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE")
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
     total = cur.fetchone()[0]
 
-    cur.execute("SELECT arrival_status, COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE GROUP BY arrival_status")
+    cur.execute("SELECT a.arrival_status, COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s) GROUP BY a.arrival_status" % demo_val)
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE AND room IS NOT NULL AND room != ''")
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND a.room IS NOT NULL AND a.room != '' AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
     housed = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals WHERE is_hidden = FALSE AND (room IS NULL OR room = '')")
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND (a.room IS NULL OR a.room = '') AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
     not_housed = cur.fetchone()[0]
 
     cur.execute("""
         SELECT p.medical_status, COUNT(*)
         FROM aho_arrivals a
         JOIN personnel p ON a.personnel_id = p.id
-        WHERE a.arrival_status = 'arrived' AND a.is_hidden = FALSE
+        WHERE a.arrival_status = 'arrived' AND a.is_hidden = FALSE AND p.is_demo_data = %s
         GROUP BY p.medical_status
-    """)
+    """ % demo_val)
     medical = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("""
-        SELECT COUNT(*) FROM aho_arrivals
-        WHERE is_hidden = FALSE AND arrival_date = CURRENT_DATE
-    """)
+        SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id
+        WHERE a.is_hidden = FALSE AND a.arrival_date = CURRENT_DATE AND (p.id IS NULL OR p.is_demo_data = %s)
+    """ % demo_val)
     today_expected = cur.fetchone()[0]
 
     cur.execute("""
-        SELECT COUNT(*) FROM aho_arrivals
-        WHERE is_hidden = FALSE AND departure_date = CURRENT_DATE
-    """)
+        SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id
+        WHERE a.is_hidden = FALSE AND a.departure_date = CURRENT_DATE AND (p.id IS NULL OR p.is_demo_data = %s)
+    """ % demo_val)
     today_departing = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM aho_batches WHERE is_hidden = FALSE")
@@ -537,12 +545,14 @@ def get_stats():
     })
 
 
-def get_medical_status(params):
+def get_medical_status(params, event):
     batch_id = params.get('batch_id', '')
     status_filter = params.get('medical', '')
 
     conn = get_db()
     cur = conn.cursor()
+
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
 
     query = """
         SELECT a.id, a.full_name, a.personal_code, a.department, a.organization,
@@ -559,8 +569,8 @@ def get_medical_status(params):
             ORDER BY checked_at DESC
             LIMIT 1
         ) mc ON true
-        WHERE a.arrival_status IN ('arrived', 'expected') AND a.is_hidden = FALSE
-    """
+        WHERE a.arrival_status IN ('arrived', 'expected') AND a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s)
+    """ % demo_val
     if batch_id:
         query += " AND a.batch_id = '%s'" % batch_id.replace("'", "''")
     if status_filter:
@@ -790,11 +800,13 @@ def save_itr_positions(body):
     return json_response(200, {'message': 'Список ИТР должностей сохранён', 'count': len(positions)})
 
 
-def get_medical_itr_stats(params):
+def get_medical_itr_stats(params, event):
     batch_id = params.get('batch_id', '')
 
     conn = get_db()
     cur = conn.cursor()
+
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
 
     cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
     row = cur.fetchone()
@@ -815,7 +827,7 @@ def get_medical_itr_stats(params):
     else:
         itr_where = "FALSE"
 
-    base_where = "a.arrival_status IN ('arrived', 'expected') AND a.is_hidden = FALSE"
+    base_where = "a.arrival_status IN ('arrived', 'expected') AND a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
     if batch_id:
         base_where += " AND a.batch_id = '%s'" % batch_id.replace("'", "''")
 

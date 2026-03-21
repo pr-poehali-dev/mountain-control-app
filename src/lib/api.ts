@@ -82,6 +82,9 @@ async function request(
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
+  if (localStorage.getItem("mc_demo") === "true") {
+    headers["X-Demo"] = "true";
+  }
 
   let res: Response;
   try {

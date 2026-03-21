@@ -5,6 +5,10 @@ import io
 from datetime import datetime, time, date as date_type
 import psycopg2
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -24,7 +28,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -37,7 +41,7 @@ def csv_response(csv_text):
             'Content-Disposition': 'attachment; filename="medical_report.csv"',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': csv_text
     }
@@ -167,13 +171,13 @@ def handler(event, context):
     auto_reset_if_needed()
 
     if method == 'GET' and action in ('list', ''):
-        return get_checks(params)
+        return get_checks(params, event)
     elif method == 'GET' and action == 'stats':
-        return get_medical_stats(params)
+        return get_medical_stats(params, event)
     elif method == 'GET' and action == 'shift':
         return get_current_shift()
     elif method == 'GET' and action == 'export':
-        return export_csv(params)
+        return export_csv(params, event)
     elif method == 'POST' and action == 'add':
         return add_check(body)
     elif method == 'POST' and action == 'scan':
@@ -185,7 +189,7 @@ def handler(event, context):
     elif method == 'POST' and action == 'schedule':
         return save_schedule(body)
     elif method == 'GET' and action == 'personnel_list':
-        return get_personnel_list(params)
+        return get_personnel_list(params, event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -235,7 +239,7 @@ def save_schedule(body):
 
     return json_response(200, {'message': 'Расписание смен сохранено', 'schedule': {'day_start': day_start, 'day_end': day_end, 'night_start': night_start, 'night_end': night_end}})
 
-def get_checks(params):
+def get_checks(params, event):
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
     shift_type = params.get('shift_type', '')
@@ -245,7 +249,8 @@ def get_checks(params):
     conn = get_db()
     cur = conn.cursor()
 
-    where = ["p.status != 'archived'", "p.is_hidden = FALSE", "mc.is_hidden = FALSE"]
+    demo_filter = "p.is_demo_data = TRUE" if is_demo_request(event) else "p.is_demo_data = FALSE"
+    where = ["p.status != 'archived'", "p.is_hidden = FALSE", "mc.is_hidden = FALSE", demo_filter]
     if date_from:
         where.append("mc.shift_date >= '%s'" % date_from.replace("'", ""))
     if date_to:
@@ -314,7 +319,7 @@ def build_itr_where(cur, table_alias='p'):
         return "(%s)" % " OR ".join(conditions)
     return "FALSE"
 
-def get_medical_stats(params):
+def get_medical_stats(params, event):
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
 
@@ -322,6 +327,7 @@ def get_medical_stats(params):
     cur = conn.cursor()
 
     itr_where = build_itr_where(cur)
+    demo_filter_sql = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
 
     date_filter = "checked_at::date = CURRENT_DATE"
     if date_from and date_to:
@@ -333,18 +339,18 @@ def get_medical_stats(params):
     cur.execute("""
         SELECT mc.status, COUNT(*) FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
-        WHERE p.status != 'archived' AND p.is_hidden = FALSE AND mc.is_hidden = FALSE AND %s
+        WHERE p.status != 'archived' AND p.is_hidden = FALSE AND mc.is_hidden = FALSE AND %s %s
         GROUP BY mc.status
-    """ % date_filter)
+    """ % (date_filter, demo_filter_sql))
     period = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("""
         SELECT mc.shift_type, mc.check_direction, mc.status, COUNT(*)
         FROM medical_checks mc
         JOIN personnel p ON mc.personnel_id = p.id
-        WHERE p.status != 'archived' AND p.is_hidden = FALSE AND mc.is_hidden = FALSE AND %s
+        WHERE p.status != 'archived' AND p.is_hidden = FALSE AND mc.is_hidden = FALSE AND %s %s
         GROUP BY mc.shift_type, mc.check_direction, mc.status
-    """ % date_filter)
+    """ % (date_filter, demo_filter_sql))
     by_shift = {}
     for r in cur.fetchall():
         key = '%s_%s' % (r[0] or 'day', r[1] or 'to_shift')
@@ -352,7 +358,7 @@ def get_medical_stats(params):
             by_shift[key] = {'passed': 0, 'failed': 0}
         by_shift[key][r[2]] = by_shift[key].get(r[2], 0) + r[3]
 
-    base_where = "p.status != 'archived' AND p.is_hidden = FALSE"
+    base_where = "p.status != 'archived' AND p.is_hidden = FALSE %s" % demo_filter_sql
     cur.execute("""
         SELECT
             COUNT(*) as total,
@@ -393,7 +399,7 @@ def get_medical_stats(params):
         }
     })
 
-def get_personnel_list(params):
+def get_personnel_list(params, event):
     """Возвращает список сотрудников по категории для карточек статистики"""
     filter_key = params.get('filter', 'total')
 
@@ -401,7 +407,8 @@ def get_personnel_list(params):
     cur = conn.cursor()
     itr_where = build_itr_where(cur)
 
-    base_where = "p.status != 'archived' AND p.is_hidden = FALSE"
+    demo_filter_sql = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
+    base_where = "p.status != 'archived' AND p.is_hidden = FALSE %s" % demo_filter_sql
 
     extra = ""
     if filter_key == 'workers':
@@ -685,7 +692,7 @@ def add_check(body):
         'message': 'Медосмотр записан. Результат: %s' % ('допущен' if status == 'passed' else 'не допущен')
     })
 
-def export_csv(params):
+def export_csv(params, event):
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
     shift_type = params.get('shift_type', '')
@@ -694,7 +701,8 @@ def export_csv(params):
     conn = get_db()
     cur = conn.cursor()
 
-    where = ["p.status != 'archived'"]
+    demo_filter = "p.is_demo_data = TRUE" if is_demo_request(event) else "p.is_demo_data = FALSE"
+    where = ["p.status != 'archived'", demo_filter]
     if date_from:
         where.append("mc.shift_date >= '%s'" % date_from.replace("'", ""))
     if date_to:

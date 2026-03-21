@@ -3,6 +3,10 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -22,7 +26,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -38,9 +42,9 @@ def handler(event, context):
     body = json.loads(event.get('body', '{}') or '{}')
 
     if method == 'GET' and action in ('list', ''):
-        return get_events(params)
+        return get_events(params, event)
     elif method == 'GET' and action == 'dashboard':
-        return get_dashboard()
+        return get_dashboard(event)
     elif method == 'GET' and action == 'notifications':
         return get_notifications(params)
     elif method == 'PUT' and action == 'read':
@@ -106,8 +110,9 @@ def mark_all_read():
 
     return json_response(200, {'message': 'Все прочитаны', 'count': count})
 
-def get_events(params):
+def get_events(params, event):
     limit = int(params.get('limit', '20'))
+    demo_filter = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
     conn = get_db()
     cur = conn.cursor()
 
@@ -116,9 +121,10 @@ def get_events(params):
                p.full_name, p.personal_code
         FROM events e
         LEFT JOIN personnel p ON e.personnel_id = p.id
+        WHERE (p.id IS NULL OR p.is_demo_data = %s)
         ORDER BY e.created_at DESC
         LIMIT %d
-    """ % min(limit, 100))
+    """ % ('TRUE' if is_demo_request(event) else 'FALSE', min(limit, 100)))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -132,11 +138,13 @@ def get_events(params):
 
     return json_response(200, {'events': events})
 
-def get_dashboard():
+def get_dashboard(event):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived'")
+    demo_filter = "AND is_demo_data = TRUE" if is_demo_request(event) else "AND is_demo_data = FALSE"
+
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived' %s" % demo_filter)
     on_site = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM lanterns WHERE status = 'issued'")
@@ -150,7 +158,7 @@ def get_dashboard():
     """)
     medical_passed = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived'")
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' %s" % demo_filter)
     total_personnel = cur.fetchone()[0]
 
     cur.execute("SELECT COALESCE(SUM(capacity), 0), COALESCE(SUM(occupied), 0) FROM rooms")
@@ -158,19 +166,19 @@ def get_dashboard():
     housing_total = room_row[0]
     housing_occupied = room_row[1]
 
-    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived' GROUP BY category")
+    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived' %s GROUP BY category" % demo_filter)
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY COALESCE(organization_type, '')")
+    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY COALESCE(organization_type, '')" % demo_filter)
     by_org_type = {}
     for r in cur.fetchall():
         key = r[0] if r[0] else 'unknown'
         by_org_type[key] = r[1]
 
-    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY medical_status")
+    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY medical_status" % demo_filter)
     by_medical = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' GROUP BY status")
+    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY status" % demo_filter)
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.close()

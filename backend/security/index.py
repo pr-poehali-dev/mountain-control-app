@@ -3,6 +3,10 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -22,7 +26,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -40,7 +44,7 @@ def handler(event, context):
     if method == 'POST' and action == 'verify':
         return verify_pass(body)
     elif method == 'GET' and action == 'person':
-        return get_person_full(params)
+        return get_person_full(params, event)
     elif method == 'GET' and action == 'journal':
         return get_journal(params)
     elif method == 'GET' and action == 'stats':
@@ -163,7 +167,7 @@ def verify_pass(body):
         }
     })
 
-def get_person_full(params):
+def get_person_full(params, event):
     person_id = params.get('id', '')
     code = params.get('code', '')
 
@@ -173,6 +177,8 @@ def get_person_full(params):
     conn = get_db()
     cur = conn.cursor()
 
+    demo_filter = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
+
     if person_id:
         cur.execute("""
             SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
@@ -180,8 +186,8 @@ def get_person_full(params):
                    p.organization, p.organization_type, p.phone, p.tabular_number,
                    p.qr_code, p.created_at
             FROM personnel p
-            WHERE p.id = %d AND p.is_hidden = FALSE
-        """ % int(person_id))
+            WHERE p.id = %d AND p.is_hidden = FALSE %s
+        """ % (int(person_id), demo_filter))
     else:
         safe_code = code.replace("'", "''")
         cur.execute("""
@@ -190,9 +196,9 @@ def get_person_full(params):
                    p.organization, p.organization_type, p.phone, p.tabular_number,
                    p.qr_code, p.created_at
             FROM personnel p
-            WHERE (p.personal_code = '%s' OR p.qr_code = '%s') AND p.is_hidden = FALSE
+            WHERE (p.personal_code = '%s' OR p.qr_code = '%s') AND p.is_hidden = FALSE %s
             LIMIT 1
-        """ % (safe_code, safe_code))
+        """ % (safe_code, safe_code, demo_filter))
 
     row = cur.fetchone()
     if not row:

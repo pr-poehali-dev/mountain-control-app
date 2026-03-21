@@ -5,6 +5,10 @@ import psycopg2
 
 PROTECTED_CODE = 'АД-001'
 
+def is_demo_request(event):
+    headers = event.get('headers') or {}
+    return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -24,7 +28,7 @@ def json_response(status, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
@@ -40,9 +44,9 @@ def handler(event, context):
     body = json.loads(event.get('body', '{}') or '{}')
 
     if method == 'GET' and action in ('list', ''):
-        return get_personnel(params)
+        return get_personnel(params, event)
     elif method == 'GET' and action == 'stats':
-        return get_stats()
+        return get_stats(event)
     elif method == 'POST' and action == 'add':
         return add_person(body)
     elif method == 'PUT' and action == 'status':
@@ -52,11 +56,11 @@ def handler(event, context):
     elif method == 'GET' and action == 'history':
         return get_history(params)
     elif method == 'GET' and action == 'search':
-        return search_personnel(params)
+        return search_personnel(params, event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
-def get_personnel(params):
+def get_personnel(params, event):
     conn = get_db()
     cur = conn.cursor()
 
@@ -66,12 +70,14 @@ def get_personnel(params):
 
     org_type = params.get('organization_type', '')
 
+    demo_filter = "AND is_demo_data = TRUE" if is_demo_request(event) else "AND is_demo_data = FALSE"
+
     query = """
         SELECT id, personal_code, full_name, position, department, category, 
                phone, room, status, qr_code, medical_status, shift, created_at,
                organization, organization_type, COALESCE(tab_number, '')
-        FROM personnel WHERE status != 'archived' AND is_hidden = FALSE
-    """
+        FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s
+    """ % demo_filter
     if category:
         query += " AND category = '%s'" % category.replace("'", "''")
     if status:
@@ -101,29 +107,31 @@ def get_personnel(params):
 
     return json_response(200, {'personnel': personnel, 'total': len(personnel)})
 
-def get_stats():
+def get_stats(event):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE")
+    demo_filter = "AND is_demo_data = TRUE" if is_demo_request(event) else "AND is_demo_data = FALSE"
+
+    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s" % demo_filter)
     total = cur.fetchone()[0]
 
-    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY category")
+    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s GROUP BY category" % demo_filter)
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY status")
+    cur.execute("SELECT status, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s GROUP BY status" % demo_filter)
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY medical_status")
+    cur.execute("SELECT medical_status, COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s GROUP BY medical_status" % demo_filter)
     by_medical = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE GROUP BY COALESCE(organization_type, '')")
+    cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s GROUP BY COALESCE(organization_type, '')" % demo_filter)
     by_org_type = {}
     for r in cur.fetchall():
         key = r[0] if r[0] else 'unknown'
         by_org_type[key] = r[1]
 
-    cur.execute("SELECT COALESCE(organization, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND organization != '' GROUP BY organization ORDER BY COUNT(*) DESC LIMIT 20")
+    cur.execute("SELECT COALESCE(organization, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND organization != '' %s GROUP BY organization ORDER BY COUNT(*) DESC LIMIT 20" % demo_filter)
     by_org = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("SELECT COUNT(*) FROM rooms")
@@ -259,13 +267,15 @@ def update_status(body):
 
     return json_response(200, {'message': 'Статус обновлён'})
 
-def search_personnel(params):
+def search_personnel(params, event):
     query_str = params.get('q', '').strip()
     if not query_str:
         return json_response(400, {'error': 'Введите поисковый запрос'})
 
     conn = get_db()
     cur = conn.cursor()
+
+    demo_filter = "AND is_demo_data = TRUE" if is_demo_request(event) else "AND is_demo_data = FALSE"
 
     safe_q = query_str.replace("'", "''")
     cur.execute("""
@@ -275,9 +285,9 @@ def search_personnel(params):
         WHERE status != 'archived' AND (full_name ILIKE '%%%s%%' OR personal_code ILIKE '%%%s%%' 
               OR department ILIKE '%%%s%%' OR qr_code ILIKE '%%%s%%'
               OR organization ILIKE '%%%s%%'
-              OR tab_number ILIKE '%%%s%%')
+              OR tab_number ILIKE '%%%s%%') %s
         ORDER BY full_name LIMIT 20
-    """ % (safe_q, safe_q, safe_q, safe_q, safe_q, safe_q))
+    """ % (safe_q, safe_q, safe_q, safe_q, safe_q, safe_q, demo_filter))
     rows = cur.fetchall()
     cur.close()
     conn.close()
