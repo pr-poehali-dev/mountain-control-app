@@ -49,6 +49,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = getStoredUser();
+    const isDemo = localStorage.getItem("mc_demo") === "true";
+    const onDemoRoute = window.location.pathname.startsWith("/demo");
+    if (isDemo && !onDemoRoute) {
+      localStorage.removeItem("mc_demo");
+      localStorage.removeItem("mc_demo_name");
+      clearToken();
+      setUser(null);
+      setAllowedPages([]);
+      localStorage.removeItem("mc_pages");
+      setLoading(false);
+      return;
+    }
     if (stored) {
       authApi
         .me()
@@ -70,7 +82,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const clearDemoFlags = () => {
+    localStorage.removeItem("mc_demo");
+    localStorage.removeItem("mc_demo_name");
+  };
+
   const login = async (email: string, password: string) => {
+    clearDemoFlags();
     const data = await authApi.login({ email, password });
     setToken(data.token);
     setUser(data.user);
@@ -81,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loginByCode = async (code: string) => {
+    clearDemoFlags();
     const data = await authApi.loginByCode(code);
     setToken(data.token);
     setUser(data.user);
@@ -91,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (regData: Record<string, unknown>) => {
+    clearDemoFlags();
     const data = await authApi.register(regData);
     setToken(data.token);
     setUser(data.user);
