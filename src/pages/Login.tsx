@@ -363,6 +363,39 @@ const Login = () => {
           </Tabs>
         </div>
 
+        <div className="text-center space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">или</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <Button
+            variant="outline"
+            className="w-full gap-2 border-mine-amber/30 text-mine-amber hover:bg-mine-amber/10 hover:border-mine-amber/50"
+            disabled={demoLoading}
+            onClick={() => {
+              setDemoLoading(true);
+              (async () => {
+                try {
+                  const defaultData = await demoApi.getDefault();
+                  const data = await demoApi.enter(defaultData.token);
+                  setToken(data.token);
+                  setStoredUser(data.user);
+                  localStorage.setItem("mc_pages", JSON.stringify(data.allowed_pages));
+                  enterDemo(defaultData.token, data.demo_name || "");
+                  window.location.href = "/";
+                } catch {
+                  setError("Демо-доступ временно недоступен");
+                  setDemoLoading(false);
+                }
+              })();
+            }}
+          >
+            <Icon name="Eye" size={16} />
+            {demoLoading ? "Загрузка демо..." : "Попробовать демо-версию"}
+          </Button>
+        </div>
+
         <p className="text-center text-xs text-muted-foreground">
           Горный контроль v1.0 — Система управления рудником
         </p>
