@@ -28,6 +28,7 @@ const DemoEntry = () => {
         setToken(data.token);
         setStoredUser(data.user);
         localStorage.setItem("mc_pages", JSON.stringify(data.allowed_pages));
+        localStorage.setItem("mc_demo_fresh", "true");
         enterDemo(demoToken, data.demo_name || "");
         window.location.href = "/";
       } catch (err: unknown) {

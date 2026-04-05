@@ -51,7 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stored = getStoredUser();
     const isDemo = localStorage.getItem("mc_demo") === "true";
     const onDemoRoute = window.location.pathname.startsWith("/demo");
-    if (isDemo && !onDemoRoute) {
+    const isFreshDemo = localStorage.getItem("mc_demo_fresh") === "true";
+    if (isFreshDemo) {
+      localStorage.removeItem("mc_demo_fresh");
+    } else if (isDemo && !onDemoRoute) {
       localStorage.removeItem("mc_demo");
       localStorage.removeItem("mc_demo_name");
       clearToken();
