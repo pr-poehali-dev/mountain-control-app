@@ -199,14 +199,21 @@ def upload_document(body):
         'message': 'Документ загружен: %d листов, %d строк данных' % (len(sheets), sum(s['row_count'] for s in sheets))
     })
 
-def get_documents(params):
+def get_documents(params, event=None):
     category = params.get('category', '')
+    is_demo = is_demo_request(event) if event else False
     conn = get_db()
     cur = conn.cursor()
 
-    where = ""
+    conditions = []
     if category:
-        where = "WHERE d.category = '%s'" % category.replace("'", "''")
+        conditions.append("d.category = '%s'" % category.replace("'", "''"))
+    if is_demo:
+        conditions.append("COALESCE(d.is_demo_data, FALSE) = TRUE")
+    else:
+        conditions.append("COALESCE(d.is_demo_data, FALSE) = FALSE")
+
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     cur.execute("""
         SELECT d.id, d.title, d.category, d.file_name, d.sheets, d.metadata, d.created_at, d.updated_at,
@@ -339,7 +346,7 @@ def handler(event, context):
         return upload_document(body)
 
     if method == 'GET' and action == 'documents':
-        return get_documents(params)
+        return get_documents(params, event)
 
     if method == 'GET' and action == 'document':
         return get_document(params)
