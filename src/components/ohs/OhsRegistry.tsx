@@ -46,6 +46,12 @@ export default function OhsRegistry() {
 
   const fetchDocuments = async () => {
     setLoading(true);
+    const isDemo = localStorage.getItem("mc_demo") === "true";
+    if (isDemo) {
+      setDocuments([]);
+      setLoading(false);
+      return;
+    }
     const data = await ohsApi.getDocuments({ category: "employee_registry" });
     setDocuments((data.documents || []).filter((d: Document) => d.title !== "[удалён]"));
     setLoading(false);
