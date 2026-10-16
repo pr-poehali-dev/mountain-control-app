@@ -1,4 +1,6 @@
+import { useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
+import ProfileSettingsDialog from "@/components/profile/ProfileSettingsDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Icon from "@/components/ui/icon";
@@ -31,6 +33,7 @@ const Profile = () => {
   const { user: realUser, logout } = useAuth();
   const { isDemo } = useDemo();
   const navigate = useNavigate();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const user = isDemo ? { ...realUser, ...demoUser } : realUser;
 
   const handleLogout = () => {
@@ -143,7 +146,7 @@ const Profile = () => {
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setSettingsOpen(true)}>
             <Icon name="Settings" size={14} />
             Настройки
           </Button>
@@ -157,6 +160,7 @@ const Profile = () => {
           </Button>
         </div>
       </div>
+      <ProfileSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} user={user} />
     </AppLayout>
   );
 };
