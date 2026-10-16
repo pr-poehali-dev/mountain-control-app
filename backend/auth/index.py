@@ -840,7 +840,12 @@ def sync_user_everywhere(cur, user_id):
 
     cur.execute("UPDATE checkpoint_passes SET full_name = '%s' WHERE personal_code = '%s'" % (name, code))
     cur.execute("UPDATE security_checks SET full_name = '%s' WHERE personal_code = '%s'" % (name, code))
-    cur.execute("UPDATE aho_arrivals SET full_name = '%s', position = '%s', department = '%s' WHERE personal_code = '%s'" % (name, position, dept, code))
+    cur.execute("""
+        UPDATE aho_arrivals SET full_name = '%s', position = '%s', department = '%s',
+               organization = CASE WHEN '%s' <> '' THEN '%s' ELSE organization END,
+               organization_type = CASE WHEN '%s' <> '' THEN '%s' ELSE organization_type END
+        WHERE personal_code = '%s'
+    """ % (name, position, dept, org, org, org_type, org_type, code))
     cur.execute("UPDATE lamp_room_issues SET person_name = '%s' WHERE person_code = '%s'" % (name, code))
     cur.execute("UPDATE lamp_room_denials SET person_name = '%s' WHERE person_code = '%s'" % (name, code))
     cur.execute("UPDATE notifications SET person_name = '%s' WHERE person_code = '%s'" % (name, code))

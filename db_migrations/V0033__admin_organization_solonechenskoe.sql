@@ -1,0 +1,2 @@
+UPDATE t_p25857058_mountain_control_app.users SET organization = 'ООО "ГРК "Солонеченское"' WHERE personal_code = 'АД-001';
+UPDATE t_p25857058_mountain_control_app.personnel SET organization = 'ООО "ГРК "Солонеченское"', updated_at = NOW() WHERE personal_code = 'АД-001';
