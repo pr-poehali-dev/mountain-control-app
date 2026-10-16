@@ -420,7 +420,7 @@ const Personnel = () => {
       </head>
       <body>
         <div class="badge">
-          <div class="badge-header">Горный контроль — Рудник Бадран</div>
+          <div class="badge-header">Горный контроль</div>
           <div class="badge-name">${person.full_name}</div>
           <div class="badge-position">${person.position || "—"}</div>
           <div class="badge-qr">${svgData}</div>
@@ -486,7 +486,7 @@ const Personnel = () => {
 
       return `
         <div class="badge">
-          <div class="badge-header">Горный контроль — Рудник Бадран</div>
+          <div class="badge-header">Горный контроль</div>
           <div class="badge-name">${escapeHtml(person.full_name)}</div>
           <div class="badge-position">${escapeHtml(person.position || "—")}</div>
           <div class="badge-qr">${svgMarkup}</div>
