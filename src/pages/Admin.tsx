@@ -878,6 +878,7 @@ const Admin = () => {
         onOpenChange={setAccessOpen}
         user={accessUser}
         roles={roles}
+        existingCodes={users.map((u) => u.personal_code).filter(Boolean)}
         onSaved={() => { loadUsers(); loadRoles(); }}
       />
 

@@ -8,6 +8,7 @@ import Icon from "@/components/ui/icon";
 import { authApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { PAGE_LABELS, RoleItem } from "@/components/admin/RolesManager";
+import PersonnelPicker, { PersonnelOption } from "@/components/admin/PersonnelPicker";
 
 export interface AccessUser {
   id: number;
@@ -27,6 +28,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   user: AccessUser | null;
   roles: RoleItem[];
+  existingCodes?: string[];
   onSaved: () => void;
 }
 
@@ -42,18 +44,33 @@ const emptyForm = {
   login_code: true,
 };
 
-const UserAccessDialog = ({ open, onOpenChange, user, roles, onSaved }: Props) => {
+const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [], onSaved }: Props) => {
   const { toast } = useToast();
   const isNew = !user;
   const [form, setForm] = useState(emptyForm);
   const [pages, setPages] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [picked, setPicked] = useState<PersonnelOption | null>(null);
+
+  const handlePick = (p: PersonnelOption | null) => {
+    setPicked(p);
+    if (p) {
+      setForm((f) => ({
+        ...f,
+        full_name: p.full_name || "",
+        position: p.position || "",
+        department: p.department || "",
+        organization: p.organization || "",
+      }));
+    }
+  };
 
   const assignableRoles = roles.filter((r) => r.key !== "admin");
   const currentRole = roles.find((r) => r.key === form.role);
 
   useEffect(() => {
     if (!open) return;
+    setPicked(null);
     if (user) {
       setForm({
         full_name: user.full_name || "",
@@ -113,6 +130,7 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, onSaved }: Props) =
           full_name: form.full_name.trim(),
           email: form.email.trim(),
           password: form.password,
+          personnel_id: picked?.id,
           position: form.position.trim(),
           department: form.department.trim(),
           organization: form.organization.trim(),
@@ -161,6 +179,26 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, onSaved }: Props) =
 
         <div className="space-y-5">
           <section className="space-y-2">
+            {isNew && (
+              <div className="rounded-lg border border-mine-cyan/30 bg-mine-cyan/5 p-3 space-y-2">
+                <p className="text-xs font-semibold text-mine-cyan flex items-center gap-1.5">
+                  <Icon name="UserSearch" size={14} />
+                  Сотрудник из списка персонала
+                </p>
+                <PersonnelPicker value={picked} onSelect={handlePick} excludeCodes={existingCodes} />
+                {picked ? (
+                  <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                    <Icon name="QrCode" size={12} className="text-mine-amber" />
+                    Будет присвоен существующий код и QR-код:
+                    <span className="font-mono text-foreground">{picked.personal_code}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Выберите сотрудника — данные и QR-код подставятся автоматически. Или заполните вручную ниже.
+                  </p>
+                )}
+              </div>
+            )}
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Данные</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Input placeholder="ФИО *" value={form.full_name} onChange={(e) => set("full_name", e.target.value)} />

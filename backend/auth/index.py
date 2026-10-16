@@ -699,8 +699,14 @@ def create_user(event, body):
         conn.close()
         return json_response(400, {'error': 'Пользователь с таким email уже существует'})
 
-    cur.execute("SELECT personal_code, qr_code FROM personnel WHERE LOWER(TRIM(full_name)) = LOWER(TRIM('%s')) LIMIT 1" % full_name.replace("'", "''"))
-    existing_personnel = cur.fetchone()
+    personnel_id = body.get('personnel_id')
+    existing_personnel = None
+    if personnel_id:
+        cur.execute("SELECT personal_code, qr_code FROM personnel WHERE id = %d" % int(personnel_id))
+        existing_personnel = cur.fetchone()
+    if not existing_personnel:
+        cur.execute("SELECT personal_code, qr_code FROM personnel WHERE LOWER(TRIM(full_name)) = LOWER(TRIM('%s')) LIMIT 1" % full_name.replace("'", "''"))
+        existing_personnel = cur.fetchone()
     if existing_personnel:
         personal_code = existing_personnel[0]
         qr_code = existing_personnel[1]
