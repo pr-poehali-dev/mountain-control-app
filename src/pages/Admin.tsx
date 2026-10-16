@@ -8,6 +8,7 @@ import { ahoApi, authApi, demoApi } from "@/lib/api";
 
 import { useAuth } from "@/contexts/AuthContext";
 import RolesManager, { RoleItem } from "@/components/admin/RolesManager";
+import UserAccessDialog, { AccessUser } from "@/components/admin/UserAccessDialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Select,
@@ -38,6 +39,8 @@ interface SystemUser {
   is_active: boolean;
   organization: string;
   organization_type: string;
+  login_email?: boolean;
+  login_code?: boolean;
 }
 
 const roleColors: Record<string, string> = {
@@ -151,6 +154,13 @@ const Admin = () => {
   const [newDemo, setNewDemo] = useState({ name: "", days: "7", max_visits: "0" });
   const [addingDemo, setAddingDemo] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [accessUser, setAccessUser] = useState<AccessUser | null>(null);
+
+  const openAccess = (u: AccessUser | null) => {
+    setAccessUser(u);
+    setAccessOpen(true);
+  };
 
   const loadRoles = async () => {
     try {
@@ -459,75 +469,18 @@ const Admin = () => {
                 <Button
                   size="sm"
                   className="gap-1.5 h-8 bg-mine-green text-white hover:bg-mine-green/90"
-                  onClick={() => setShowAddUser(!showAddUser)}
+                  onClick={() => openAccess(null)}
                 >
-                  <Icon name={showAddUser ? "X" : "UserPlus"} size={14} />
-                  {showAddUser ? "Отмена" : "Добавить"}
+                  <Icon name="UserPlus" size={14} />
+                  Зарегистрировать
                 </Button>
               </div>
             </div>
-            {showAddUser && (
-              <div className="p-4 border-b border-mine-green/20 bg-mine-green/5 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    placeholder="ФИО *"
-                    className="h-8 text-xs bg-secondary/50"
-                    value={newUser.full_name}
-                    onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Email *"
-                    className="h-8 text-xs bg-secondary/50"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Пароль *"
-                    type="password"
-                    className="h-8 text-xs bg-secondary/50"
-                    value={newUser.password}
-                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  />
-                  <Select value={newUser.role} onValueChange={(val) => setNewUser({ ...newUser, role: val })}>
-                    <SelectTrigger className="h-8 text-xs bg-secondary/50">
-                      <SelectValue placeholder="Роль" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roleOptions.map((r) => (
-                        <SelectItem key={r.value} value={r.value} className="text-xs">{r.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    placeholder="Должность"
-                    className="h-8 text-xs bg-secondary/50"
-                    value={newUser.position}
-                    onChange={(e) => setNewUser({ ...newUser, position: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Подразделение"
-                    className="h-8 text-xs bg-secondary/50"
-                    value={newUser.department}
-                    onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  className="gap-1.5 h-8 bg-mine-green text-white hover:bg-mine-green/90"
-                  onClick={handleCreateUser}
-                  disabled={addingUser}
-                >
-                  <Icon name="UserPlus" size={14} />
-                  {addingUser ? "Создаю..." : "Создать пользователя"}
-                </Button>
-              </div>
-            )}
-
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Имя", "Email", "Роль", "Подразделение", "Статус", ""].map((h) => (
+                    {["Имя", "Email", "Вход", "Роль", "Подразделение", "Статус", ""].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
@@ -540,13 +493,13 @@ const Admin = () => {
                 <tbody>
                   {usersLoading ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center">
+                      <td colSpan={7} className="px-4 py-8 text-center">
                         <Icon name="Loader2" size={20} className="animate-spin mx-auto text-muted-foreground" />
                       </td>
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Пользователи не найдены
                       </td>
                     </tr>
@@ -565,7 +518,23 @@ const Admin = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">
-                          {u.email}
+                          {u.email.startsWith("nomail_") ? "—" : u.email}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <span
+                              title={u.login_email !== false ? "Вход по почте разрешён" : "Вход по почте запрещён"}
+                              className={`p-1 rounded ${u.login_email !== false ? "bg-mine-cyan/15 text-mine-cyan" : "text-muted-foreground/30"}`}
+                            >
+                              <Icon name="Mail" size={13} />
+                            </span>
+                            <span
+                              title={u.login_code !== false ? "Вход по коду / QR разрешён" : "Вход по коду / QR запрещён"}
+                              className={`p-1 rounded ${u.login_code !== false ? "bg-mine-amber/15 text-mine-amber" : "text-muted-foreground/30"}`}
+                            >
+                              <Icon name="QrCode" size={13} />
+                            </span>
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           {isSelf || u.role === "admin" ? (
@@ -622,9 +591,9 @@ const Admin = () => {
                               {u.is_active ? (
                                 <>
                                   <button
-                                    onClick={() => openEditUser(u)}
+                                    onClick={() => openAccess(u)}
                                     className="p-1.5 rounded-md hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
-                                    title="Редактировать"
+                                    title="Данные, вход, роль и доступ"
                                   >
                                     <Icon name="Pencil" size={13} />
                                   </button>
@@ -903,6 +872,14 @@ const Admin = () => {
           )}
         </div>
       </div>
+
+      <UserAccessDialog
+        open={accessOpen}
+        onOpenChange={setAccessOpen}
+        user={accessUser}
+        roles={roles}
+        onSaved={() => { loadUsers(); loadRoles(); }}
+      />
 
       <AlertDialog open={deleteUserId !== null} onOpenChange={() => setDeleteUserId(null)}>
         <AlertDialogContent>

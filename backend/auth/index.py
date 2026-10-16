@@ -252,7 +252,7 @@ def login(body):
 
     password_hash = hash_password(password)
     cur.execute("""
-        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type
+        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type, login_email
         FROM users WHERE email = '%s' AND password_hash = '%s'
     """ % (email.replace("'", "''"), password_hash))
     row = cur.fetchone()
@@ -266,6 +266,11 @@ def login(body):
         cur.close()
         conn.close()
         return json_response(403, {'error': 'Учётная запись отключена'})
+
+    if not row[11] and row[7] != 'admin':
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Вход по почте для вас отключён. Используйте личный код или QR-код'})
 
     role = row[7]
     token = secrets.token_hex(32)
@@ -314,7 +319,7 @@ def login_by_code(body):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type
+        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type, login_code
         FROM users WHERE personal_code = '%s' OR qr_code = '%s'
     """ % (code.replace("'", "''"), code.replace("'", "''")))
     row = cur.fetchone()
@@ -328,6 +333,11 @@ def login_by_code(body):
         cur.close()
         conn.close()
         return json_response(403, {'error': 'Учётная запись отключена'})
+
+    if not row[11] and row[7] != 'admin':
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Вход по коду / QR для вас отключён. Используйте почту и пароль'})
 
     role = row[7]
     token = secrets.token_hex(32)
@@ -441,7 +451,7 @@ def list_users(event):
     cur = conn.cursor()
     cur.execute("""
         SELECT id, email, full_name, position, department, personal_code, role, is_active, organization, organization_type,
-               created_at
+               created_at, login_email, login_code
         FROM users ORDER BY id
     """)
     rows = cur.fetchall()
@@ -456,7 +466,8 @@ def list_users(event):
             'personal_code': r[5] or '', 'role': r[6],
             'is_active': r[7], 'organization': r[8] or '',
             'organization_type': r[9] or '',
-            'created_at': r[10]
+            'created_at': r[10],
+            'login_email': r[11], 'login_code': r[12]
         })
 
     return json_response(200, {'users': users})
@@ -658,9 +669,21 @@ def create_user(event, body):
     department = body.get('department', '').strip()
     organization = body.get('organization', '').strip()
     organization_type = body.get('organization_type', '').strip()
+    login_email = bool(body.get('login_email', True))
+    login_code = bool(body.get('login_code', True))
 
-    if not full_name or not email or not password:
-        return json_response(400, {'error': 'ФИО, email и пароль обязательны'})
+    if not full_name:
+        return json_response(400, {'error': 'Укажите ФИО'})
+    if not login_email and not login_code:
+        return json_response(400, {'error': 'Выберите хотя бы один способ входа'})
+    if login_email and (not email or not password):
+        return json_response(400, {'error': 'Для входа по почте укажите email и пароль'})
+    if password and len(password) < 6:
+        return json_response(400, {'error': 'Пароль должен быть не короче 6 символов'})
+    if not email:
+        email = 'nomail_%s@local' % secrets.token_hex(4)
+    if not password:
+        password = secrets.token_hex(12)
 
     conn = get_db()
     cur = conn.cursor()
@@ -696,8 +719,8 @@ def create_user(event, body):
     password_hash = hash_password(password)
 
     cur.execute("""
-        INSERT INTO users (email, password_hash, full_name, position, department, personal_code, qr_code, role, organization, organization_type)
-        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
+        INSERT INTO users (email, password_hash, full_name, position, department, personal_code, qr_code, role, organization, organization_type, login_email, login_code)
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, %s)
         RETURNING id, personal_code, qr_code
     """ % (
         email.replace("'", "''"),
@@ -709,7 +732,9 @@ def create_user(event, body):
         qr_code,
         role,
         organization.replace("'", "''"),
-        organization_type.replace("'", "''")
+        organization_type.replace("'", "''"),
+        'TRUE' if login_email else 'FALSE',
+        'TRUE' if login_code else 'FALSE'
     ))
     row = cur.fetchone()
     conn.commit()
@@ -723,7 +748,8 @@ def create_user(event, body):
             'position': position, 'department': department,
             'personal_code': row[1], 'qr_code': row[2], 'role': role,
             'is_active': True,
-            'organization': organization, 'organization_type': organization_type
+            'organization': organization, 'organization_type': organization_type,
+            'login_email': login_email, 'login_code': login_code
         }
     })
 
@@ -803,6 +829,20 @@ def update_user(event, body):
 
     if 'password' in body and body['password']:
         updates.append("password_hash = '%s'" % hash_password(body['password']))
+
+    if target[1] != 'admin':
+        cur.execute("SELECT login_email, login_code FROM users WHERE id = %d" % int(user_id))
+        cur_le, cur_lc = cur.fetchone()
+        new_le = bool(body['login_email']) if 'login_email' in body else cur_le
+        new_lc = bool(body['login_code']) if 'login_code' in body else cur_lc
+        if not new_le and not new_lc:
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Оставьте хотя бы один способ входа'})
+        if 'login_email' in body:
+            updates.append("login_email = %s" % ('TRUE' if new_le else 'FALSE'))
+        if 'login_code' in body:
+            updates.append("login_code = %s" % ('TRUE' if new_lc else 'FALSE'))
 
     if 'is_active' in body:
         updates.append("is_active = %s" % ('TRUE' if body['is_active'] else 'FALSE'))
