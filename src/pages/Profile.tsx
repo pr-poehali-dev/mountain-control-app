@@ -69,7 +69,7 @@ const Profile = () => {
               </p>
               <div className="flex items-center gap-3 mt-3">
                 <Badge variant="outline" className="bg-mine-amber/20 text-mine-amber border-mine-amber/30 text-xs">
-                  {roleLabels[user.role] || user.role}
+                  {roleLabels[user.role] || (user as { role_label?: string }).role_label || user.role}
                 </Badge>
               </div>
             </div>

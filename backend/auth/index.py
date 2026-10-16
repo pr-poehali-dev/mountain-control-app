@@ -56,6 +56,53 @@ def get_auth_token(event):
     return ''
 
 
+BUILTIN_ROLES = [
+    {'key': 'admin', 'label': 'Администратор'},
+    {'key': 'operator', 'label': 'Оператор'},
+    {'key': 'dispatcher', 'label': 'Диспетчер'},
+    {'key': 'doctor', 'label': 'Врач'},
+    {'key': 'aho_specialist', 'label': 'АХО'},
+    {'key': 'security', 'label': 'СБ'},
+    {'key': 'checkpoint_officer', 'label': 'КПП'},
+]
+
+
+def load_roles(cur):
+    cur.execute("SELECT value FROM settings WHERE key = 'custom_roles'")
+    row = cur.fetchone()
+    if row and row[0]:
+        roles = row[0] if isinstance(row[0], list) else json.loads(row[0])
+        if not any(r.get('key') == 'admin' for r in roles):
+            roles.insert(0, BUILTIN_ROLES[0])
+        return roles
+    return [dict(r) for r in BUILTIN_ROLES]
+
+
+def save_roles(cur, roles):
+    data = json.dumps(roles, ensure_ascii=False).replace("'", "''")
+    cur.execute("""
+        INSERT INTO settings (key, value, updated_at) VALUES ('custom_roles', '%s'::jsonb, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = '%s'::jsonb, updated_at = NOW()
+    """ % (data, data))
+
+
+def save_perms_raw(cur, perms):
+    perms['admin'] = ALL_PAGES[:]
+    data = json.dumps(perms, ensure_ascii=False).replace("'", "''")
+    cur.execute("""
+        INSERT INTO settings (key, value, updated_at) VALUES ('role_permissions', '%s'::jsonb, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = '%s'::jsonb, updated_at = NOW()
+    """ % (data, data))
+
+
+def role_keys(cur):
+    return [r['key'] for r in load_roles(cur)]
+
+
+def role_label_map(cur):
+    return {r['key']: r['label'] for r in load_roles(cur)}
+
+
 def load_permissions(cur):
     cur.execute("SELECT value FROM settings WHERE key = 'role_permissions'")
     row = cur.fetchone()
@@ -92,6 +139,12 @@ def handler(event, context):
         return get_permissions(event)
     elif method == 'PUT' and action == 'permissions':
         return save_permissions(event, body)
+    elif method == 'GET' and action == 'roles':
+        return get_roles(event)
+    elif method == 'POST' and action == 'role-save':
+        return role_save(event, body)
+    elif method == 'DELETE' and action == 'role-delete':
+        return role_delete(event, body)
     elif method == 'POST' and action == 'create-user':
         return create_user(event, body)
     elif method == 'DELETE' and action == 'delete-user':
@@ -228,6 +281,7 @@ def login(body):
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
     conn.commit()
+    role_label = role_label_map(cur).get(role, role)
     cur.close()
     conn.close()
 
@@ -236,7 +290,7 @@ def login(body):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': role,
+            'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[9] or '', 'organization_type': row[10] or ''
         },
         'allowed_pages': allowed
@@ -289,6 +343,7 @@ def login_by_code(body):
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
     conn.commit()
+    role_label = role_label_map(cur).get(role, role)
     cur.close()
     conn.close()
 
@@ -297,7 +352,7 @@ def login_by_code(body):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': role,
+            'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[9] or '', 'organization_type': row[10] or ''
         },
         'allowed_pages': allowed
@@ -331,6 +386,7 @@ def get_me(event):
         perms = load_permissions(cur)
         allowed = perms.get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
+    role_label = role_label_map(cur).get(role, role)
     cur.close()
     conn.close()
 
@@ -338,7 +394,7 @@ def get_me(event):
         'user': {
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
-            'personal_code': row[5], 'qr_code': row[6], 'role': role,
+            'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[8] or '', 'organization_type': row[9] or ''
         },
         'allowed_pages': allowed
@@ -414,14 +470,17 @@ def update_role(event, body):
     user_id = body.get('user_id')
     new_role = body.get('role', '').strip()
 
-    if not user_id or new_role not in VALID_ROLES:
-        return json_response(400, {'error': 'Укажите user_id и роль (%s)' % ', '.join(VALID_ROLES)})
-
-    if int(user_id) == caller['id']:
+    if int(user_id or 0) == caller['id']:
         return json_response(400, {'error': 'Нельзя менять роль самому себе'})
 
     conn = get_db()
     cur = conn.cursor()
+
+    if not user_id or new_role not in role_keys(cur):
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Укажите пользователя и существующую роль'})
+    role_labels = role_label_map(cur)
 
     cur.execute("SELECT id, role FROM users WHERE id = %d" % int(user_id))
     row = cur.fetchone()
@@ -441,12 +500,6 @@ def update_role(event, body):
     cur.close()
     conn.close()
 
-    role_labels = {
-        'admin': 'Администратор', 'operator': 'Оператор',
-        'dispatcher': 'Диспетчер', 'doctor': 'Врач',
-        'aho_specialist': 'Специалист АХО', 'security': 'СБ'
-    }
-
     return json_response(200, {
         'message': 'Роль изменена: %s → %s' % (role_labels.get(old_role, old_role), role_labels.get(new_role, new_role)),
         'user_id': int(user_id),
@@ -463,10 +516,108 @@ def get_permissions(event):
     conn = get_db()
     cur = conn.cursor()
     perms = load_permissions(cur)
+    roles = load_roles(cur)
     cur.close()
     conn.close()
 
-    return json_response(200, {'permissions': perms, 'all_pages': ALL_PAGES})
+    return json_response(200, {'permissions': perms, 'roles': roles, 'all_pages': ALL_PAGES})
+
+
+def get_roles(event):
+    caller = get_current_user(event)
+    if not caller:
+        return json_response(401, {'error': 'Требуется авторизация'})
+    conn = get_db()
+    cur = conn.cursor()
+    roles = load_roles(cur)
+    perms = load_permissions(cur)
+    cur.execute("SELECT role, COUNT(*) FROM users WHERE is_active = TRUE GROUP BY role")
+    counts = {r[0]: r[1] for r in cur.fetchall()}
+    cur.close()
+    conn.close()
+    for r in roles:
+        r['users_count'] = counts.get(r['key'], 0)
+        r['pages'] = ALL_PAGES[:] if r['key'] == 'admin' else perms.get(r['key'], [])
+    return json_response(200, {'roles': roles, 'all_pages': ALL_PAGES})
+
+
+def role_save(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    key = (body.get('key') or '').strip()
+    label = (body.get('label') or '').strip()
+    pages = body.get('pages')
+    if not label:
+        return json_response(400, {'error': 'Укажите название роли'})
+    if key == 'admin':
+        return json_response(400, {'error': 'Роль администратора изменять нельзя'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    roles = load_roles(cur)
+
+    if any(r['label'].lower() == label.lower() and r['key'] != key for r in roles):
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Роль с таким названием уже есть'})
+
+    if key:
+        found = False
+        for r in roles:
+            if r['key'] == key:
+                r['label'] = label
+                found = True
+        if not found:
+            cur.close()
+            conn.close()
+            return json_response(404, {'error': 'Роль не найдена'})
+    else:
+        key = 'role_%s' % secrets.token_hex(4)
+        roles.append({'key': key, 'label': label})
+
+    save_roles(cur, roles)
+
+    if isinstance(pages, list):
+        perms = load_permissions(cur)
+        perms = dict(perms)
+        perms[key] = [p for p in pages if p in ALL_PAGES and p != 'admin']
+        save_perms_raw(cur, perms)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Роль «%s» сохранена' % label, 'key': key})
+
+
+def role_delete(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+
+    key = (body.get('key') or '').strip()
+    if not key or key == 'admin':
+        return json_response(400, {'error': 'Эту роль удалить нельзя'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users WHERE role = '%s' AND is_active = TRUE" % key.replace("'", "''"))
+    cnt = cur.fetchone()[0]
+    if cnt > 0:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Роль назначена %d пользователям. Сначала смените им роль.' % cnt})
+
+    roles = [r for r in load_roles(cur) if r['key'] != key]
+    save_roles(cur, roles)
+    perms = dict(load_permissions(cur))
+    perms.pop(key, None)
+    save_perms_raw(cur, perms)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Роль удалена'})
 
 
 def save_permissions(event, body):
@@ -511,11 +662,13 @@ def create_user(event, body):
     if not full_name or not email or not password:
         return json_response(400, {'error': 'ФИО, email и пароль обязательны'})
 
-    if role not in VALID_ROLES:
-        return json_response(400, {'error': 'Недопустимая роль'})
-
     conn = get_db()
     cur = conn.cursor()
+
+    if role not in role_keys(cur):
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Недопустимая роль'})
 
     cur.execute("SELECT id FROM users WHERE email = '%s'" % email.replace("'", "''"))
     if cur.fetchone():
@@ -640,7 +793,7 @@ def update_user(event, body):
     for field in ['full_name', 'email', 'position', 'department', 'role', 'organization', 'organization_type']:
         if field in body and body[field] is not None:
             val = str(body[field]).strip()
-            if field == 'role' and val not in VALID_ROLES:
+            if field == 'role' and val not in role_keys(cur):
                 cur.close()
                 conn.close()
                 return json_response(400, {'error': 'Недопустимая роль'})

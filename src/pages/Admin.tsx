@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { ahoApi, authApi, demoApi } from "@/lib/api";
 
 import { useAuth } from "@/contexts/AuthContext";
+import RolesManager, { RoleItem } from "@/components/admin/RolesManager";
 import { useToast } from "@/hooks/use-toast";
 import {
   Select,
@@ -47,37 +48,6 @@ const roleColors: Record<string, string> = {
   aho_specialist: "bg-mine-purple/20 text-mine-purple border-mine-purple/30",
   security: "bg-mine-red/15 text-mine-red border-mine-red/25",
 };
-
-const roleLabels: Record<string, string> = {
-  admin: "Администратор",
-  operator: "Оператор",
-  dispatcher: "Диспетчер",
-  doctor: "Врач",
-  aho_specialist: "АХО",
-  security: "СБ",
-};
-
-const roleOptions = [
-  { value: "admin", label: "Администратор" },
-  { value: "operator", label: "Оператор" },
-  { value: "dispatcher", label: "Диспетчер" },
-  { value: "doctor", label: "Врач" },
-  { value: "aho_specialist", label: "АХО" },
-  { value: "security", label: "СБ" },
-];
-
-const pageLabels: Record<string, { label: string; icon: string }> = {
-  dashboard: { label: "Дашборд", icon: "LayoutDashboard" },
-  personnel: { label: "Персонал", icon: "Users" },
-  dispatcher: { label: "Диспетчерская", icon: "Radio" },
-  medical: { label: "Медконтроль", icon: "HeartPulse" },
-  lampa: { label: "Ламповая", icon: "Lightbulb" },
-  scanner: { label: "Сканирование", icon: "ScanLine" },
-  aho: { label: "АХО", icon: "Building2" },
-  reports: { label: "Отчёты", icon: "BarChart3" },
-};
-
-const editableRoles = ["operator", "dispatcher", "doctor", "aho_specialist", "security"];
 
 const systemModules = [
   { name: "Персонал", status: "активен", uptime: "99.8%", icon: "Users", color: "text-mine-amber" },
@@ -167,9 +137,8 @@ const Admin = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
-  const [permissions, setPermissions] = useState<Record<string, string[]>>({});
-  const [permsLoading, setPermsLoading] = useState(true);
-  const [permsSaving, setPermsSaving] = useState(false);
+  const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ full_name: "", email: "", password: "", role: "operator", position: "", department: "" });
   const [addingUser, setAddingUser] = useState(false);
@@ -183,33 +152,29 @@ const Admin = () => {
   const [addingDemo, setAddingDemo] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
-  const loadPermissions = async () => {
+  const loadRoles = async () => {
     try {
-      const data = await authApi.getPermissions();
-      setPermissions(data.permissions || {});
-    } catch { /* ignore */ }
-    finally { setPermsLoading(false); }
+      const data = await authApi.getRoles();
+      setRoles(data.roles || []);
+    } catch {
+      const fallback: Record<string, string> = {
+        admin: "Администратор", operator: "Оператор", dispatcher: "Диспетчер",
+        doctor: "Врач", aho_specialist: "АХО", security: "СБ", checkpoint_officer: "КПП",
+      };
+      let perms: Record<string, string[]> = {};
+      try {
+        const p = await authApi.getPermissions();
+        perms = p.permissions || {};
+      } catch { /* ignore */ }
+      setRoles(Object.entries(fallback).map(([key, label]) => ({
+        key, label, pages: perms[key] || [], users_count: 0,
+      })));
+    }
+    finally { setRolesLoading(false); }
   };
 
-  const togglePageAccess = (role: string, page: string) => {
-    setPermissions(prev => {
-      const current = prev[role] || [];
-      const has = current.includes(page);
-      const updated = has ? current.filter(p => p !== page) : [...current, page];
-      return { ...prev, [role]: updated };
-    });
-  };
-
-  const handleSavePermissions = async () => {
-    setPermsSaving(true);
-    try {
-      const res = await authApi.savePermissions(permissions);
-      setPermissions(res.permissions);
-      toast({ title: res.message });
-    } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Ошибка сохранения", variant: "destructive" });
-    } finally { setPermsSaving(false); }
-  };
+  const roleLabels: Record<string, string> = Object.fromEntries(roles.map((r) => [r.key, r.label]));
+  const roleOptions = roles.map((r) => ({ value: r.key, label: r.label }));
 
   const loadUsers = async () => {
     try {
@@ -225,6 +190,7 @@ const Admin = () => {
       const res = await authApi.updateRole(userId, newRole);
       toast({ title: res.message });
       loadUsers();
+      loadRoles();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка смены роли", variant: "destructive" });
     } finally { setRoleChangeLoading(null); }
@@ -351,7 +317,7 @@ const Admin = () => {
   useEffect(() => {
     loadUsers();
     loadItrPositions();
-    loadPermissions();
+    loadRoles();
     loadDemoLinks();
   }, []);
 
@@ -623,13 +589,7 @@ const Admin = () => {
                                 {roleOptions.map((r) => (
                                   <SelectItem key={r.value} value={r.value} className="text-xs">
                                     <div className="flex items-center gap-2">
-                                      <span className={`w-2 h-2 rounded-full ${
-                                        r.value === "admin" ? "bg-mine-red" :
-                                        r.value === "doctor" ? "bg-mine-green" :
-                                        r.value === "dispatcher" ? "bg-mine-amber" :
-                                        r.value === "aho_specialist" ? "bg-mine-purple" :
-                                        r.value === "security" ? "bg-mine-red" : "bg-mine-cyan"
-                                      }`} />
+                                      <span className={`w-2 h-2 rounded-full ${r.value === "admin" ? "bg-mine-red" : "bg-mine-cyan"}`} />
                                       {r.label}
                                     </div>
                                   </SelectItem>
@@ -750,66 +710,7 @@ const Admin = () => {
               </div>
             </div>
 
-            <div className="rounded-xl border border-primary/30 bg-card overflow-hidden">
-              <div className="p-4 border-b border-primary/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon name="ShieldCheck" size={18} className="text-primary" />
-                  <h3 className="text-sm font-semibold text-foreground">Доступ по ролям</h3>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Какие разделы видит каждая роль (кроме администратора — видит всё)
-                </p>
-              </div>
-              <div className="p-4 space-y-4">
-                {permsLoading ? (
-                  <div className="flex justify-center py-4">
-                    <Icon name="Loader2" size={20} className="animate-spin text-muted-foreground" />
-                  </div>
-                ) : editableRoles.map((role) => {
-                  const rolePages = permissions[role] || [];
-                  return (
-                    <div key={role} className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={`text-[11px] ${roleColors[role] || ""}`}>
-                          {roleLabels[role]}
-                        </Badge>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(pageLabels).map(([page, meta]) => {
-                          const enabled = rolePages.includes(page);
-                          return (
-                            <button
-                              key={page}
-                              onClick={() => togglePageAccess(role, page)}
-                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] transition-all border cursor-pointer ${
-                                enabled
-                                  ? "bg-primary/10 border-primary/30 text-primary"
-                                  : "bg-secondary/30 border-transparent text-muted-foreground hover:bg-secondary/50"
-                              }`}
-                            >
-                              <Icon name={meta.icon} size={12} />
-                              <span className="truncate">{meta.label}</span>
-                              {enabled && <Icon name="Check" size={10} className="ml-auto flex-shrink-0" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="pt-2 border-t border-border">
-                  <Button
-                    size="sm"
-                    className="w-full gap-1.5 h-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                    onClick={handleSavePermissions}
-                    disabled={permsSaving}
-                  >
-                    <Icon name="Save" size={14} />
-                    {permsSaving ? "Сохраняю..." : "Сохранить доступ"}
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <RolesManager roles={roles} loading={rolesLoading} onChanged={() => { loadRoles(); loadUsers(); }} />
 
             <div className="rounded-xl border border-mine-red/30 bg-card overflow-hidden">
               <div className="p-4 border-b border-mine-red/20">

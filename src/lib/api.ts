@@ -47,7 +47,7 @@ const DEMO_ALLOWED_ACTIONS = [
   "medical-status", "medical-itr-stats", "itr-positions", "settings",
   "denials", "detail", "repairs", "journal", "on-site", "messages",
   "documents", "document", "users", "permissions", "demo-list",
-  "personnel_list", "recent", "person",
+  "personnel_list", "recent", "person", "roles",
 ];
 
 async function request(
@@ -132,6 +132,11 @@ export const authApi = {
     request(API.auth, "", { method: "DELETE", body: { user_id }, params: { action: "delete-user" } }),
   updateUser: (body: Record<string, unknown>) =>
     request(API.auth, "", { method: "PUT", body, params: { action: "update-user" } }),
+  getRoles: () => request(API.auth, "", { params: { action: "roles" } }),
+  saveRole: (body: { key?: string; label: string; pages?: string[] }) =>
+    request(API.auth, "", { method: "POST", body, params: { action: "role-save" } }),
+  deleteRole: (key: string) =>
+    request(API.auth, "", { method: "DELETE", body: { key }, params: { action: "role-delete" } }),
 };
 
 export const personnelApi = {

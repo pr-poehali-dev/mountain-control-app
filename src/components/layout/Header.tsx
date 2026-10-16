@@ -86,7 +86,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const displayName = isDemo ? "Демо-пользователь" : (user?.full_name || user?.email || "Оператор");
-  const displayRole = isDemo ? "Демо-доступ" : (user?.role ? (roleLabels[user.role] || user.role) : "Смена А");
+  const displayRole = isDemo ? "Демо-доступ" : (user?.role ? (roleLabels[user.role] || (user as { role_label?: string }).role_label || user.role) : "Смена А");
 
   const fetchNotifications = useCallback(async () => {
     try {
