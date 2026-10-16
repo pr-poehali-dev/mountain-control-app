@@ -321,10 +321,13 @@ const Admin = () => {
     loadDemoLinks();
   }, []);
 
+  const sortPositions = (list: string[]) =>
+    [...list].sort((a, b) => a.localeCompare(b, "ru", { sensitivity: "base" }));
+
   const loadItrPositions = async () => {
     try {
       const data = await ahoApi.getItrPositions();
-      setItrPositions(data.positions || []);
+      setItrPositions(sortPositions(data.positions || []));
     } catch { /* ignore */ }
   };
 
@@ -335,7 +338,7 @@ const Admin = () => {
       toast({ title: "Такая должность уже есть", variant: "destructive" });
       return;
     }
-    setItrPositions([...itrPositions, val]);
+    setItrPositions(sortPositions([...itrPositions, val]));
     setNewPosition("");
   };
 
@@ -346,7 +349,7 @@ const Admin = () => {
   const handleSavePositions = async () => {
     setItrLoading(true);
     try {
-      const res = await ahoApi.saveItrPositions(itrPositions);
+      const res = await ahoApi.saveItrPositions(sortPositions(itrPositions));
       toast({ title: res.message });
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка сохранения", variant: "destructive" });
