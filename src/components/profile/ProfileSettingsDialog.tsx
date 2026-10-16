@@ -12,6 +12,7 @@ interface ProfileUser {
   email?: string;
   position?: string;
   department?: string;
+  organization?: string;
   role?: string;
 }
 
@@ -28,6 +29,7 @@ const ProfileSettingsDialog = ({ open, onOpenChange, user }: Props) => {
   const [email, setEmail] = useState("");
   const [position, setPosition] = useState("");
   const [department, setDepartment] = useState("");
+  const [organization, setOrganization] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [saving, setSaving] = useState(false);
@@ -39,6 +41,7 @@ const ProfileSettingsDialog = ({ open, onOpenChange, user }: Props) => {
       setEmail(user.email || "");
       setPosition(user.position || "");
       setDepartment(user.department || "");
+      setOrganization(user.organization || "");
       setPassword("");
       setPassword2("");
       setError("");
@@ -66,6 +69,7 @@ const ProfileSettingsDialog = ({ open, onOpenChange, user }: Props) => {
         email: email.trim(),
         position: position.trim(),
         department: department.trim(),
+        organization: organization.trim(),
       };
       if (password) body.password = password;
       await authApi.updateUser(body);
@@ -114,6 +118,10 @@ const ProfileSettingsDialog = ({ open, onOpenChange, user }: Props) => {
                 <label className="text-xs text-muted-foreground mb-1 block">Подразделение</label>
                 <Input value={department} onChange={(e) => setDepartment(e.target.value)} />
               </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Организация</label>
+              <Input value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Название организации" />
             </div>
             <div className="pt-2 border-t border-border">
               <p className="text-xs text-muted-foreground mb-2">
