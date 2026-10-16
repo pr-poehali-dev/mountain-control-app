@@ -97,29 +97,6 @@ def register_pass(body):
     safe_name = person_name.replace("'", "''")
     medical_ok = row[7] in ('passed', 'expiring')
 
-    if direction == 'in' and not medical_ok:
-        cur.execute("""
-            INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes)
-            VALUES (%d, '%s', '%s', 'in', '%s', FALSE, 'ОТКАЗ: медосмотр не пройден')
-        """ % (person_id, safe_code, safe_name, checkpoint_name.replace("'", "''")))
-
-        cur.execute("""
-            INSERT INTO events (event_type, description, personnel_id)
-            VALUES ('checkpoint_denied', 'КПП: %s — ОТКАЗ во входе (медосмотр)', %d)
-        """ % (safe_name, person_id))
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        return json_response(200, {
-            'result': 'denied',
-            'message': 'ОТКАЗ: медосмотр не пройден',
-            'person_name': person_name,
-            'medical_ok': False,
-            'direction': direction
-        })
-
     cur.execute("""
         INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes)
         VALUES (%d, '%s', '%s', '%s', '%s', %s, '%s')
@@ -264,7 +241,7 @@ def get_stats(event):
     cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.direction = 'out' AND cp.created_at::date = CURRENT_DATE" % demo_join)
     today_out = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.medical_ok = FALSE AND cp.created_at::date = CURRENT_DATE" % demo_join)
+    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.notes LIKE 'ОТКАЗ%%' AND cp.created_at::date = CURRENT_DATE" % demo_join)
     today_denied = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp LEFT JOIN personnel p ON cp.personnel_id = p.id WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
