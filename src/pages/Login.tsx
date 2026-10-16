@@ -288,7 +288,7 @@ const Login = () => {
                     Наименование предприятия
                   </label>
                   <Input
-                    placeholder="ООО «Рудник Бадран»"
+                    placeholder="Название организации"
                     value={regOrg}
                     onChange={(e) => setRegOrg(e.target.value)}
                     className="bg-secondary/50"

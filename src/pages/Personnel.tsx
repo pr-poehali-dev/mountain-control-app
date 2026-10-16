@@ -1131,7 +1131,7 @@ const Personnel = () => {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Организация</label>
-                <Input value={editOrg} onChange={(e) => setEditOrg(e.target.value)} className="bg-secondary/50" placeholder="ООО «Рудник Бадран»" />
+                <Input value={editOrg} onChange={(e) => setEditOrg(e.target.value)} className="bg-secondary/50" placeholder="Название организации" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1333,7 +1333,7 @@ const Personnel = () => {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Наименование предприятия</label>
-                <Input placeholder="ООО «Рудник Бадран»" value={formOrg} onChange={(e) => setFormOrg(e.target.value)} className="bg-secondary/50" />
+                <Input placeholder="Название организации" value={formOrg} onChange={(e) => setFormOrg(e.target.value)} className="bg-secondary/50" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
