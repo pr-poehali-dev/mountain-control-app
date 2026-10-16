@@ -26,6 +26,7 @@ interface AuthContextType {
   loginByCode: (code: string) => Promise<void>;
   register: (data: Record<string, unknown>) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'security', 'checkpoint', 'aho', 'ohs', 'reports', 'profile', 'admin'];
@@ -123,6 +124,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredPages(pages);
   };
 
+  const refreshUser = async () => {
+    const data = await authApi.me();
+    if (data?.user) {
+      setUser(data.user);
+      setStoredUser(data.user);
+    }
+  };
+
   const logout = () => {
     authApi.logout().catch(() => {});
     clearToken();
@@ -133,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, allowedPages, login, loginByCode, register, logout }}
+      value={{ user, loading, allowedPages, login, loginByCode, register, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

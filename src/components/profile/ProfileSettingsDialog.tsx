@@ -3,7 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { authApi, setStoredUser } from "@/lib/api";
+import { authApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ProfileUser {
   id?: number;
@@ -22,6 +23,7 @@ interface Props {
 
 const ProfileSettingsDialog = ({ open, onOpenChange, user }: Props) => {
   const { toast } = useToast();
+  const { refreshUser } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [position, setPosition] = useState("");
@@ -67,11 +69,9 @@ const ProfileSettingsDialog = ({ open, onOpenChange, user }: Props) => {
       };
       if (password) body.password = password;
       await authApi.updateUser(body);
-      const me = await authApi.me();
-      if (me?.user) setStoredUser(me.user);
-      toast({ title: "Настройки сохранены" });
+      await refreshUser();
+      toast({ title: "Настройки сохранены", description: "Данные обновлены во всех разделах программы" });
       onOpenChange(false);
-      window.location.reload();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Не удалось сохранить");
     } finally {

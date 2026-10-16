@@ -662,11 +662,35 @@ def update_user(event, body):
         return json_response(400, {'error': 'Нечего обновлять'})
 
     cur.execute("UPDATE users SET %s WHERE id = %d" % (', '.join(updates), int(user_id)))
+    sync_user_everywhere(cur, int(user_id))
     conn.commit()
     cur.close()
     conn.close()
 
     return json_response(200, {'message': 'Данные пользователя обновлены'})
+
+
+def sync_user_everywhere(cur, user_id):
+    cur.execute("SELECT personal_code, full_name, position, department, organization, organization_type FROM users WHERE id = %d" % user_id)
+    row = cur.fetchone()
+    if not row or not row[0]:
+        return
+    code, name, position, dept, org, org_type = [(v or '').replace("'", "''") for v in row]
+
+    cur.execute("""
+        UPDATE personnel SET full_name = '%s', position = '%s', department = '%s',
+               organization = CASE WHEN '%s' <> '' THEN '%s' ELSE organization END,
+               organization_type = CASE WHEN '%s' <> '' THEN '%s' ELSE organization_type END,
+               updated_at = NOW()
+        WHERE personal_code = '%s'
+    """ % (name, position, dept, org, org, org_type, org_type, code))
+
+    cur.execute("UPDATE checkpoint_passes SET full_name = '%s' WHERE personal_code = '%s'" % (name, code))
+    cur.execute("UPDATE security_checks SET full_name = '%s' WHERE personal_code = '%s'" % (name, code))
+    cur.execute("UPDATE aho_arrivals SET full_name = '%s', position = '%s', department = '%s' WHERE personal_code = '%s'" % (name, position, dept, code))
+    cur.execute("UPDATE lamp_room_issues SET person_name = '%s' WHERE person_code = '%s'" % (name, code))
+    cur.execute("UPDATE lamp_room_denials SET person_name = '%s' WHERE person_code = '%s'" % (name, code))
+    cur.execute("UPDATE notifications SET person_name = '%s' WHERE person_code = '%s'" % (name, code))
 
 
 def demo_create(event, body):
