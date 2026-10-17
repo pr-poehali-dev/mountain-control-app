@@ -38,7 +38,7 @@ export default function Sidebar() {
 
   const visibleItems = navItems.filter((item) => {
     if (!allowedPages.includes(item.page)) return false;
-    if (isDemo && item.page === "admin") return false;
+    if (isDemo && (item.page === "admin" || item.page === "profile")) return false;
     return true;
   });
 

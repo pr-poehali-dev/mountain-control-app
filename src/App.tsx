@@ -50,8 +50,8 @@ function PageRoute({ page, children }: { page: string; children: ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (!allowedPages.includes(page)) return <Navigate to="/" replace />;
-  if (isDemo && page === "admin") return <Navigate to="/" replace />;
+  if (isDemo && (page === "admin" || page === "profile")) return <Navigate to="/" replace />;
+  if (page !== "profile" && !allowedPages.includes(page)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -80,7 +80,7 @@ const AppRoutes = () => (
       <Route path="/aho" element={<PageRoute page="aho"><Aho /></PageRoute>} />
       <Route path="/ohs" element={<PageRoute page="ohs"><Ohs /></PageRoute>} />
       <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />
-      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="/profile" element={<PageRoute page="profile"><Profile /></PageRoute>} />
       <Route path="/admin" element={<PageRoute page="admin"><Admin /></PageRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
