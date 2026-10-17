@@ -177,7 +177,9 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [],
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-5" data-form-type="other">
+          <input type="text" name="fake-username" autoComplete="username" className="hidden" tabIndex={-1} aria-hidden="true" readOnly value="" />
+          <input type="password" name="fake-password" autoComplete="current-password" className="hidden" tabIndex={-1} aria-hidden="true" readOnly value="" />
           <section className="space-y-2">
             {isNew && (
               <div className="rounded-lg border border-mine-cyan/30 bg-mine-cyan/5 p-3 space-y-2">
@@ -228,10 +230,25 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [],
               </div>
               {form.login_email && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-6">
-                  <Input placeholder="Email *" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+                  <Input
+                    placeholder="Email нового пользователя *"
+                    type="email"
+                    name="new-user-email"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-form-type="other"
+                    value={form.email}
+                    onChange={(e) => set("email", e.target.value)}
+                  />
                   <Input
                     placeholder={isNew ? "Пароль * (от 6 символов)" : "Новый пароль (если менять)"}
                     type="password"
+                    name="new-user-password"
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-form-type="other"
                     value={form.password}
                     onChange={(e) => set("password", e.target.value)}
                   />
