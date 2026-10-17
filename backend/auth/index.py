@@ -6,6 +6,11 @@ import psycopg2
 import smtplib
 import ssl
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+import base64
+import html as html_lib
+from logo_data import LOGO_PNG_B64
 from email.header import Header
 from datetime import datetime, timedelta, date as date_type
 
@@ -1140,9 +1145,46 @@ def send_code_email(to_email, code, full_name):
         'Ваш код для входа в систему «Горный контроль»: %s\n\n'
         'Код действует 10 минут. Если вы не запрашивали вход — просто проигнорируйте это письмо.'
     ) % (full_name or '', code)
-    msg = MIMEText(text, 'plain', 'utf-8')
+    name_html = html_lib.escape(full_name or '')
+    html_body = """<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;overflow:hidden;">
+<tr><td align="center" style="background:#0e1218;padding:28px 24px;">
+<img src="cid:logo" width="64" height="64" alt="Горный контроль" style="display:block;border:0;border-radius:16px;">
+<div style="color:#f59e0b;font-size:22px;font-weight:bold;margin-top:14px;">Горный контроль</div>
+<div style="color:#9ca3af;font-size:13px;margin-top:4px;">Система учёта и контроля персонала на руднике</div>
+</td></tr>
+<tr><td style="padding:28px 28px 8px 28px;color:#111827;font-size:15px;line-height:1.5;">
+Здравствуйте%s!<br><br>Ваш код для входа в систему:
+</td></tr>
+<tr><td align="center" style="padding:8px 28px 8px 28px;">
+<div style="display:inline-block;background:#fef3c7;border:2px solid #f59e0b;border-radius:12px;padding:14px 28px;font-family:'Courier New',monospace;font-size:34px;font-weight:bold;letter-spacing:8px;color:#0e1218;">%s</div>
+</td></tr>
+<tr><td style="padding:16px 28px 28px 28px;color:#6b7280;font-size:13px;line-height:1.5;">
+Код действует 10 минут и может быть использован только один раз.<br>
+Если вы не запрашивали вход — просто проигнорируйте это письмо.
+</td></tr>
+<tr><td align="center" style="background:#f9fafb;padding:14px;color:#9ca3af;font-size:12px;">
+Письмо отправлено автоматически, отвечать на него не нужно.
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>""" % ((', ' + name_html) if name_html else '', code)
+
+    msg = MIMEMultipart('related')
+    alt = MIMEMultipart('alternative')
+    alt.attach(MIMEText(text, 'plain', 'utf-8'))
+    alt.attach(MIMEText(html_body, 'html', 'utf-8'))
+    msg.attach(alt)
+    logo = MIMEImage(base64.b64decode(LOGO_PNG_B64), 'png')
+    logo.add_header('Content-ID', '<logo>')
+    logo.add_header('Content-Disposition', 'inline', filename='logo.png')
+    msg.attach(logo)
     msg['Subject'] = Header('Код входа: %s' % code, 'utf-8')
-    msg['From'] = user
+    msg['From'] = '%s <%s>' % (Header('Горный контроль', 'utf-8').encode(), user)
     msg['To'] = to_email
     if port == 465:
         with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=10) as srv:
