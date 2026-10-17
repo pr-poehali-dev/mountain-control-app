@@ -13,9 +13,20 @@ import {
 } from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { authApi } from "@/lib/api";
 
 const Login = () => {
-  const { login, loginByCode, register } = useAuth();
+  const { loginByEmailCode, loginByCode, register } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState("login");
   const [error, setError] = useState("");
@@ -23,7 +34,10 @@ const Login = () => {
   const [scanning, setScanning] = useState(false);
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [info, setInfo] = useState("");
+  const [notRegistered, setNotRegistered] = useState(false);
   const [code, setCode] = useState("");
 
   const [regName, setRegName] = useState("");
@@ -34,18 +48,58 @@ const Login = () => {
   const [regOrg, setRegOrg] = useState("");
   const [regOrgType, setRegOrgType] = useState("");
 
+  const sendEmailCode = async () => {
+    setError("");
+    setInfo("");
+    setLoading(true);
+    try {
+      const res = await authApi.emailSendCode(email.trim());
+      setCodeSent(true);
+      setEmailCode("");
+      setInfo(res.message || "Код отправлен на почту");
+    } catch (err: unknown) {
+      const e = err as Error & { data?: { not_registered?: boolean } };
+      if (e.data?.not_registered) {
+        setNotRegistered(true);
+      } else {
+        setError(e.message || "Не удалось отправить код");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!codeSent) {
+      await sendEmailCode();
+      return;
+    }
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      await loginByEmailCode(email.trim(), emailCode);
       navigate("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
     } finally {
       setLoading(false);
     }
+  };
+
+  const changeEmail = () => {
+    setCodeSent(false);
+    setEmailCode("");
+    setInfo("");
+    setError("");
+  };
+
+  const goRegister = () => {
+    setNotRegistered(false);
+    setRegEmail(email.trim());
+    setError("");
+    setInfo("");
+    setTab("register");
   };
 
   const handleCodeLogin = async (e: React.FormEvent) => {
@@ -115,7 +169,7 @@ const Login = () => {
         </div>
 
         <div className="rounded-xl border border-border bg-card p-6">
-          <Tabs value={tab} onValueChange={setTab}>
+          <Tabs value={tab} onValueChange={(v) => { setTab(v); setError(""); }}>
             <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger value="login">Email</TabsTrigger>
               <TabsTrigger value="code">По коду</TabsTrigger>
@@ -140,29 +194,51 @@ const Login = () => {
                     placeholder="email@rudnik.ru"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    disabled={codeSent}
                     className="bg-secondary/50"
                     required
                   />
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
-                    Пароль
-                  </label>
-                  <Input
-                    type="password"
-                    placeholder="Введите пароль"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="bg-secondary/50"
-                    required
-                  />
-                </div>
+                {codeSent && (
+                  <div className="space-y-2">
+                    {info && (
+                      <div className="p-3 rounded-lg bg-mine-green/10 border border-mine-green/20 text-mine-green text-sm flex items-center gap-2">
+                        <Icon name="MailCheck" size={16} />
+                        {info}
+                      </div>
+                    )}
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Код из письма
+                    </label>
+                    <Input
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="000000"
+                      maxLength={6}
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      className="bg-secondary/50 font-mono text-2xl text-center tracking-[0.5em] h-14"
+                      autoFocus
+                      required
+                    />
+                    <div className="flex items-center justify-between text-xs">
+                      <button type="button" onClick={changeEmail} className="text-muted-foreground hover:text-foreground">
+                        Изменить email
+                      </button>
+                      <button type="button" onClick={sendEmailCode} disabled={loading} className="text-primary hover:underline disabled:opacity-50">
+                        Отправить код ещё раз
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <Button
                   type="submit"
                   className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
                   disabled={loading}
                 >
-                  {loading ? "Входим..." : "Войти"}
+                  {loading
+                    ? codeSent ? "Входим..." : "Отправляем код..."
+                    : codeSent ? "Войти" : "Получить код на почту"}
                 </Button>
               </form>
             </TabsContent>
@@ -342,6 +418,23 @@ const Login = () => {
           Горный контроль v1.0 — Система управления рудником
         </p>
       </div>
+      <AlertDialog open={notRegistered} onOpenChange={setNotRegistered}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Icon name="UserX" size={20} className="text-mine-amber" />
+              Email не зарегистрирован
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Адрес <span className="font-medium text-foreground">{email.trim()}</span> не найден в системе. Пройдите регистрацию, чтобы получить доступ.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={goRegister}>Зарегистрироваться</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

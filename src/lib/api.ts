@@ -65,7 +65,7 @@ async function request(
   if (localStorage.getItem("mc_demo") === "true" && method !== "GET") {
     const action = params?.action || "";
     const isAdminDemoAction = action.startsWith("demo-");
-    if (!isAdminDemoAction && !["login", "login-code", "logout", "demo-enter"].includes(action)) {
+    if (!isAdminDemoAction && !["login", "login-code", "email-send-code", "email-verify-code", "logout", "demo-enter"].includes(action)) {
       throw new Error("Демо-режим: сохранение данных доступно только в приобретённой версии");
     }
   }
@@ -105,7 +105,10 @@ async function request(
   }
 
   if (!res.ok) {
-    throw new Error(data.error || data.errorMessage || "Ошибка сервера");
+    const err = new Error(data.error || data.errorMessage || "Ошибка сервера") as Error & { status?: number; data?: Record<string, unknown> };
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
 
   return data;
@@ -114,6 +117,10 @@ async function request(
 export const authApi = {
   register: (body: Record<string, unknown>) =>
     request(API.auth, "", { method: "POST", body, params: { action: "register" } }),
+  emailSendCode: (email: string) =>
+    request(API.auth, "", { method: "POST", body: { email }, params: { action: "email-send-code" } }),
+  emailVerifyCode: (email: string, code: string) =>
+    request(API.auth, "", { method: "POST", body: { email, code }, params: { action: "email-verify-code" } }),
   login: (body: Record<string, unknown>) =>
     request(API.auth, "", { method: "POST", body, params: { action: "login" } }),
   loginByCode: (code: string) =>

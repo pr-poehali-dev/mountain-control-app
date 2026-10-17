@@ -24,6 +24,7 @@ interface AuthContextType {
   allowedPages: string[];
   login: (email: string, password: string) => Promise<void>;
   loginByCode: (code: string) => Promise<void>;
+  loginByEmailCode: (email: string, code: string) => Promise<void>;
   register: (data: Record<string, unknown>) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -102,6 +103,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredPages(pages);
   };
 
+  const loginByEmailCode = async (email: string, code: string) => {
+    clearDemoFlags();
+    const data = await authApi.emailVerifyCode(email, code);
+    setToken(data.token);
+    setUser(data.user);
+    setStoredUser(data.user);
+    const pages = data.allowed_pages || (data.user.role === 'admin' ? ALL_PAGES : ['dashboard', 'profile']);
+    setAllowedPages(pages);
+    setStoredPages(pages);
+  };
+
   const loginByCode = async (code: string) => {
     clearDemoFlags();
     const data = await authApi.loginByCode(code);
@@ -142,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, allowedPages, login, loginByCode, register, logout, refreshUser }}
+      value={{ user, loading, allowedPages, login, loginByCode, loginByEmailCode, register, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

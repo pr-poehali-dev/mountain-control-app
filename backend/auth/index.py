@@ -3,6 +3,10 @@ import os
 import hashlib
 import secrets
 import psycopg2
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.header import Header
 from datetime import datetime, timedelta, date as date_type
 
 def get_db():
@@ -125,6 +129,10 @@ def handler(event, context):
         return register(body)
     elif method == 'POST' and action == 'login':
         return login(body)
+    elif method == 'POST' and action == 'email-send-code':
+        return email_send_code(body)
+    elif method == 'POST' and action == 'email-verify-code':
+        return email_verify_code(body)
     elif method == 'POST' and action == 'login-code':
         return login_by_code(body)
     elif method == 'GET' and action == 'me':
@@ -1119,3 +1127,154 @@ def demo_default():
         return json_response(404, {'error': 'Нет активных демо-ссылок'})
 
     return json_response(200, {'token': row[0]})
+
+def send_code_email(to_email, code, full_name):
+    host = os.environ.get('SMTP_HOST', '')
+    user = os.environ.get('SMTP_USER', '')
+    password = os.environ.get('SMTP_PASSWORD', '')
+    port = int(os.environ.get('SMTP_PORT', '465') or 465)
+    if not host or not user or not password:
+        raise RuntimeError('smtp_not_configured')
+    text = (
+        'Здравствуйте, %s!\n\n'
+        'Ваш код для входа в систему «Горный контроль»: %s\n\n'
+        'Код действует 10 минут. Если вы не запрашивали вход — просто проигнорируйте это письмо.'
+    ) % (full_name or '', code)
+    msg = MIMEText(text, 'plain', 'utf-8')
+    msg['Subject'] = Header('Код входа: %s' % code, 'utf-8')
+    msg['From'] = user
+    msg['To'] = to_email
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=10) as srv:
+            srv.login(user, password)
+            srv.sendmail(user, [to_email], msg.as_string())
+    else:
+        with smtplib.SMTP(host, port, timeout=10) as srv:
+            srv.starttls(context=ssl.create_default_context())
+            srv.login(user, password)
+            srv.sendmail(user, [to_email], msg.as_string())
+
+
+def email_send_code(body):
+    """Отправляет одноразовый код входа на зарегистрированный email"""
+    email = (body.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return json_response(400, {'error': 'Введите корректный email'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    safe_email = email.replace("'", "''")
+    cur.execute("SELECT id, full_name, is_active, login_email, role FROM users WHERE LOWER(email) = '%s'" % safe_email)
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Этот email не зарегистрирован в системе', 'not_registered': True})
+    if not row[2]:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Учётная запись отключена'})
+    if not row[3] and row[4] != 'admin':
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Вход по почте для вас отключён. Используйте личный код или QR-код'})
+
+    cur.execute("SELECT COUNT(*) FROM email_login_codes WHERE email = '%s' AND created_at > NOW() - INTERVAL '60 seconds'" % safe_email)
+    if cur.fetchone()[0] > 0:
+        cur.close()
+        conn.close()
+        return json_response(429, {'error': 'Код уже отправлен. Повторно можно запросить через минуту'})
+
+    code = '%06d' % secrets.randbelow(1000000)
+    try:
+        send_code_email(email, code, row[1])
+    except RuntimeError:
+        cur.close()
+        conn.close()
+        return json_response(500, {'error': 'Отправка писем пока не настроена. Обратитесь к администратору'})
+    except Exception as e:
+        print('SMTP error: %s' % e)
+        cur.close()
+        conn.close()
+        return json_response(502, {'error': 'Не удалось отправить письмо. Попробуйте позже'})
+
+    cur.execute("UPDATE email_login_codes SET used = TRUE WHERE email = '%s' AND used = FALSE" % safe_email)
+    cur.execute("""
+        INSERT INTO email_login_codes (email, code_hash, expires_at)
+        VALUES ('%s', '%s', NOW() + INTERVAL '10 minutes')
+    """ % (safe_email, hash_password(email + ':' + code)))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Код отправлен на %s' % email})
+
+
+def email_verify_code(body):
+    """Проверяет одноразовый код и выполняет вход"""
+    email = (body.get('email') or '').strip().lower()
+    code = ''.join(ch for ch in str(body.get('code') or '') if ch.isdigit())
+    if not email or len(code) != 6:
+        return json_response(400, {'error': 'Введите 6-значный код из письма'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    safe_email = email.replace("'", "''")
+    cur.execute("""
+        SELECT id, code_hash, attempts FROM email_login_codes
+        WHERE email = '%s' AND used = FALSE AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1
+    """ % safe_email)
+    rec = cur.fetchone()
+    if not rec:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Код истёк или не запрашивался. Запросите новый'})
+    if rec[2] >= 5:
+        cur.execute("UPDATE email_login_codes SET used = TRUE WHERE id = %d" % rec[0])
+        conn.commit()
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Слишком много попыток. Запросите новый код'})
+    if rec[1] != hash_password(email + ':' + code):
+        cur.execute("UPDATE email_login_codes SET attempts = attempts + 1 WHERE id = %d" % rec[0])
+        conn.commit()
+        cur.close()
+        conn.close()
+        return json_response(401, {'error': 'Неверный код'})
+
+    cur.execute("UPDATE email_login_codes SET used = TRUE WHERE id = %d" % rec[0])
+    cur.execute("""
+        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type, login_email
+        FROM users WHERE LOWER(email) = '%s'
+    """ % safe_email)
+    row = cur.fetchone()
+    if not row or not row[8]:
+        conn.commit()
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Учётная запись недоступна'})
+
+    role = row[7]
+    token = secrets.token_hex(32)
+    expires = datetime.now() + timedelta(days=7)
+    cur.execute("INSERT INTO sessions (user_id, token, expires_at) VALUES (%d, '%s', '%s')" % (row[0], token, expires.isoformat()))
+    if role == 'admin':
+        allowed = ALL_PAGES[:]
+    else:
+        allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+    conn.commit()
+    role_label = role_label_map(cur).get(role, role)
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'token': token,
+        'user': {
+            'id': row[0], 'email': row[1], 'full_name': row[2],
+            'position': row[3], 'department': row[4],
+            'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
+            'organization': row[9] or '', 'organization_type': row[10] or ''
+        },
+        'allowed_pages': allowed
+    })
