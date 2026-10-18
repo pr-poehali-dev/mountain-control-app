@@ -6,6 +6,7 @@ import {
 } from "html5-qrcode";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import useWakeLock from "@/hooks/useWakeLock";
 
 interface QrScannerProps {
   onScan: (code: string) => void;
@@ -26,6 +27,47 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
   const startingRef = useRef(false);
   const uniqueId = useId().replace(/:/g, "");
   const readerId = `qr-reader-${uniqueId}`;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
+  useWakeLock(active);
+
+  const isStreamAlive = useCallback(() => {
+    const el = document.getElementById(readerId);
+    const videoEl = el?.querySelector("video");
+    const stream = videoEl?.srcObject as MediaStream | null | undefined;
+    const track = stream?.getVideoTracks()[0];
+    if (!videoEl || !track) return false;
+    if (track.readyState !== "live") return false;
+    if (videoEl.paused) {
+      videoEl.play().catch(() => {});
+    }
+    return true;
+  }, [readerId]);
+
+  useEffect(() => {
+    if (!active) return;
+    const check = () => {
+      if (!activeRef.current || startingRef.current || !mountedRef.current) return;
+      if (document.visibilityState !== "visible") return;
+      if (!isStreamAlive()) {
+        startScanner();
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") setTimeout(check, 400);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onVisibility);
+    window.addEventListener("pageshow", onVisibility);
+    const interval = setInterval(check, 5000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onVisibility);
+      window.removeEventListener("pageshow", onVisibility);
+      clearInterval(interval);
+    };
+  }, [active, isStreamAlive]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -138,6 +180,7 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
 
       if (mountedRef.current) {
         applyFocusHint(el);
+        watchTrack(el);
       }
     } catch (err) {
       if (!mountedRef.current) {
@@ -202,6 +245,27 @@ export default function QrScanner({ onScan, active, onToggle }: QrScannerProps) 
         onFail
       );
     }
+  };
+
+  const watchTrack = (el: HTMLElement) => {
+    const videoEl = el.querySelector("video");
+    const track = (videoEl?.srcObject as MediaStream | null)?.getVideoTracks()[0];
+    if (!track) return;
+    const restart = () => {
+      if (!activeRef.current || !mountedRef.current) return;
+      setTimeout(() => {
+        if (activeRef.current && mountedRef.current && !startingRef.current && !isStreamAlive()) {
+          startScanner();
+        }
+      }, 600);
+    };
+    track.addEventListener("ended", restart);
+    track.addEventListener("mute", restart);
+    videoEl?.addEventListener("pause", () => {
+      if (activeRef.current && document.visibilityState === "visible") {
+        videoEl.play().catch(() => {});
+      }
+    });
   };
 
   const applyFocusHint = (el: HTMLElement) => {
