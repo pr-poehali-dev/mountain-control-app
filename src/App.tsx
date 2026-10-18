@@ -23,6 +23,7 @@ import Login from "./pages/Login";
 import DemoEntry from "./pages/DemoEntry";
 import NotFound from "./pages/NotFound";
 import { ReactNode } from "react";
+import FaceOnboardingDialog from "@/components/face/FaceOnboardingDialog";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +66,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
 const AppRoutes = () => (
   <>
     <DemoBanner />
+    <FaceOnboardingDialog />
     <Routes>
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/demo" element={<DemoEntry />} />

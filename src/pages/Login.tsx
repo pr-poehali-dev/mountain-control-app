@@ -14,6 +14,7 @@ import {
 import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 import FaceLogin from "@/components/face/FaceLogin";
+import { FACE_ONBOARDING_KEY } from "@/components/face/FaceOnboardingDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -136,6 +137,7 @@ const Login = () => {
     e.preventDefault();
     setError("");
     setLoading(true);
+    sessionStorage.setItem(FACE_ONBOARDING_KEY, "1");
     try {
       await register({
         email: regEmail,
@@ -148,6 +150,7 @@ const Login = () => {
       });
       navigate("/");
     } catch (err: unknown) {
+      sessionStorage.removeItem(FACE_ONBOARDING_KEY);
       setError(err instanceof Error ? err.message : "Ошибка регистрации");
     } finally {
       setLoading(false);

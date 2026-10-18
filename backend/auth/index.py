@@ -145,7 +145,7 @@ def handler(event, context):
     elif method == 'POST' and action == 'face-save':
         return face_save(event, body)
     elif method == 'DELETE' and action == 'face-delete':
-        return face_delete(event)
+        return face_delete(event, body)
     elif method == 'GET' and action == 'me':
         return get_me(event)
     elif method == 'POST' and action == 'logout':
@@ -396,7 +396,7 @@ def get_me(event):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role, u.organization, u.organization_type, u.face_descriptor IS NOT NULL, u.face_photo_url
+        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role, u.organization, u.organization_type, u.face_descriptor IS NOT NULL, u.face_photo_url, u.face_self_enrolled
         FROM users u
         JOIN sessions s ON s.user_id = u.id
         WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE
@@ -425,7 +425,8 @@ def get_me(event):
             'position': row[3], 'department': row[4],
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[8] or '', 'organization_type': row[9] or '',
-            'has_face': bool(row[10]), 'face_photo_url': row[11] or ''
+            'has_face': bool(row[10]), 'face_photo_url': row[11] or '',
+            'face_can_self_enroll': role == 'admin' or (not row[10] and not row[12])
         },
         'allowed_pages': allowed
     })
@@ -471,7 +472,7 @@ def list_users(event):
     cur = conn.cursor()
     cur.execute("""
         SELECT id, email, full_name, position, department, personal_code, role, is_active, organization, organization_type,
-               created_at, login_email, login_code
+               created_at, login_email, login_code, face_descriptor IS NOT NULL, face_photo_url
         FROM users ORDER BY id
     """)
     rows = cur.fetchall()
@@ -487,7 +488,8 @@ def list_users(event):
             'is_active': r[7], 'organization': r[8] or '',
             'organization_type': r[9] or '',
             'created_at': r[10],
-            'login_email': r[11], 'login_code': r[12]
+            'login_email': r[11], 'login_code': r[12],
+            'has_face': bool(r[13]), 'face_photo_url': r[14] or ''
         })
 
     return json_response(200, {'users': users})
@@ -1361,6 +1363,12 @@ def face_save(event, body):
     me = get_current_user(event)
     if not me:
         return json_response(401, {'error': 'Требуется авторизация'})
+    is_admin = me['role'] == 'admin'
+    target_id = me['id']
+    if body.get('user_id') and int(body.get('user_id')) != me['id']:
+        if not is_admin:
+            return json_response(403, {'error': 'Изменять фото других сотрудников может только администратор'})
+        target_id = int(body.get('user_id'))
     raw = body.get('descriptors') or ([body.get('descriptor')] if body.get('descriptor') else [])
     desc = average_descriptors(raw if isinstance(raw, list) else [])
     if not desc:
@@ -1368,7 +1376,17 @@ def face_save(event, body):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT id, full_name, face_descriptor FROM users WHERE face_descriptor IS NOT NULL AND is_active = TRUE AND id <> %d" % me['id'])
+    cur.execute("SELECT face_descriptor IS NOT NULL, face_self_enrolled FROM users WHERE id = %d" % target_id)
+    trow = cur.fetchone()
+    if not trow:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник не найден'})
+    if not is_admin and (trow[0] or trow[1]):
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Фото уже добавлено. Изменить или удалить его может только администратор'})
+    cur.execute("SELECT id, full_name, face_descriptor FROM users WHERE face_descriptor IS NOT NULL AND is_active = TRUE AND id <> %d" % target_id)
     for uid, name, other in cur.fetchall():
         o = other if isinstance(other, list) else json.loads(other)
         if face_distance(desc, o) < 0.35:
@@ -1387,7 +1405,7 @@ def face_save(event, body):
             cur.close()
             conn.close()
             return json_response(400, {'error': 'Фото слишком большое'})
-        key = 'faces/user_%d_%s.jpg' % (me['id'], secrets.token_hex(6))
+        key = 'faces/user_%d_%s.jpg' % (target_id, secrets.token_hex(6))
         s3 = boto3.client('s3', endpoint_url='https://bucket.poehali.dev',
                           aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
                           aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
@@ -1395,22 +1413,26 @@ def face_save(event, body):
         photo_url = 'https://cdn.poehali.dev/projects/%s/bucket/%s' % (os.environ['AWS_ACCESS_KEY_ID'], key)
 
     desc_json = json.dumps(desc)
-    cur.execute("UPDATE users SET face_descriptor = '%s'::jsonb, face_photo_url = '%s', face_updated_at = NOW() WHERE id = %d"
-                % (desc_json, photo_url.replace("'", "''"), me['id']))
+    self_flag = ", face_self_enrolled = TRUE" if target_id == me['id'] else ""
+    cur.execute("UPDATE users SET face_descriptor = '%s'::jsonb, face_photo_url = '%s', face_updated_at = NOW()%s WHERE id = %d"
+                % (desc_json, photo_url.replace("'", "''"), self_flag, target_id))
     conn.commit()
     cur.close()
     conn.close()
     return json_response(200, {'message': 'Лицо сохранено. Теперь можно входить по лицу', 'face_photo_url': photo_url})
 
 
-def face_delete(event):
-    """Удаляет отпечаток лица текущего пользователя"""
+def face_delete(event, body):
+    """Удаляет фото лица сотрудника (только администратор)"""
     me = get_current_user(event)
     if not me:
         return json_response(401, {'error': 'Требуется авторизация'})
+    if me['role'] != 'admin':
+        return json_response(403, {'error': 'Удалить фото может только администратор'})
+    target_id = int(body.get('user_id') or me['id'])
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("UPDATE users SET face_descriptor = NULL, face_photo_url = NULL, face_updated_at = NOW() WHERE id = %d" % me['id'])
+    cur.execute("UPDATE users SET face_descriptor = NULL, face_photo_url = NULL, face_updated_at = NOW() WHERE id = %d" % target_id)
     conn.commit()
     cur.close()
     conn.close()

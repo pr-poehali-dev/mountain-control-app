@@ -19,6 +19,7 @@ interface User {
   organization?: string;
   has_face?: boolean;
   face_photo_url?: string;
+  face_can_self_enroll?: boolean;
 }
 
 interface AuthContextType {

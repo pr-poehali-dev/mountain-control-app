@@ -1,0 +1,2 @@
+ALTER TABLE t_p25857058_mountain_control_app.users ADD COLUMN IF NOT EXISTS face_self_enrolled BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE t_p25857058_mountain_control_app.users SET face_self_enrolled = TRUE WHERE face_descriptor IS NOT NULL;

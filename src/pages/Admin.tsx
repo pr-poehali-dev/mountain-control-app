@@ -9,6 +9,7 @@ import { ahoApi, authApi, demoApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import RolesManager, { RoleItem } from "@/components/admin/RolesManager";
 import UserAccessDialog, { AccessUser } from "@/components/admin/UserAccessDialog";
+import UserFaceDialog, { FaceUser } from "@/components/admin/UserFaceDialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Select,
@@ -41,6 +42,8 @@ interface SystemUser {
   organization_type: string;
   login_email?: boolean;
   login_code?: boolean;
+  has_face?: boolean;
+  face_photo_url?: string;
 }
 
 const roleColors: Record<string, string> = {
@@ -146,6 +149,7 @@ const Admin = () => {
   const [newUser, setNewUser] = useState({ full_name: "", email: "", password: "", role: "operator", position: "", department: "" });
   const [addingUser, setAddingUser] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
+  const [faceUser, setFaceUser] = useState<FaceUser | null>(null);
   const [editUser, setEditUser] = useState<SystemUser | null>(null);
   const [editFields, setEditFields] = useState({ full_name: "", email: "", position: "", department: "", password: "" });
   const [demoLinks, setDemoLinks] = useState<Array<{id: number; token: string; name: string; is_active: boolean; expires_at: string; max_visits: number; visit_count: number; created_at: string}>>([]);
@@ -534,6 +538,14 @@ const Admin = () => {
                             >
                               <Icon name="QrCode" size={13} />
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => setFaceUser(u)}
+                              title={u.has_face ? "Вход по лицу: фото добавлено (изменить)" : "Вход по лицу: добавить фото"}
+                              className={`p-1 rounded transition-colors ${u.has_face ? "bg-mine-green/15 text-mine-green hover:bg-mine-green/25" : "text-muted-foreground/40 hover:text-foreground hover:bg-secondary"}`}
+                            >
+                              <Icon name="ScanFace" size={13} />
+                            </button>
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -872,6 +884,8 @@ const Admin = () => {
           )}
         </div>
       </div>
+
+      <UserFaceDialog user={faceUser} onClose={() => setFaceUser(null)} onChanged={() => loadUsers()} />
 
       <UserAccessDialog
         open={accessOpen}

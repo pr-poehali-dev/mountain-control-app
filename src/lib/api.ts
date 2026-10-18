@@ -127,9 +127,10 @@ export const authApi = {
     request(API.auth, "", { method: "POST", body: { code }, params: { action: "login-code" } }),
   faceLogin: (descriptor: number[]) =>
     request(API.auth, "", { method: "POST", body: { descriptor }, params: { action: "face-login" } }),
-  faceSave: (descriptors: number[][], photo: string) =>
-    request(API.auth, "", { method: "POST", body: { descriptors, photo }, params: { action: "face-save" } }),
-  faceDelete: () => request(API.auth, "", { method: "DELETE", params: { action: "face-delete" } }),
+  faceSave: (descriptors: number[][], photo: string, user_id?: number) =>
+    request(API.auth, "", { method: "POST", body: { descriptors, photo, ...(user_id ? { user_id } : {}) }, params: { action: "face-save" } }),
+  faceDelete: (user_id?: number) =>
+    request(API.auth, "", { method: "DELETE", body: user_id ? { user_id } : {}, params: { action: "face-delete" } }),
   me: () => request(API.auth, "", { params: { action: "me" } }),
   logout: () => request(API.auth, "", { method: "POST", params: { action: "logout" } }),
   listUsers: () => request(API.auth, "", { params: { action: "users" } }),
