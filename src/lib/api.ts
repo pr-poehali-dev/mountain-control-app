@@ -65,7 +65,7 @@ async function request(
   if (localStorage.getItem("mc_demo") === "true" && method !== "GET") {
     const action = params?.action || "";
     const isAdminDemoAction = action.startsWith("demo-");
-    if (!isAdminDemoAction && !["login", "login-code", "email-send-code", "email-verify-code", "logout", "demo-enter"].includes(action)) {
+    if (!isAdminDemoAction && !["login", "login-code", "email-send-code", "email-verify-code", "face-login", "logout", "demo-enter"].includes(action)) {
       throw new Error("Демо-режим: сохранение данных доступно только в приобретённой версии");
     }
   }
@@ -125,6 +125,11 @@ export const authApi = {
     request(API.auth, "", { method: "POST", body, params: { action: "login" } }),
   loginByCode: (code: string) =>
     request(API.auth, "", { method: "POST", body: { code }, params: { action: "login-code" } }),
+  faceLogin: (descriptor: number[]) =>
+    request(API.auth, "", { method: "POST", body: { descriptor }, params: { action: "face-login" } }),
+  faceSave: (descriptors: number[][], photo: string) =>
+    request(API.auth, "", { method: "POST", body: { descriptors, photo }, params: { action: "face-save" } }),
+  faceDelete: () => request(API.auth, "", { method: "DELETE", params: { action: "face-delete" } }),
   me: () => request(API.auth, "", { params: { action: "me" } }),
   logout: () => request(API.auth, "", { method: "POST", params: { action: "logout" } }),
   listUsers: () => request(API.auth, "", { params: { action: "users" } }),

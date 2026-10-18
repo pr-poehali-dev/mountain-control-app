@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
+import FaceLogin from "@/components/face/FaceLogin";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -170,8 +171,9 @@ const Login = () => {
 
         <div className="rounded-xl border border-border bg-card p-6">
           <Tabs value={tab} onValueChange={(v) => { setTab(v); setError(""); }}>
-            <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsList className="grid w-full grid-cols-4 mb-6">
               <TabsTrigger value="login">Email</TabsTrigger>
+              <TabsTrigger value="face">Лицо</TabsTrigger>
               <TabsTrigger value="code">По коду</TabsTrigger>
               <TabsTrigger value="register">Регистрация</TabsTrigger>
             </TabsList>
@@ -182,6 +184,10 @@ const Login = () => {
                 {error}
               </div>
             )}
+
+            <TabsContent value="face">
+              {tab === "face" && <FaceLogin />}
+            </TabsContent>
 
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">

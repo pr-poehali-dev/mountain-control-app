@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { authApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import FaceEnroll from "@/components/face/FaceEnroll";
 
 interface ProfileUser {
   id?: number;
@@ -85,10 +86,12 @@ const ProfileSettingsDialog = ({ open, onOpenChange, user }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Настройки профиля</DialogTitle>
         </DialogHeader>
+
+        <FaceEnroll />
 
         {!isAdmin ? (
           <p className="text-sm text-muted-foreground">

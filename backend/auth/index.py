@@ -140,6 +140,12 @@ def handler(event, context):
         return email_verify_code(body)
     elif method == 'POST' and action == 'login-code':
         return login_by_code(body)
+    elif method == 'POST' and action == 'face-login':
+        return face_login(body)
+    elif method == 'POST' and action == 'face-save':
+        return face_save(event, body)
+    elif method == 'DELETE' and action == 'face-delete':
+        return face_delete(event)
     elif method == 'GET' and action == 'me':
         return get_me(event)
     elif method == 'POST' and action == 'logout':
@@ -390,7 +396,7 @@ def get_me(event):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role, u.organization, u.organization_type
+        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role, u.organization, u.organization_type, u.face_descriptor IS NOT NULL, u.face_photo_url
         FROM users u
         JOIN sessions s ON s.user_id = u.id
         WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE
@@ -418,7 +424,8 @@ def get_me(event):
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
-            'organization': row[8] or '', 'organization_type': row[9] or ''
+            'organization': row[8] or '', 'organization_type': row[9] or '',
+            'has_face': bool(row[10]), 'face_photo_url': row[11] or ''
         },
         'allowed_pages': allowed
     })
@@ -1317,6 +1324,146 @@ def email_verify_code(body):
             'position': row[3], 'department': row[4],
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[9] or '', 'organization_type': row[10] or ''
+        },
+        'allowed_pages': allowed
+    })
+
+
+FACE_MATCH_THRESHOLD = 0.45
+FACE_MARGIN = 0.05
+
+
+def parse_descriptor(raw):
+    if not isinstance(raw, list) or len(raw) != 128:
+        return None
+    try:
+        vals = [float(v) for v in raw]
+    except (TypeError, ValueError):
+        return None
+    if any(v != v or abs(v) > 10 for v in vals):
+        return None
+    return vals
+
+
+def average_descriptors(items):
+    vecs = [d for d in (parse_descriptor(x) for x in items) if d]
+    if not vecs:
+        return None
+    return [round(sum(v[i] for v in vecs) / len(vecs), 6) for i in range(128)]
+
+
+def face_distance(a, b):
+    return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+def face_save(event, body):
+    """Сохраняет фото и отпечаток лица текущего пользователя"""
+    me = get_current_user(event)
+    if not me:
+        return json_response(401, {'error': 'Требуется авторизация'})
+    raw = body.get('descriptors') or ([body.get('descriptor')] if body.get('descriptor') else [])
+    desc = average_descriptors(raw if isinstance(raw, list) else [])
+    if not desc:
+        return json_response(400, {'error': 'Лицо не распознано. Сделайте фото ещё раз'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, full_name, face_descriptor FROM users WHERE face_descriptor IS NOT NULL AND is_active = TRUE AND id <> %d" % me['id'])
+    for uid, name, other in cur.fetchall():
+        o = other if isinstance(other, list) else json.loads(other)
+        if face_distance(desc, o) < 0.35:
+            cur.close()
+            conn.close()
+            return json_response(409, {'error': 'Это лицо уже привязано к другому пользователю'})
+
+    photo_url = ''
+    photo = body.get('photo') or ''
+    if photo:
+        import boto3
+        if ',' in photo:
+            photo = photo.split(',', 1)[1]
+        data = base64.b64decode(photo)
+        if len(data) > 3 * 1024 * 1024:
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Фото слишком большое'})
+        key = 'faces/user_%d_%s.jpg' % (me['id'], secrets.token_hex(6))
+        s3 = boto3.client('s3', endpoint_url='https://bucket.poehali.dev',
+                          aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+                          aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
+        s3.put_object(Bucket='files', Key=key, Body=data, ContentType='image/jpeg')
+        photo_url = 'https://cdn.poehali.dev/projects/%s/bucket/%s' % (os.environ['AWS_ACCESS_KEY_ID'], key)
+
+    desc_json = json.dumps(desc)
+    cur.execute("UPDATE users SET face_descriptor = '%s'::jsonb, face_photo_url = '%s', face_updated_at = NOW() WHERE id = %d"
+                % (desc_json, photo_url.replace("'", "''"), me['id']))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Лицо сохранено. Теперь можно входить по лицу', 'face_photo_url': photo_url})
+
+
+def face_delete(event):
+    """Удаляет отпечаток лица текущего пользователя"""
+    me = get_current_user(event)
+    if not me:
+        return json_response(401, {'error': 'Требуется авторизация'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET face_descriptor = NULL, face_photo_url = NULL, face_updated_at = NOW() WHERE id = %d" % me['id'])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': 'Вход по лицу отключён'})
+
+
+def face_login(body):
+    """Вход в систему по отпечатку лица с камеры"""
+    desc = parse_descriptor(body.get('descriptor'))
+    if not desc:
+        return json_response(400, {'error': 'Лицо не распознано'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, face_descriptor FROM users WHERE face_descriptor IS NOT NULL AND is_active = TRUE")
+    scored = []
+    for uid, d in cur.fetchall():
+        v = d if isinstance(d, list) else json.loads(d)
+        scored.append((face_distance(desc, v), uid))
+    scored.sort()
+    if not scored or scored[0][0] > FACE_MATCH_THRESHOLD or (len(scored) > 1 and scored[1][0] - scored[0][0] < FACE_MARGIN):
+        cur.close()
+        conn.close()
+        return json_response(401, {'error': 'Лицо не опознано', 'not_found': True})
+
+    user_id = scored[0][1]
+    cur.execute("""
+        SELECT id, email, full_name, position, department, personal_code, qr_code, role, is_active, organization, organization_type, face_photo_url
+        FROM users WHERE id = %d
+    """ % user_id)
+    row = cur.fetchone()
+    role = row[7]
+    token = secrets.token_hex(32)
+    expires = datetime.now() + timedelta(days=7)
+    cur.execute("INSERT INTO sessions (user_id, token, expires_at) VALUES (%d, '%s', '%s')" % (row[0], token, expires.isoformat()))
+    if role == 'admin':
+        allowed = ALL_PAGES[:]
+    else:
+        allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+    conn.commit()
+    role_label = role_label_map(cur).get(role, role)
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'token': token,
+        'distance': round(scored[0][0], 3),
+        'user': {
+            'id': row[0], 'email': row[1], 'full_name': row[2],
+            'position': row[3], 'department': row[4],
+            'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
+            'organization': row[9] or '', 'organization_type': row[10] or '',
+            'has_face': True, 'face_photo_url': row[11] or ''
         },
         'allowed_pages': allowed
     })

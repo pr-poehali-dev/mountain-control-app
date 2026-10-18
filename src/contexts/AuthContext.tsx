@@ -16,6 +16,9 @@ interface User {
   personal_code: string;
   qr_code: string;
   role: string;
+  organization?: string;
+  has_face?: boolean;
+  face_photo_url?: string;
 }
 
 interface AuthContextType {
@@ -25,6 +28,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   loginByCode: (code: string) => Promise<void>;
   loginByEmailCode: (email: string, code: string) => Promise<void>;
+  loginByFace: (descriptor: number[]) => Promise<void>;
   register: (data: Record<string, unknown>) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -114,6 +118,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredPages(pages);
   };
 
+  const loginByFace = async (descriptor: number[]) => {
+    clearDemoFlags();
+    const data = await authApi.faceLogin(descriptor);
+    setToken(data.token);
+    setUser(data.user);
+    setStoredUser(data.user);
+    const pages = data.allowed_pages || (data.user.role === 'admin' ? ALL_PAGES : ['dashboard', 'profile']);
+    setAllowedPages(pages);
+    setStoredPages(pages);
+  };
+
   const loginByCode = async (code: string) => {
     clearDemoFlags();
     const data = await authApi.loginByCode(code);
@@ -154,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, allowedPages, login, loginByCode, loginByEmailCode, register, logout, refreshUser }}
+      value={{ user, loading, allowedPages, login, loginByCode, loginByEmailCode, loginByFace, register, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

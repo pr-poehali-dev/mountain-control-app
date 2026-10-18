@@ -168,6 +168,28 @@
         "email": "a@b.c"
       },
       "expectedStatus": 400
+    },
+    {
+      "name": "Face login requires descriptor",
+      "method": "POST",
+      "path": "/?action=face-login",
+      "body": {},
+      "expectedStatus": 400
+    },
+    {
+      "name": "Face save requires auth",
+      "method": "POST",
+      "path": "/?action=face-save",
+      "body": {
+        "descriptor": []
+      },
+      "expectedStatus": 401
+    },
+    {
+      "name": "Face delete requires auth",
+      "method": "DELETE",
+      "path": "/?action=face-delete",
+      "expectedStatus": 401
     }
   ]
 }
