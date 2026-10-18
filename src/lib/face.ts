@@ -26,26 +26,56 @@ export interface FaceResult {
   score: number;
   box: { x: number; y: number; width: number; height: number };
   faces: number;
+  ear: number;
+  yaw: number;
+}
+
+type Pt = { x: number; y: number };
+
+const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function eyeRatio(p: Pt[]): number {
+  return (dist(p[1], p[5]) + dist(p[2], p[4])) / (2 * dist(p[0], p[3]) || 1);
+}
+
+function faceMetrics(points: Pt[]): { ear: number; yaw: number } {
+  const ear = (eyeRatio(points.slice(36, 42)) + eyeRatio(points.slice(42, 48))) / 2;
+  const left = points[0];
+  const right = points[16];
+  const nose = points[30];
+  const width = right.x - left.x || 1;
+  const yaw = (nose.x - left.x) / width - 0.5;
+  return { ear, yaw };
 }
 
 export async function detectFace(
-  input: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
+  input: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
+  withDescriptor = true
 ): Promise<FaceResult | null> {
   const faceapi = await loadFaceApi();
-  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
-  const results = await faceapi
-    .detectAllFaces(input, options)
-    .withFaceLandmarks()
-    .withFaceDescriptors();
+  const options = new faceapi.TinyFaceDetectorOptions({
+    inputSize: withDescriptor ? 416 : 320,
+    scoreThreshold: 0.5,
+  });
+  const base = faceapi.detectAllFaces(input, options).withFaceLandmarks();
+  const results = withDescriptor ? await base.withFaceDescriptors() : await base;
   if (!results.length) return null;
   const best = results.reduce((a, b) => (a.detection.box.area > b.detection.box.area ? a : b));
   const b = best.detection.box;
+  const desc = (best as { descriptor?: Float32Array }).descriptor;
   return {
-    descriptor: Array.from(best.descriptor),
+    descriptor: desc ? Array.from(desc) : [],
     score: best.detection.score,
     box: { x: b.x, y: b.y, width: b.width, height: b.height },
     faces: results.length,
+    ...faceMetrics(best.landmarks.positions),
   };
+}
+
+export function descriptorDistance(a: number[], b: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2;
+  return Math.sqrt(sum);
 }
 
 export function snapshot(video: HTMLVideoElement, maxSize = 640): string {

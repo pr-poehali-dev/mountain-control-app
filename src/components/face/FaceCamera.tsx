@@ -11,6 +11,7 @@ interface Props {
   tone?: FaceTone;
   hint?: string;
   interval?: number;
+  withDescriptor?: boolean;
 }
 
 const toneColor: Record<FaceTone, string> = {
@@ -20,11 +21,13 @@ const toneColor: Record<FaceTone, string> = {
   error: "border-mine-red",
 };
 
-export default function FaceCamera({ active, onFace, tone = "idle", hint, interval = 450 }: Props) {
+export default function FaceCamera({ active, onFace, tone = "idle", hint, interval = 450, withDescriptor = true }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const onFaceRef = useRef(onFace);
   onFaceRef.current = onFace;
+  const optsRef = useRef({ interval, withDescriptor });
+  optsRef.current = { interval, withDescriptor };
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -48,13 +51,13 @@ export default function FaceCamera({ active, onFace, tone = "idle", hint, interv
       const video = videoRef.current;
       if (video && video.readyState >= 2 && !video.paused) {
         try {
-          const face = await detectFace(video);
+          const face = await detectFace(video, optsRef.current.withDescriptor);
           if (!cancelled) await onFaceRef.current(face, video);
         } catch (_e) { /* skip frame */ }
       } else if (video?.paused) {
         video.play().catch(() => {});
       }
-      if (!cancelled) timer = setTimeout(loop, interval);
+      if (!cancelled) timer = setTimeout(loop, optsRef.current.interval);
     };
 
     (async () => {
@@ -105,7 +108,7 @@ export default function FaceCamera({ active, onFace, tone = "idle", hint, interv
       document.removeEventListener("visibilitychange", onVisible);
       stop();
     };
-  }, [active, retry, interval]);
+  }, [active, retry]);
 
   if (!active) return null;
 
