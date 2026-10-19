@@ -7,6 +7,8 @@ interface StatCardProps {
   changeType?: "up" | "down" | "neutral";
   icon: string;
   color: "amber" | "cyan" | "green" | "red";
+  onClick?: () => void;
+  actionHint?: string;
 }
 
 const colorMap = {
@@ -43,13 +45,26 @@ export default function StatCard({
   changeType = "neutral",
   icon,
   color,
+  onClick,
+  actionHint,
 }: StatCardProps) {
   const c = colorMap[color];
 
   return (
     <div
-      className={`rounded-xl border ${c.border} ${c.bg} p-5 ${c.glow} animate-fade-in transition-all hover:scale-[1.02]`}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      title={actionHint}
+      className={`relative rounded-xl border ${c.border} ${c.bg} p-5 ${c.glow} animate-fade-in transition-all hover:scale-[1.02] ${onClick ? "cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary" : ""}`}
     >
+      {onClick && (
+        <span className="absolute bottom-3 right-4 flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors">
+          {actionHint || "Подробнее"}
+          <Icon name="ChevronRight" size={12} />
+        </span>
+      )}
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">

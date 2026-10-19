@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import StatCard from "@/components/dashboard/StatCard";
+import OnSiteDialog from "@/components/dashboard/OnSiteDialog";
 import PersonnelTable from "@/components/dashboard/PersonnelTable";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import ShiftOverview from "@/components/dashboard/ShiftOverview";
@@ -49,6 +50,7 @@ const Index = () => {
   const [personnel, setPersonnel] = useState<PersonnelItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [onSiteOpen, setOnSiteOpen] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -113,6 +115,8 @@ const Index = () => {
                 changeType="neutral"
                 icon="Users"
                 color="amber"
+                onClick={() => setOnSiteOpen(true)}
+                actionHint="Список"
               />
               <StatCard
                 title="Фонари выданы"
@@ -180,6 +184,7 @@ const Index = () => {
           </>
         )}
       </div>
+      <OnSiteDialog open={onSiteOpen} onOpenChange={setOnSiteOpen} />
     </AppLayout>
   );
 };

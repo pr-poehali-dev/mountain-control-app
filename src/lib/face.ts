@@ -21,6 +21,22 @@ export function loadFaceApi(): Promise<typeof FaceApi> {
   return faceapiPromise;
 }
 
+export function preloadFaceApi() {
+  const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  if (conn?.saveData) return;
+  loadFaceApi()
+    .then(async (faceapi) => {
+      const c = document.createElement("canvas");
+      c.width = 64;
+      c.height = 64;
+      await faceapi
+        .detectAllFaces(c, new faceapi.TinyFaceDetectorOptions({ inputSize: 128 }))
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+    })
+    .catch(() => {});
+}
+
 export interface FaceResult {
   descriptor: number[];
   score: number;

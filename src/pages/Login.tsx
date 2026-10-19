@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, lazy, Suspense, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
-import QrScanner from "@/components/scanner/QrScanner";
-import FaceLogin from "@/components/face/FaceLogin";
 import { FACE_ONBOARDING_KEY } from "@/components/face/FaceOnboardingDialog";
 import {
   AlertDialog,
@@ -26,6 +24,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { authApi } from "@/lib/api";
+import { preloadFaceApi } from "@/lib/face";
+
+const QrScanner = lazy(() => import("@/components/scanner/QrScanner"));
+const FaceLogin = lazy(() => import("@/components/face/FaceLogin"));
+
+const Spinner = () => (
+  <div className="flex items-center justify-center py-10">
+    <Icon name="Loader2" size={24} className="animate-spin text-muted-foreground" />
+  </div>
+);
 
 const Login = () => {
   const { loginByEmailCode, loginByCode, register } = useAuth();
@@ -49,6 +57,14 @@ const Login = () => {
   const [regDept, setRegDept] = useState("");
   const [regOrg, setRegOrg] = useState("");
   const [regOrgType, setRegOrgType] = useState("");
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      import("@/components/face/FaceLogin");
+      preloadFaceApi();
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, []);
 
   const sendEmailCode = async () => {
     setError("");
@@ -189,7 +205,7 @@ const Login = () => {
             )}
 
             <TabsContent value="face">
-              {tab === "face" && <FaceLogin />}
+              {tab === "face" && <Suspense fallback={<Spinner />}><FaceLogin /></Suspense>}
             </TabsContent>
 
             <TabsContent value="login">
@@ -256,11 +272,13 @@ const Login = () => {
               <div className="space-y-4">
                 {scanning ? (
                   <div className="rounded-lg overflow-hidden">
-                    <QrScanner
-                      onScan={handleQrScan}
-                      active={scanning}
-                      onToggle={setScanning}
-                    />
+                    <Suspense fallback={<Spinner />}>
+                      <QrScanner
+                        onScan={handleQrScan}
+                        active={scanning}
+                        onToggle={setScanning}
+                      />
+                    </Suspense>
                   </div>
                 ) : (
                   <>
