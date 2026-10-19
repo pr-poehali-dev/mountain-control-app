@@ -144,7 +144,16 @@ def get_dashboard(event):
 
     demo_filter = "AND is_demo_data = TRUE" if is_demo_request(event) else "AND is_demo_data = FALSE"
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived' %s" % demo_filter)
+    p_demo = demo_filter.replace('is_demo_data', 'p.is_demo_data')
+    on_site_from = """personnel p WHERE p.status <> 'archived' %s AND p.id IN (
+            SELECT ls.personnel_id FROM (
+                SELECT DISTINCT ON (cp.personnel_id) cp.personnel_id, cp.direction
+                FROM checkpoint_passes cp
+                WHERE cp.personnel_id IS NOT NULL AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%%%'
+                ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
+            ) ls WHERE ls.direction = 'in'
+        )""" % p_demo
+    cur.execute("SELECT COUNT(*) FROM " + on_site_from)
     on_site = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM lanterns WHERE status = 'issued'")
@@ -166,7 +175,7 @@ def get_dashboard(event):
     housing_total = room_row[0]
     housing_occupied = room_row[1]
 
-    cur.execute("SELECT category, COUNT(*) FROM personnel WHERE status IN ('on_shift', 'arrived', 'business_trip') AND status != 'archived' %s GROUP BY category" % demo_filter)
+    cur.execute("SELECT p.category, COUNT(*) FROM " + on_site_from + " GROUP BY p.category")
     by_category = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("SELECT COALESCE(organization_type, ''), COUNT(*) FROM personnel WHERE status != 'archived' %s GROUP BY COALESCE(organization_type, '')" % demo_filter)

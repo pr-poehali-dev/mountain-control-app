@@ -114,7 +114,15 @@ def get_lantern_stats(event):
     cur.execute("SELECT COUNT(*) FROM lanterns")
     total = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' AND status IN ('on_shift', 'arrived') %s" % demo_filter)
+    p_demo = demo_filter.replace('is_demo_data', 'p.is_demo_data')
+    cur.execute("""SELECT COUNT(*) FROM personnel p WHERE p.status <> 'archived' %s AND p.id IN (
+            SELECT ls.personnel_id FROM (
+                SELECT DISTINCT ON (cp.personnel_id) cp.personnel_id, cp.direction
+                FROM checkpoint_passes cp
+                WHERE cp.personnel_id IS NOT NULL AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%%%'
+                ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
+            ) ls WHERE ls.direction = 'in'
+        )""" % p_demo)
     on_site = cur.fetchone()[0]
 
     cur.close()
