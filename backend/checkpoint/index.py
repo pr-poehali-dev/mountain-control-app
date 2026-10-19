@@ -248,16 +248,13 @@ def get_stats(event):
     total_passes = cur.fetchone()[0]
 
     cur.execute("""
-        SELECT COUNT(DISTINCT cp.personnel_id)
-        FROM checkpoint_passes cp
-        JOIN personnel p ON cp.personnel_id = p.id AND p.is_demo_data = %s
-        WHERE cp.direction = 'in' AND cp.created_at::date = CURRENT_DATE
-        AND cp.personnel_id NOT IN (
-            SELECT DISTINCT cp2.personnel_id FROM checkpoint_passes cp2
-            WHERE cp2.direction = 'out' AND cp2.created_at::date = CURRENT_DATE
-            AND cp2.personnel_id IS NOT NULL
-        )
-        AND cp.personnel_id IS NOT NULL
+        SELECT COUNT(*) FROM (
+            SELECT DISTINCT ON (cp.personnel_id) cp.personnel_id, cp.direction
+            FROM checkpoint_passes cp
+            JOIN personnel p ON cp.personnel_id = p.id AND p.is_demo_data = %s AND p.status <> 'archived'
+            WHERE cp.personnel_id IS NOT NULL AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%'
+            ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
+        ) last_pass WHERE last_pass.direction = 'in'
     """ % demo_val)
     currently_on_site = cur.fetchone()[0]
 
@@ -287,9 +284,9 @@ def get_on_site(params, event):
         FROM checkpoint_passes cp
         LEFT JOIN personnel p ON cp.personnel_id = p.id
         WHERE cp.personnel_id IS NOT NULL
-        AND cp.created_at::date = CURRENT_DATE
-        AND (p.id IS NULL OR p.is_demo_data = %s)
-        ORDER BY cp.personnel_id, cp.created_at DESC
+        AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%'
+        AND (p.id IS NULL OR (p.is_demo_data = %s AND p.status <> 'archived'))
+        ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
     """ % demo_val)
     rows = cur.fetchall()
     cur.close()
