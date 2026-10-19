@@ -1,3 +1,4 @@
+import ThemeToggle from "@/components/theme/ThemeToggle";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { demoApi, setToken, setStoredUser } from "@/lib/api";
@@ -43,6 +44,7 @@ const DemoEntry = () => {
   if (status === "error") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <ThemeToggle floating />
         <div className="max-w-md w-full text-center space-y-4 animate-fade-in">
           <div className="w-16 h-16 rounded-2xl bg-mine-red/20 flex items-center justify-center mx-auto">
             <Icon name="AlertCircle" size={32} className="text-mine-red" />
@@ -62,6 +64,7 @@ const DemoEntry = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <ThemeToggle floating />
       <div className="text-center space-y-4 animate-fade-in">
         <div className="w-16 h-16 rounded-2xl bg-mine-amber/20 flex items-center justify-center mx-auto">
           <Icon name="Eye" size={32} className="text-mine-amber" />

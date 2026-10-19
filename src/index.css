@@ -6,6 +6,57 @@
 
 @layer base {
   :root {
+    --background: 220 20% 97%;
+    --foreground: 220 25% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 12%;
+
+    --primary: 38 92% 50%;
+    --primary-foreground: 220 25% 10%;
+
+    --secondary: 220 16% 92%;
+    --secondary-foreground: 220 20% 20%;
+
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 10% 40%;
+
+    --accent: 187 80% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 14% 86%;
+    --input: 220 14% 84%;
+    --ring: 38 92% 45%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 20% 25%;
+    --sidebar-primary: 38 92% 45%;
+    --sidebar-primary-foreground: 220 25% 10%;
+    --sidebar-accent: 220 16% 94%;
+    --sidebar-accent-foreground: 220 25% 12%;
+    --sidebar-border: 220 14% 88%;
+    --sidebar-ring: 38 92% 45%;
+
+    --mine-green: 142 72% 32%;
+    --mine-red: 0 72% 46%;
+    --mine-amber: 32 95% 40%;
+    --mine-cyan: 190 85% 32%;
+    --mine-purple: 270 60% 48%;
+
+    --scroll-track: 220 16% 94%;
+    --scroll-thumb: 220 12% 78%;
+    --scroll-thumb-hover: 220 12% 65%;
+  }
+
+  .dark {
     --background: 220 20% 7%;
     --foreground: 210 20% 92%;
 
@@ -50,6 +101,10 @@
     --mine-amber: 38 92% 50%;
     --mine-cyan: 187 80% 42%;
     --mine-purple: 270 60% 58%;
+
+    --scroll-track: 220 20% 7%;
+    --scroll-thumb: 220 14% 22%;
+    --scroll-thumb-hover: 220 14% 30%;
   }
 }
 
@@ -58,8 +113,16 @@
     @apply border-border;
   }
 
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    transition: background-color 0.2s ease, color 0.2s ease;
     font-family: "IBM Plex Sans", sans-serif;
   }
 }
@@ -116,12 +179,24 @@
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: hsl(220 20% 7%);
+  background: hsl(var(--scroll-track));
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(220 14% 22%);
+  background: hsl(var(--scroll-thumb));
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(220 14% 30%);
+  background: hsl(var(--scroll-thumb-hover));
+}
+
+html:not(.dark) .text-blue-400 { color: rgb(37 99 235); }
+html:not(.dark) .text-orange-400 { color: rgb(234 88 12); }
+html:not(.dark) .text-emerald-400 { color: rgb(5 150 105); }
+html:not(.dark) .text-purple-400 { color: rgb(147 51 234); }
+html:not(.dark) .text-red-300 { color: rgb(220 38 38); }
+html:not(.dark) .glow-amber,
+html:not(.dark) .glow-cyan,
+html:not(.dark) .glow-green,
+html:not(.dark) .glow-red {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.05);
 }

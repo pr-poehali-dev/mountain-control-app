@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemo } from "@/contexts/DemoContext";
 import { eventsApi } from "@/lib/api";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 
 interface HeaderProps {
   title: string;
@@ -158,6 +159,8 @@ export default function Header({ title, subtitle }: HeaderProps) {
             Система активна
           </span>
         </div>
+
+        <ThemeToggle />
 
         <div className="relative" ref={dropdownRef}>
           <button

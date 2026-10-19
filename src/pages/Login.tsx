@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { authApi } from "@/lib/api";
 import { preloadFaceApi } from "@/lib/face";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 
 const QrScanner = lazy(() => import("@/components/scanner/QrScanner"));
 const FaceLogin = lazy(() => import("@/components/face/FaceLogin"));
@@ -177,6 +178,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <ThemeToggle floating />
       <div className="w-full max-w-md space-y-6 animate-fade-in">
         <div className="text-center space-y-2">
           <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto">
