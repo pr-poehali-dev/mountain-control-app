@@ -51,6 +51,10 @@ def handler(event, context):
         return get_on_site(params, event)
     elif method == 'GET' and action == 'export':
         return export_journal(params, event)
+    elif method == 'PUT' and action == 'pass-update':
+        return update_pass(event, body)
+    elif method == 'DELETE' and action == 'pass-delete':
+        return delete_pass(event, body, params)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -357,3 +361,137 @@ def export_journal(params, event):
         },
         'body': csv_content
     }
+
+def get_auth_token(event):
+    headers = event.get('headers') or {}
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            return val[7:] if val.startswith('Bearer ') else val
+    return ''
+
+
+def get_admin(cur, event):
+    token = get_auth_token(event)
+    if not token:
+        return None
+    cur.execute("""
+        SELECT u.id, u.full_name FROM users u
+        JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    return cur.fetchone()
+
+
+def sync_person_status(cur, personnel_id):
+    if not personnel_id:
+        return
+    cur.execute("""
+        SELECT direction FROM checkpoint_passes
+        WHERE personnel_id = %d AND COALESCE(notes, '') NOT LIKE 'ОТКАЗ%%'
+        ORDER BY created_at DESC, id DESC LIMIT 1
+    """ % int(personnel_id))
+    row = cur.fetchone()
+    if not row:
+        return
+    new_status = 'arrived' if row[0] == 'in' else 'departed'
+    cur.execute("""
+        UPDATE personnel SET status = '%s', updated_at = NOW()
+        WHERE id = %d AND status IN ('arrived', 'departed', 'on_shift')
+    """ % (new_status, int(personnel_id)))
+
+
+def update_pass(event, body):
+    pass_id = body.get('id')
+    if not pass_id:
+        return json_response(400, {'error': 'Не указана запись'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    admin = get_admin(cur, event)
+    if not admin:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Редактировать журнал может только администратор'})
+
+    cur.execute("SELECT id, personnel_id, full_name FROM checkpoint_passes WHERE id = %d" % int(pass_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Запись не найдена'})
+
+    sets = []
+    direction = body.get('direction')
+    if direction is not None:
+        if direction not in ('in', 'out'):
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Неверное направление'})
+        sets.append("direction = '%s'" % direction)
+    if body.get('checkpoint_name') is not None:
+        name = str(body['checkpoint_name']).strip()[:100] or 'КПП-1'
+        sets.append("checkpoint_name = '%s'" % name.replace("'", "''"))
+    if body.get('notes') is not None:
+        sets.append("notes = '%s'" % str(body['notes']).replace("'", "''"))
+    if body.get('medical_ok') is not None:
+        sets.append("medical_ok = %s" % ('TRUE' if body['medical_ok'] else 'FALSE'))
+    if body.get('created_at'):
+        raw = str(body['created_at']).strip().replace('Z', '+00:00')
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Неверная дата'})
+        if dt.tzinfo is not None:
+            from datetime import timezone
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        sets.append("created_at = '%s'" % dt.strftime('%Y-%m-%d %H:%M:%S'))
+
+    if not sets:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Нет изменений'})
+
+    cur.execute("UPDATE checkpoint_passes SET %s WHERE id = %d" % (', '.join(sets), int(pass_id)))
+    sync_person_status(cur, row[1])
+    desc = 'Журнал КПП: запись #%d (%s) изменена администратором %s' % (int(pass_id), row[2], admin[1])
+    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('checkpoint_edit', '%s', %s)" % (
+        desc.replace("'", "''"), int(row[1]) if row[1] else 'NULL'))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'success': True})
+
+
+def delete_pass(event, body, params):
+    pass_id = body.get('id') or params.get('id')
+    if not pass_id:
+        return json_response(400, {'error': 'Не указана запись'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    admin = get_admin(cur, event)
+    if not admin:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Удалять записи журнала может только администратор'})
+
+    cur.execute("SELECT id, personnel_id, full_name, direction, created_at FROM checkpoint_passes WHERE id = %d" % int(pass_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Запись не найдена'})
+
+    cur.execute("DELETE FROM checkpoint_passes WHERE id = %d" % int(pass_id))
+    sync_person_status(cur, row[1])
+    desc = 'Журнал КПП: удалена запись #%d (%s, %s, %s) администратором %s' % (
+        int(pass_id), row[2], 'вход' if row[3] == 'in' else 'выход', row[4].strftime('%d.%m.%Y %H:%M'), admin[1])
+    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('checkpoint_delete', '%s', %s)" % (
+        desc.replace("'", "''"), int(row[1]) if row[1] else 'NULL'))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'success': True})

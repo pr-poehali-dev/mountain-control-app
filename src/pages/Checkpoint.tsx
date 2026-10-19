@@ -6,6 +6,13 @@ import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 import { checkpointApi } from "@/lib/api";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import PassEditDialog from "@/components/checkpoint/PassEditDialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PersonData {
   id: number;
@@ -79,6 +86,12 @@ const Checkpoint = () => {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [dirFilter, setDirFilter] = useState("");
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const isAdmin = user?.role === "admin";
+  const [editItem, setEditItem] = useState<JournalItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<JournalItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [onSite, setOnSite] = useState<OnSiteItem[]>([]);
   const [stats, setStats] = useState<Stats>({ today_in: 0, today_out: 0, today_denied: 0, total_passes: 0, currently_on_site: 0 });
@@ -103,6 +116,22 @@ const Checkpoint = () => {
   useEffect(() => {
     if (tab === "journal") loadJournal();
   }, [tab, loadJournal]);
+
+  const confirmDelete = async () => {
+    if (!deleteItem) return;
+    setDeleting(true);
+    try {
+      await checkpointApi.deletePass(deleteItem.id);
+      toast({ title: "Запись удалена" });
+      setDeleteItem(null);
+      loadJournal();
+      loadStats();
+    } catch (e) {
+      toast({ title: "Не удалось удалить", description: e instanceof Error ? e.message : "", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const loadOnSite = useCallback(async () => {
     try {
@@ -479,6 +508,7 @@ const Checkpoint = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Направление</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">КПП</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Медосмотр</th>
+                      {isAdmin && <th className="px-4 py-3 w-24" />}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -504,11 +534,21 @@ const Checkpoint = () => {
                             {item.medical_ok ? "Пройден" : "Не пройден"}
                           </span>
                         </td>
+                        {isAdmin && (
+                          <td className="px-4 py-2 text-right whitespace-nowrap">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Редактировать" onClick={() => setEditItem(item)}>
+                              <Icon name="Pencil" size={14} />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-mine-red hover:text-mine-red hover:bg-mine-red/10" title="Удалить" onClick={() => setDeleteItem(item)}>
+                              <Icon name="Trash2" size={14} />
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     {journal.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                        <td colSpan={isAdmin ? 8 : 7} className="px-4 py-8 text-center text-muted-foreground text-sm">
                           Нет записей за выбранный период
                         </td>
                       </tr>
@@ -592,6 +632,37 @@ const Checkpoint = () => {
           </div>
         )}
       </div>
+
+      {isAdmin && (
+        <>
+          <PassEditDialog
+            item={editItem}
+            onClose={() => setEditItem(null)}
+            onSaved={() => { toast({ title: "Изменения сохранены" }); loadJournal(); loadStats(); }}
+          />
+          <AlertDialog open={!!deleteItem} onOpenChange={(o) => !o && !deleting && setDeleteItem(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Удалить запись журнала?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {deleteItem?.full_name} — {deleteItem?.direction?.toLowerCase()}, {deleteItem ? formatDateTime(deleteItem.created_at) : ""}.
+                  Действие нельзя отменить. Статус «на территории» пересчитается по оставшимся записям.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Отмена</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => { e.preventDefault(); confirmDelete(); }}
+                  disabled={deleting}
+                  className="bg-mine-red text-white hover:bg-mine-red/90"
+                >
+                  {deleting ? "Удаляю..." : "Удалить"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
     </AppLayout>
   );
 };

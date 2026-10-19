@@ -371,6 +371,10 @@ export const checkpointApi = {
     request(API.checkpoint, "", { params: { action: "stats" } }),
   getOnSite: () =>
     request(API.checkpoint, "", { params: { action: "on-site" } }),
+  updatePass: (data: { id: number; direction?: string; checkpoint_name?: string; created_at?: string; medical_ok?: boolean; notes?: string }) =>
+    request(API.checkpoint, "", { method: "PUT", body: data, params: { action: "pass-update" } }),
+  deletePass: (id: number) =>
+    request(API.checkpoint, "", { method: "DELETE", body: { id }, params: { action: "pass-delete" } }),
   getExportUrl: (params?: Record<string, string>) => {
     const qs = new URLSearchParams({ action: "export", ...params }).toString();
     return `${API.checkpoint}?${qs}`;
