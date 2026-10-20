@@ -30,6 +30,7 @@ export interface ResidenceValue {
 interface ResidenceSelectProps {
   value: ResidenceValue;
   onChange: (value: ResidenceValue) => void;
+  compact?: boolean;
 }
 
 const NONE = "none";
@@ -40,7 +41,9 @@ function toKey(v: ResidenceValue): string {
   return NONE;
 }
 
-export default function ResidenceSelect({ value, onChange }: ResidenceSelectProps) {
+const compactClass = "h-8 px-2 -mx-2 w-[calc(100%+1rem)] bg-transparent border-transparent shadow-none text-sm font-medium hover:bg-secondary/40 hover:border-border focus:ring-1 focus:ring-mine-cyan/50 focus:ring-offset-0 disabled:opacity-100";
+
+export default function ResidenceSelect({ value, onChange, compact }: ResidenceSelectProps) {
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,7 +65,7 @@ export default function ResidenceSelect({ value, onChange }: ResidenceSelectProp
 
   return (
     <Select value={toKey(value)} onValueChange={handleChange} disabled={loading}>
-      <SelectTrigger className="bg-secondary/50">
+      <SelectTrigger className={compact ? compactClass : "bg-secondary/50"}>
         <SelectValue placeholder={loading ? "Загрузка..." : "Не указано"} />
       </SelectTrigger>
       <SelectContent className="max-h-72">

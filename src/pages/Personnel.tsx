@@ -124,13 +124,18 @@ interface PersonnelItem {
   inspection_mode?: string;
 }
 
-function CardField({ label, icon, className = "", children }: { label: string; icon?: string; className?: string; children: React.ReactNode }) {
+const inlineInput = "h-8 px-2 -mx-2 w-[calc(100%+1rem)] bg-transparent border-transparent shadow-none text-sm font-medium text-foreground hover:bg-secondary/40 hover:border-border focus:bg-secondary/50 focus-visible:ring-1 focus-visible:ring-mine-cyan/50 focus-visible:ring-offset-0 disabled:opacity-100 disabled:cursor-default disabled:hover:bg-transparent";
+
+function CardField({ label, icon, action, className = "", children }: { label: string; icon?: string; action?: React.ReactNode; className?: string; children: React.ReactNode }) {
   return (
-    <div className={`rounded-lg border border-border bg-background/50 px-3 py-2 min-h-[54px] ${className}`}>
-      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-        {icon && <Icon name={icon} size={11} />}
-        {label}
-      </p>
+    <div className={`rounded-lg border border-border bg-background/50 px-3 py-1.5 min-h-[62px] ${className}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+          {icon && <Icon name={icon} size={11} />}
+          {label}
+        </p>
+        {action}
+      </div>
       <div className="text-sm font-medium text-foreground break-words">{children}</div>
     </div>
   );
@@ -181,7 +186,7 @@ const Personnel = () => {
   const { user: authUser } = useAuth();
   const isAdminUser = authUser?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
   const [markPerson, setMarkPerson] = useState<MarkPerson | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
   const [history, setHistory] = useState<HistoryEvent[]>([]);
@@ -334,8 +339,7 @@ const Personnel = () => {
 
   const openCard = async (p: PersonnelItem) => {
     setSelectedPerson(p);
-    setEditing(false);
-    setEditError("");
+    fillEdit(p);
     setShowCard(true);
     setHistoryLoading(true);
     try {
@@ -348,8 +352,8 @@ const Personnel = () => {
     }
   };
 
-  const startEdit = () => {
-    if (!selectedPerson) return;
+  const fillEdit = (person: PersonnelItem) => {
+    const selectedPerson = person;
     setEditName(selectedPerson.full_name);
     setEditPosition(selectedPerson.position);
     setEditDept(selectedPerson.department);
@@ -374,7 +378,7 @@ const Personnel = () => {
     setEditOrgType(selectedPerson.organization_type || "");
     setEditTabNum(selectedPerson.tab_number || "");
     setEditError("");
-    setEditing(true);
+    setSavedFlash(false);
   };
 
   const handleMedicalChange = (val: string) => {
@@ -422,8 +426,10 @@ const Personnel = () => {
         organization_type: editOrgType,
         tab_number: editTabNum.trim(),
       };
-      setSelectedPerson({ ...updated, ...editResidence, ...editPass, residence: editRes?.residence ?? updated.residence });
-      setEditing(false);
+      const saved = { ...updated, ...editResidence, ...editPass, residence: editRes?.residence ?? updated.residence };
+      setSelectedPerson(saved);
+      fillEdit(saved);
+      setSavedFlash(true);
       fetchData();
       const hRes = await personnelApi.getHistory(selectedPerson.id);
       setHistory(hRes.events || []);
@@ -433,6 +439,31 @@ const Personnel = () => {
       setEditLoading(false);
     }
   };
+
+  const shiftBlocked = editMedical === "failed" || editMedical === "pending";
+  const cardLocked = !!selectedPerson && selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser;
+  const passInvalid = !editPass.pass_permanent && !!editPass.pass_valid_from && !!editPass.pass_valid_to && editPass.pass_valid_from > editPass.pass_valid_to;
+  const isDirty = !!selectedPerson && (
+    editName !== selectedPerson.full_name ||
+    editPosition !== (selectedPerson.position || "") ||
+    editDept !== (selectedPerson.department || "") ||
+    editCategory !== selectedPerson.category ||
+    editPhone !== (selectedPerson.phone || "") ||
+    editRoom !== (selectedPerson.room || "") ||
+    editShift !== (selectedPerson.shift || "") ||
+    editStatus !== selectedPerson.status ||
+    editMedical !== (selectedPerson.medical_status || "pending") ||
+    editOrg !== (selectedPerson.organization || "") ||
+    editOrgType !== (selectedPerson.organization_type || "") ||
+    editTabNum !== (selectedPerson.tab_number || "") ||
+    editResidence.residence_room_id !== (selectedPerson.residence_room_id ?? null) ||
+    editResidence.residence_building_id !== (selectedPerson.residence_building_id ?? null) ||
+    editPass.pass_number !== (selectedPerson.pass_number || "") ||
+    editPass.pass_permanent !== !!selectedPerson.pass_permanent ||
+    editPass.pass_valid_from !== (selectedPerson.pass_valid_from || "") ||
+    editPass.pass_valid_to !== (selectedPerson.pass_valid_to || "") ||
+    editPass.inspection_mode !== (selectedPerson.inspection_mode || "general")
+  );
 
   const openQrModal = (p: PersonnelItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -967,115 +998,214 @@ const Personnel = () => {
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
               <Icon name="User" size={20} className="text-primary" />
-              {editing ? "Редактирование" : selectedPerson?.full_name}
+              {selectedPerson?.full_name}
             </DialogTitle>
           </DialogHeader>
 
-          {selectedPerson && !editing && (
+          {selectedPerson && (
             <div className="space-y-5 animate-fade-in">
+              {editError && (
+                <div className="p-3 rounded-lg bg-mine-red/10 border border-mine-red/20 text-mine-red text-sm flex items-center gap-2">
+                  <Icon name="AlertCircle" size={14} />
+                  {editError}
+                </div>
+              )}
+              {cardLocked && (
+                <div className="p-3 rounded-lg bg-secondary/40 border border-border text-muted-foreground text-xs flex items-center gap-2">
+                  <Icon name="Lock" size={14} />
+                  Данные администратора защищены от изменений
+                </div>
+              )}
+              <fieldset disabled={cardLocked || editLoading} className="space-y-5 min-w-0">
               <div className="flex gap-5">
                 <button
+                  type="button"
                   onClick={() => openQrModal(selectedPerson)}
-                  className="flex-shrink-0 bg-white rounded-xl p-3 hover:ring-2 ring-mine-cyan/50 transition-all cursor-pointer"
+                  className="flex-shrink-0 self-start bg-white rounded-xl p-3 hover:ring-2 ring-mine-cyan/50 transition-all cursor-pointer"
                   title="Увеличить QR"
                 >
-                  <QRCodeSVG
-                    value={buildQrPayload(selectedPerson)}
-                    size={120}
-                    bgColor="#ffffff"
-                    fgColor="#000000"
-                    level="L"
-                  />
+                  <QRCodeSVG value={buildQrPayload(selectedPerson)} size={120} bgColor="#ffffff" fgColor="#000000" level="L" />
                 </button>
-                <div className="flex-1 min-w-0 space-y-3">
-                  <div>
-                    <p className="text-lg font-bold text-foreground">{selectedPerson.full_name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedPerson.position || "—"}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <CardField label="ФИО" className="sm:col-span-2">
+                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} className={`${inlineInput} text-base font-bold`} />
+                    </CardField>
+                    <CardField label="Должность" className="sm:col-span-2">
+                      <Input value={editPosition} onChange={(e) => setEditPosition(e.target.value)} className={inlineInput} placeholder="—" />
+                    </CardField>
                     <CardField label="Код">
-                      <code className="text-sm font-mono font-bold text-mine-cyan">{selectedPerson.personal_code}</code>
+                      <code className="text-sm font-mono font-bold text-mine-cyan leading-8">{selectedPerson.personal_code}</code>
                     </CardField>
                     <CardField label="Табельный №">
-                      <span className="font-mono">{selectedPerson.tab_number || "—"}</span>
-                    </CardField>
-                    <CardField label="Статус">
-                      <Badge variant="outline" className={`text-[11px] ${statusColors[statusLabels[selectedPerson.status] || ""] || ""}`}>
-                        {statusLabels[selectedPerson.status] || selectedPerson.status}
-                      </Badge>
-                    </CardField>
-                    <CardField label="Медосмотр">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className={`text-[11px] ${medicalColors[selectedPerson.medical_status || "pending"] || ""}`}>
-                          {medicalLabels[selectedPerson.medical_status || "pending"]}
-                        </Badge>
-                        {isAdminUser && (
-                          <button
-                            type="button"
-                            onClick={() => setMarkPerson(selectedPerson)}
-                            className="text-[11px] text-mine-green hover:underline inline-flex items-center gap-1"
-                          >
-                            <Icon name="HeartPulse" size={11} />
-                            Отметить
-                          </button>
-                        )}
-                      </div>
+                      <Input value={editTabNum} onChange={(e) => setEditTabNum(e.target.value)} className={`${inlineInput} font-mono`} placeholder="—" />
                     </CardField>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <CardField label="Подразделение">{selectedPerson.department || "—"}</CardField>
-                <CardField label="Категория">
-                  <Badge variant="outline" className={`text-[11px] ${categoryColors[categoryLabels[selectedPerson.category] || ""] || ""}`}>
-                    {categoryLabels[selectedPerson.category] || selectedPerson.category}
-                  </Badge>
+                <CardField label="Статус">
+                  <Select value={editStatus} onValueChange={setEditStatus}>
+                    <SelectTrigger className={inlineInput}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="on_shift">На смене</SelectItem>
+                      <SelectItem value="arrived">Прибыл</SelectItem>
+                      <SelectItem value="departed">Убыл</SelectItem>
+                      <SelectItem value="business_trip">Командировка</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </CardField>
-                <CardField label="Смена">{selectedPerson.shift || "—"}</CardField>
-                <CardField label="Организация" className="sm:col-span-2">
-                  {selectedPerson.organization || "—"}
-                  {selectedPerson.organization_type && (
-                    <Badge variant="outline" className={`text-[10px] ml-2 ${orgTypeColors[selectedPerson.organization_type] || ""}`}>
-                      {orgTypeLabels[selectedPerson.organization_type] || selectedPerson.organization_type}
-                    </Badge>
+                <CardField
+                  label="Медосмотр"
+                  action={isAdminUser && (
+                    <button
+                      type="button"
+                      onClick={() => setMarkPerson(selectedPerson)}
+                      className="text-[10px] text-mine-green hover:underline inline-flex items-center gap-1"
+                    >
+                      <Icon name="HeartPulse" size={10} />
+                      Отметить
+                    </button>
                   )}
+                >
+                  <Select value={editMedical} onValueChange={handleMedicalChange}>
+                    <SelectTrigger className={inlineInput}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="passed">Пройден</SelectItem>
+                      <SelectItem value="failed">Не пройден</SelectItem>
+                      <SelectItem value="pending">Ожидает</SelectItem>
+                      <SelectItem value="expiring">Истекает</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </CardField>
-                <CardField label="Телефон">{selectedPerson.phone || "—"}</CardField>
+                <CardField label="Смена">
+                  <Select
+                    value={shiftBlocked ? "none" : editShift || "none"}
+                    onValueChange={(v) => setEditShift(v === "none" ? "" : v)}
+                    disabled={shiftBlocked}
+                  >
+                    <SelectTrigger className={`${inlineInput} ${shiftBlocked ? "opacity-50" : ""}`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="A">Смена А</SelectItem>
+                      <SelectItem value="B">Смена Б</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {shiftBlocked && <p className="text-[10px] text-mine-red">Медосмотр не пройден</p>}
+                </CardField>
+                <CardField label="Подразделение">
+                  <Input value={editDept} onChange={(e) => setEditDept(e.target.value)} className={inlineInput} placeholder="—" />
+                </CardField>
+                <CardField label="Категория">
+                  <Select value={editCategory} onValueChange={setEditCategory}>
+                    <SelectTrigger className={inlineInput}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mine">Рудничный</SelectItem>
+                      <SelectItem value="contractor">Подрядчик</SelectItem>
+                      <SelectItem value="business_trip">Командированный</SelectItem>
+                      <SelectItem value="guest">Гость</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </CardField>
+                <CardField label="Телефон">
+                  <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className={inlineInput} placeholder="—" />
+                </CardField>
+                <CardField label="Организация" className="sm:col-span-2">
+                  <Input value={editOrg} onChange={(e) => setEditOrg(e.target.value)} className={inlineInput} placeholder="—" />
+                </CardField>
+                <CardField label="Тип организации">
+                  <Select value={editOrgType || "none"} onValueChange={(v) => setEditOrgType(v === "none" ? "" : v)}>
+                    <SelectTrigger className={inlineInput}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="rudnik">Рудник</SelectItem>
+                      <SelectItem value="guest">Гость</SelectItem>
+                      <SelectItem value="contractor">Подрядная организация</SelectItem>
+                      <SelectItem value="gov">Гос.органы</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </CardField>
                 <CardField label="Место проживания" icon="Home" className="sm:col-span-2">
-                  {selectedPerson.residence || "Не указано"}
+                  <ResidenceSelect value={editResidence} onChange={setEditResidence} compact />
                 </CardField>
-                <CardField label="Комната">{selectedPerson.room || "—"}</CardField>
+                <CardField label="Комната">
+                  <Input value={editRoom} onChange={(e) => setEditRoom(e.target.value)} className={inlineInput} placeholder="—" />
+                </CardField>
                 <CardField label="№ пропуска" icon="CreditCard">
-                  <span className="font-mono">{selectedPerson.pass_number || "—"}</span>
+                  <Input value={editPass.pass_number} onChange={(e) => setEditPass({ ...editPass, pass_number: e.target.value })} className={`${inlineInput} font-mono`} placeholder="—" />
                 </CardField>
-                <CardField label="Действие пропуска" icon="CalendarRange">
-                  <span className={isPassExpired(selectedPerson) ? "text-mine-red" : ""}>
-                    {passPeriodLabel(selectedPerson)}
-                    {isPassExpired(selectedPerson) && <span className="text-[10px] ml-1">(истёк)</span>}
-                  </span>
+                <CardField
+                  label="Действие пропуска"
+                  icon="CalendarRange"
+                  action={
+                    <label className="flex items-center gap-1 text-[10px] text-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editPass.pass_permanent}
+                        onChange={(e) => setEditPass({ ...editPass, pass_permanent: e.target.checked })}
+                        className="w-3 h-3 accent-mine-cyan cursor-pointer"
+                      />
+                      Постоянно
+                    </label>
+                  }
+                >
+                  {editPass.pass_permanent ? (
+                    <p className="text-sm text-mine-green leading-8">Постоянно</p>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <Input type="date" value={editPass.pass_valid_from} onChange={(e) => setEditPass({ ...editPass, pass_valid_from: e.target.value })} className={`${inlineInput} px-1 text-xs`} title="Начало" />
+                      <span className="text-muted-foreground text-xs">—</span>
+                      <Input type="date" value={editPass.pass_valid_to} min={editPass.pass_valid_from || undefined} onChange={(e) => setEditPass({ ...editPass, pass_valid_to: e.target.value })} className={`${inlineInput} px-1 text-xs ${isPassExpired(editPass) ? "text-mine-red" : ""}`} title="Окончание" />
+                    </div>
+                  )}
+                  {isPassExpired(editPass) && <p className="text-[10px] text-mine-red">Пропуск истёк</p>}
                 </CardField>
                 <CardField label="Досмотр" icon="ShieldCheck">
-                  <span className={selectedPerson.inspection_mode === "none" ? "text-mine-amber" : ""}>
-                    {inspectionLabels[selectedPerson.inspection_mode || "general"]}
-                  </span>
+                  <Select value={editPass.inspection_mode} onValueChange={(v) => setEditPass({ ...editPass, inspection_mode: v })}>
+                    <SelectTrigger className={`${inlineInput} ${editPass.inspection_mode === "none" ? "text-mine-amber" : ""}`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">{inspectionLabels.general}</SelectItem>
+                      <SelectItem value="none">{inspectionLabels.none}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </CardField>
               </div>
+              </fieldset>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 sticky bottom-0 bg-card py-2 -mb-2 z-10">
+                {isDirty ? (
+                  <>
+                    <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => fillEdit(selectedPerson)} disabled={editLoading}>
+                      <Icon name="Undo2" size={14} />
+                      Отменить изменения
+                    </Button>
+                    <Button
+                      type="button"
+                      className="flex-1 gap-2 bg-mine-green text-white hover:bg-mine-green/90"
+                      onClick={handleSaveEdit}
+                      disabled={editLoading || !editName.trim() || passInvalid}
+                    >
+                      {editLoading ? (
+                        <><Icon name="Loader2" size={14} className="animate-spin" />Сохранение...</>
+                      ) : (
+                        <><Icon name="Check" size={14} />Сохранить</>
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <p className="flex-1 text-xs text-muted-foreground flex items-center gap-1.5">
+                    {savedFlash ? (
+                      <span className="text-mine-green flex items-center gap-1.5"><Icon name="CheckCircle2" size={14} />Изменения сохранены</span>
+                    ) : (
+                      <><Icon name="MousePointerClick" size={14} />Нажмите на любое поле, чтобы изменить его</>
+                    )}
+                  </p>
+                )}
                 <Button
+                  type="button"
                   variant="outline"
-                  className="flex-1 gap-2"
-                  onClick={startEdit}
-                  disabled={selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser}
-                  title={selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser ? "Данные администратора защищены" : "Редактировать"}
-                >
-                  <Icon name={selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser ? "Lock" : "Pencil"} size={14} />
-                  {selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser ? "Защищён" : "Редактировать"}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-2 border-mine-cyan/30 text-mine-cyan hover:bg-mine-cyan/10"
+                  className="gap-2 border-mine-cyan/30 text-mine-cyan hover:bg-mine-cyan/10"
                   onClick={() => openQrModal(selectedPerson)}
                 >
                   <Icon name="QrCode" size={14} />
@@ -1113,146 +1243,6 @@ const Personnel = () => {
                     })}
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {selectedPerson && editing && (
-            <div className="space-y-4 animate-fade-in">
-              {editError && (
-                <div className="p-3 rounded-lg bg-mine-red/10 border border-mine-red/20 text-mine-red text-sm flex items-center gap-2">
-                  <Icon name="AlertCircle" size={14} />
-                  {editError}
-                </div>
-              )}
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">ФИО</label>
-                <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="bg-secondary/50" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Должность</label>
-                  <Input value={editPosition} onChange={(e) => setEditPosition(e.target.value)} className="bg-secondary/50" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Подразделение</label>
-                  <Input value={editDept} onChange={(e) => setEditDept(e.target.value)} className="bg-secondary/50" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Категория</label>
-                  <Select value={editCategory} onValueChange={setEditCategory}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="mine">Рудничный</SelectItem>
-                      <SelectItem value="contractor">Подрядчик</SelectItem>
-                      <SelectItem value="business_trip">Командированный</SelectItem>
-                      <SelectItem value="guest">Гость</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Смена</label>
-                  <Select
-                    value={editShift || "none"}
-                    onValueChange={(v) => setEditShift(v === "none" ? "" : v)}
-                    disabled={editMedical === "failed" || editMedical === "pending"}
-                  >
-                    <SelectTrigger className={`bg-secondary/50 ${(editMedical === "failed" || editMedical === "pending") ? "opacity-50" : ""}`}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">—</SelectItem>
-                      <SelectItem value="A">Смена А</SelectItem>
-                      <SelectItem value="B">Смена Б</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {(editMedical === "failed" || editMedical === "pending") && (
-                    <p className="text-[10px] text-mine-red mt-1">Смена снята — медосмотр не пройден</p>
-                  )}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Статус</label>
-                  <Select value={editStatus} onValueChange={setEditStatus}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="on_shift">На смене</SelectItem>
-                      <SelectItem value="arrived">Прибыл</SelectItem>
-                      <SelectItem value="departed">Убыл</SelectItem>
-                      <SelectItem value="business_trip">Командировка</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Медосмотр</label>
-                  <Select value={editMedical} onValueChange={handleMedicalChange}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="passed">Пройден</SelectItem>
-                      <SelectItem value="failed">Не пройден</SelectItem>
-                      <SelectItem value="pending">Ожидает</SelectItem>
-                      <SelectItem value="expiring">Истекает</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Организация</label>
-                <Input value={editOrg} onChange={(e) => setEditOrg(e.target.value)} className="bg-secondary/50" placeholder="Название организации" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Тип организации</label>
-                  <Select value={editOrgType || "none"} onValueChange={(v) => setEditOrgType(v === "none" ? "" : v)}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">—</SelectItem>
-                      <SelectItem value="rudnik">Рудник</SelectItem>
-                      <SelectItem value="guest">Гость</SelectItem>
-                      <SelectItem value="contractor">Подрядная организация</SelectItem>
-                      <SelectItem value="gov">Гос.органы</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Телефон</label>
-                  <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="bg-secondary/50" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Место проживания</label>
-                <ResidenceSelect value={editResidence} onChange={setEditResidence} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Пропуск</label>
-                <PassFields value={editPass} onChange={setEditPass} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Комната</label>
-                  <Input value={editRoom} onChange={(e) => setEditRoom(e.target.value)} className="bg-secondary/50" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Табельный №</label>
-                  <Input value={editTabNum} onChange={(e) => setEditTabNum(e.target.value)} className="bg-secondary/50" placeholder="12345" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setEditing(false)} disabled={editLoading}>
-                  Отмена
-                </Button>
-                <Button
-                  className="flex-1 gap-2 bg-mine-green text-white hover:bg-mine-green/90"
-                  onClick={handleSaveEdit}
-                  disabled={editLoading || !editName.trim()}
-                >
-                  {editLoading ? (
-                    <><Icon name="Loader2" size={14} className="animate-spin" />Сохранение...</>
-                  ) : (
-                    <><Icon name="Check" size={14} />Сохранить</>
-                  )}
-                </Button>
               </div>
             </div>
           )}
@@ -1469,6 +1459,7 @@ const Personnel = () => {
           onClose={() => setMarkPerson(null)}
           onMarked={async (id, status) => {
             setSelectedPerson((prev) => (prev && prev.id === id ? { ...prev, medical_status: status } : prev));
+            if (selectedPerson?.id === id) setEditMedical(status);
             fetchData();
             try {
               const res = await personnelApi.getHistory(id);
