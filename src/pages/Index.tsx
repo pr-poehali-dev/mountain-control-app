@@ -173,7 +173,7 @@ const Index = () => {
                 <PersonnelTable data={personnel} loading={false} />
               </div>
               <div>
-                <ActivityFeed events={events} loading={false} />
+                <ActivityFeed events={events} loading={false} onChange={setEvents} />
               </div>
             </div>
 

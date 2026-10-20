@@ -25,7 +25,7 @@ def json_response(status, body):
         'headers': {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Authorization, X-Demo'
         },
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
@@ -47,6 +47,10 @@ def handler(event, context):
         return get_dashboard(event)
     elif method == 'GET' and action == 'notifications':
         return get_notifications(params)
+    elif method == 'PUT' and action == 'edit':
+        return edit_event(body, event)
+    elif method in ('PUT', 'DELETE') and action == 'hide':
+        return hide_event(body, params, event)
     elif method == 'PUT' and action == 'read':
         return mark_read(body)
     elif method == 'PUT' and action == 'read-all':
@@ -115,6 +119,65 @@ ADMIN_EVENTS_HIDDEN = (
     "AND e.event_type NOT LIKE 'admin\\_%' "
     "AND COALESCE(e.description, '') NOT LIKE '%администратор%'"
 )
+
+
+def is_admin_request(cur, event):
+    headers = event.get('headers') or {}
+    token = ''
+    for key in ('X-Authorization', 'x-authorization', 'Authorization', 'authorization'):
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        return False
+    cur.execute("""
+        SELECT u.id FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    return cur.fetchone() is not None
+
+
+def edit_event(body, event):
+    event_id = body.get('id')
+    description = str(body.get('description', '')).strip()
+    if not event_id or not description:
+        return json_response(400, {'error': 'Укажите событие и текст'})
+    conn = get_db()
+    cur = conn.cursor()
+    if not is_admin_request(cur, event):
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Редактировать ленту может только администратор'})
+    cur.execute("UPDATE events SET description = '%s' WHERE id = %d RETURNING id" % (
+        description[:1000].replace("'", "''"), int(event_id)))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not row:
+        return json_response(404, {'error': 'Событие не найдено'})
+    return json_response(200, {'success': True})
+
+
+def hide_event(body, params, event):
+    event_id = body.get('id') or params.get('id')
+    if not event_id:
+        return json_response(400, {'error': 'Укажите событие'})
+    conn = get_db()
+    cur = conn.cursor()
+    if not is_admin_request(cur, event):
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Убирать события может только администратор'})
+    cur.execute("UPDATE events SET is_hidden = TRUE WHERE id = %d RETURNING id" % int(event_id))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not row:
+        return json_response(404, {'error': 'Событие не найдено'})
+    return json_response(200, {'success': True})
 
 
 def get_events(params, event):

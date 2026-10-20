@@ -242,6 +242,10 @@ export const eventsApi = {
     request(API.events, "", { method: "PUT", body: { id }, params: { action: "read" } }),
   markAllRead: () =>
     request(API.events, "", { method: "PUT", body: {}, params: { action: "read-all" } }),
+  editEvent: (id: number, description: string) =>
+    request(API.events, "", { method: "PUT", body: { id, description }, params: { action: "edit" } }),
+  hideEvent: (id: number) =>
+    request(API.events, "", { method: "PUT", body: { id }, params: { action: "hide" } }),
 };
 
 export const reportsApi = {
