@@ -22,6 +22,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { personnelApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import ResizableDialogContent from "@/components/personnel/ResizableDialogContent";
 import AutoGrowInput from "@/components/personnel/AutoGrowInput";
 import ResidenceSelect, { ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import PassFields, { PassValue, EMPTY_PASS, inspectionLabels, passPeriodLabel, isPassExpired } from "@/components/personnel/PassFields";
@@ -1002,7 +1003,7 @@ const Personnel = () => {
 
       {/* === Карточка сотрудника === */}
       <Dialog open={showCard} onOpenChange={setShowCard}>
-        <DialogContent className="sm:max-w-4xl bg-card border-border max-h-[92vh] overflow-y-auto overflow-x-hidden">
+        <ResizableDialogContent storageKey="personnel-card-size" className="bg-card border-border sm:max-w-none">
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
               <Icon name="User" size={20} className="text-primary" />
@@ -1181,7 +1182,7 @@ const Personnel = () => {
               </div>
               </fieldset>
 
-              <div className="flex gap-2 sticky bottom-0 bg-card py-2 -mb-2 z-10">
+              <div className="flex gap-2 sticky -bottom-6 bg-card py-3 -mb-6 z-10">
                 {isDirty ? (
                   <>
                     <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => fillEdit(selectedPerson)} disabled={editLoading}>
@@ -1254,7 +1255,7 @@ const Personnel = () => {
               </div>
             </div>
           )}
-        </DialogContent>
+        </ResizableDialogContent>
       </Dialog>
 
       {/* === QR увеличенный + печать === */}
