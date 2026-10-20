@@ -868,7 +868,8 @@ def get_medical_itr_stats(params, event):
     itr_list_query = """
         SELECT a.id, a.full_name, a.personal_code, a.position, a.department, a.organization,
                COALESCE(p.medical_status, 'pending') as medical_status,
-               mc.status as last_check, mc.checked_at, mc.blood_pressure, mc.pulse, mc.temperature, mc.alcohol_level
+               mc.status as last_check, mc.checked_at, mc.blood_pressure, mc.pulse, mc.temperature, mc.alcohol_level,
+               p.id as person_id
         FROM aho_arrivals a
         LEFT JOIN personnel p ON a.personnel_id = p.id
         LEFT JOIN LATERAL (
@@ -884,7 +885,8 @@ def get_medical_itr_stats(params, event):
     worker_list_query = """
         SELECT a.id, a.full_name, a.personal_code, a.position, a.department, a.organization,
                COALESCE(p.medical_status, 'pending') as medical_status,
-               mc.status as last_check, mc.checked_at, mc.blood_pressure, mc.pulse, mc.temperature, mc.alcohol_level
+               mc.status as last_check, mc.checked_at, mc.blood_pressure, mc.pulse, mc.temperature, mc.alcohol_level,
+               p.id as person_id
         FROM aho_arrivals a
         LEFT JOIN personnel p ON a.personnel_id = p.id
         LEFT JOIN LATERAL (
@@ -911,6 +913,7 @@ def get_medical_itr_stats(params, event):
                 'blood_pressure': row[9], 'pulse': row[10],
                 'temperature': str(row[11]) if row[11] else None,
                 'alcohol_level': str(row[12]) if row[12] else None,
+                'person_id': row[13],
             })
         return items
 

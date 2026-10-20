@@ -190,6 +190,8 @@ def handler(event, context):
         return save_schedule(body)
     elif method == 'GET' and action == 'personnel_list':
         return get_personnel_list(params, event)
+    elif method == 'POST' and action == 'admin-mark':
+        return admin_mark(event, body)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -766,3 +768,91 @@ def export_csv(params, event):
         ])
 
     return csv_response(output.getvalue())
+
+def get_auth_token(event):
+    headers = event.get('headers') or {}
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            return val[7:] if val.startswith('Bearer ') else val
+    return ''
+
+
+def get_admin(cur, event):
+    token = get_auth_token(event)
+    if not token:
+        return None
+    cur.execute("""
+        SELECT u.id, u.full_name FROM users u
+        JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    return cur.fetchone()
+
+
+ADMIN_MARK_LABELS = {'passed': 'пройден', 'failed': 'не пройден', 'pending': 'сброшен (ожидает)'}
+
+
+def admin_mark(event, body):
+    personnel_id = body.get('personnel_id')
+    status = body.get('status', 'passed')
+    notes = str(body.get('notes', '') or '').strip()[:500]
+    if not personnel_id:
+        return json_response(400, {'error': 'Не указан сотрудник'})
+    if status not in ADMIN_MARK_LABELS:
+        return json_response(400, {'error': 'Неверный статус'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    admin = get_admin(cur, event)
+    if not admin:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Отмечать медосмотр может только администратор'})
+
+    cur.execute("SELECT id, full_name, medical_status FROM personnel WHERE id = %d AND status != 'archived'" % int(personnel_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник не найден'})
+
+    person_id, person_name, old_status = row[0], row[1], row[2] or 'pending'
+    admin_name = admin[1] or 'Администратор'
+    shift_type, check_direction, shift_date = detect_shift()
+    shift_label = SHIFT_LABELS.get(shift_type, shift_type)
+    dir_label = DIRECTION_LABELS.get(check_direction, check_direction)
+
+    check_id = None
+    if status in ('passed', 'failed'):
+        note_text = 'Отметка администратора — %s, %s' % (shift_label, dir_label)
+        if notes:
+            note_text += '. ' + notes
+        cur.execute("""
+            INSERT INTO medical_checks (personnel_id, check_type, status, blood_pressure, pulse, alcohol_level, temperature, doctor_name, notes, shift_type, check_direction, shift_date)
+            VALUES (%d, 'pre_shift', '%s', '', 0, 0, 0, '%s', '%s', '%s', '%s', '%s')
+            RETURNING id
+        """ % (person_id, status, ('Админ: ' + admin_name).replace("'", "''")[:255], note_text.replace("'", "''"),
+               shift_type, check_direction, shift_date))
+        check_id = cur.fetchone()[0]
+
+    cur.execute("UPDATE personnel SET medical_status = '%s', updated_at = NOW() WHERE id = %d" % (status, person_id))
+    cur.execute("UPDATE aho_arrivals SET medical_status = '%s', updated_at = NOW() WHERE personnel_id = %d" % (status, person_id))
+
+    event_type = {'passed': 'medical_pass', 'failed': 'medical_fail', 'pending': 'medical_reset'}[status]
+    desc = '%s — медосмотр %s (отметка администратора %s)' % (person_name, ADMIN_MARK_LABELS[status], admin_name)
+    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('%s', '%s', %d)" % (
+        event_type, desc.replace("'", "''"), person_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'success': True,
+        'check_id': check_id,
+        'personnel_id': person_id,
+        'old_status': old_status,
+        'medical_status': status,
+        'message': '%s — медосмотр %s' % (person_name, ADMIN_MARK_LABELS[status]),
+    })

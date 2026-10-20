@@ -21,6 +21,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { personnelApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 import { QRCodeSVG } from "qrcode.react";
 
 type BadgeLayout = "2x5" | "2x4" | "2x3" | "1x4" | "3x5";
@@ -152,6 +154,9 @@ const Personnel = () => {
 
   const [selectedPerson, setSelectedPerson] = useState<PersonnelItem | null>(null);
   const [showCard, setShowCard] = useState(false);
+  const { user: authUser } = useAuth();
+  const isAdminUser = authUser?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
+  const [markPerson, setMarkPerson] = useState<MarkPerson | null>(null);
   const [editing, setEditing] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
@@ -858,9 +863,23 @@ const Personnel = () => {
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="outline" className={`text-[11px] ${medicalColors[p.medical_status || "pending"] || ""}`}>
-                            {medText}
-                          </Badge>
+                          {isAdminUser ? (
+                            <button
+                              type="button"
+                              title="Отметить медосмотр"
+                              onClick={(e) => { e.stopPropagation(); setMarkPerson(p); }}
+                              className="rounded-full hover:ring-2 hover:ring-mine-green/30 transition-shadow"
+                            >
+                              <Badge variant="outline" className={`text-[11px] cursor-pointer gap-1 ${medicalColors[p.medical_status || "pending"] || ""}`}>
+                                {medText}
+                                <Icon name="Pencil" size={9} />
+                              </Badge>
+                            </button>
+                          ) : (
+                            <Badge variant="outline" className={`text-[11px] ${medicalColors[p.medical_status || "pending"] || ""}`}>
+                              {medText}
+                            </Badge>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant="outline" className={`text-[11px] ${statusColors[statusText] || ""}`}>
@@ -945,9 +964,21 @@ const Personnel = () => {
                     </div>
                     <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
                       <p className="text-[10px] text-muted-foreground">Медосмотр</p>
-                      <Badge variant="outline" className={`text-[11px] ${medicalColors[selectedPerson.medical_status || "pending"] || ""}`}>
-                        {medicalLabels[selectedPerson.medical_status || "pending"]}
-                      </Badge>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className={`text-[11px] ${medicalColors[selectedPerson.medical_status || "pending"] || ""}`}>
+                          {medicalLabels[selectedPerson.medical_status || "pending"]}
+                        </Badge>
+                        {isAdminUser && (
+                          <button
+                            type="button"
+                            onClick={() => setMarkPerson(selectedPerson)}
+                            className="text-[11px] text-mine-green hover:underline inline-flex items-center gap-1"
+                          >
+                            <Icon name="HeartPulse" size={11} />
+                            Отметить
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
                       <p className="text-[10px] text-muted-foreground">Статус</p>
@@ -1379,6 +1410,20 @@ const Personnel = () => {
           )}
         </DialogContent>
       </Dialog>
+      {isAdminUser && (
+        <AdminMedicalMarkDialog
+          person={markPerson}
+          onClose={() => setMarkPerson(null)}
+          onMarked={async (id, status) => {
+            setSelectedPerson((prev) => (prev && prev.id === id ? { ...prev, medical_status: status } : prev));
+            fetchData();
+            try {
+              const res = await personnelApi.getHistory(id);
+              setHistory(res.events || []);
+            } catch { /* ignore */ }
+          }}
+        />
+      )}
     </AppLayout>
   );
 };

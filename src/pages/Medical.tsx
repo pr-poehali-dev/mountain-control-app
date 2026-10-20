@@ -20,6 +20,8 @@ import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 import { useState, useEffect, useCallback } from "react";
 import { medicalApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 
 const medicalStatusLabels: Record<string, string> = {
@@ -181,6 +183,9 @@ const Medical = () => {
     tab_number: string; is_itr: boolean;
   }>>([]);
   const [cardPersonnelLoading, setCardPersonnelLoading] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
+  const [markPerson, setMarkPerson] = useState<MarkPerson | null>(null);
 
   const [showSchedule, setShowSchedule] = useState(false);
   const [schedDayStart, setSchedDayStart] = useState("05:00");
@@ -1035,6 +1040,9 @@ const Medical = () => {
                 </>
               )}
             </DialogTitle>
+            {isAdmin && (
+              <p className="text-xs text-muted-foreground">Нажмите на сотрудника, чтобы отметить медосмотр</p>
+            )}
           </DialogHeader>
           <div className="flex-1 overflow-auto -mx-6 px-6">
             {cardPersonnelLoading ? (
@@ -1056,7 +1064,10 @@ const Medical = () => {
                   return (
                     <div
                       key={r.id}
-                      className={`rounded-lg border p-3 flex items-center gap-3 animate-fade-in ${
+                      onClick={isAdmin ? () => setMarkPerson(r) : undefined}
+                      role={isAdmin ? "button" : undefined}
+                      title={isAdmin ? "Отметить медосмотр" : undefined}
+                      className={`rounded-lg border p-3 flex items-center gap-3 animate-fade-in ${isAdmin ? "cursor-pointer hover:ring-1 hover:ring-mine-green/40 transition-shadow" : ""} ${
                         r.medical_status === "failed" ? "border-mine-red/20 bg-mine-red/5" :
                         r.medical_status === "passed" ? "border-mine-green/10 bg-card" :
                         "border-mine-amber/10 bg-card"
@@ -1103,6 +1114,7 @@ const Medical = () => {
                         >
                           {statusText}
                         </Badge>
+                        {isAdmin && <Icon name="ChevronRight" size={14} className="text-muted-foreground" />}
                       </div>
                     </div>
                   );
@@ -1161,6 +1173,20 @@ const Medical = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {isAdmin && (
+        <AdminMedicalMarkDialog
+          person={markPerson}
+          onClose={() => setMarkPerson(null)}
+          onMarked={(id, status) => {
+            setCardPersonnel((prev) => {
+              const updated = prev.map((p) => (p.id === id ? { ...p, medical_status: status } : p));
+              const keep: Record<string, string[]> = { passed: ["passed"], failed: ["failed"], pending: ["pending", ""] };
+              return cardFilter && keep[cardFilter] ? updated.filter((p) => keep[cardFilter].includes(p.medical_status)) : updated;
+            });
+            fetchData();
+          }}
+        />
+      )}
     </AppLayout>
   );
 };

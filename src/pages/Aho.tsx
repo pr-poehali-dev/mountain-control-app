@@ -20,6 +20,8 @@ import Icon from "@/components/ui/icon";
 import HousingStats from "@/components/aho/HousingStats";
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 
 interface ArrivalItem {
   id: number;
@@ -137,6 +139,9 @@ const Aho = () => {
     itr_positions: string[];
   } | null>(null);
   const [itrView, setItrView] = useState<"itr" | "worker">("itr");
+  const { user: authUser } = useAuth();
+  const isAdmin = authUser?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
+  const [markPerson, setMarkPerson] = useState<MarkPerson | null>(null);
 
   const [uploadDate, setUploadDate] = useState(new Date().toISOString().slice(0, 10));
   const [uploadDepDate, setUploadDepDate] = useState("");
@@ -704,7 +709,19 @@ const Aho = () => {
                             </span>
                           </td>
                           <td className="px-3 py-2">
-                            <span className={`text-xs font-medium ${med.color}`}>{med.label}</span>
+                            {isAdmin && item.personnel_id ? (
+                              <button
+                                type="button"
+                                title="Отметить медосмотр"
+                                onClick={() => setMarkPerson({ id: item.personnel_id, full_name: item.full_name, personal_code: item.personal_code, position: item.position, department: item.department, medical_status: item.current_medical })}
+                                className={`text-xs font-medium ${med.color} inline-flex items-center gap-1 rounded px-1.5 py-0.5 -mx-1.5 hover:bg-secondary underline decoration-dotted underline-offset-2`}
+                              >
+                                {med.label}
+                                <Icon name="Pencil" size={10} />
+                              </button>
+                            ) : (
+                              <span className={`text-xs font-medium ${med.color}`}>{med.label}</span>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex gap-1">
@@ -1052,7 +1069,12 @@ const Aho = () => {
                         const ms = String(item.medical_status || "pending");
                         const med = MED_MAP[ms] || MED_MAP.pending;
                         return (
-                          <tr key={String(item.id)} className="border-b border-border/50 hover:bg-secondary/20">
+                          <tr
+                            key={String(item.id)}
+                            onClick={isAdmin && item.person_id ? () => setMarkPerson({ id: Number(item.person_id), full_name: String(item.full_name), personal_code: String(item.personal_code || ""), position: String(item.position || ""), department: String(item.department || ""), medical_status: ms }) : undefined}
+                            title={isAdmin && item.person_id ? "Отметить медосмотр" : undefined}
+                            className={`border-b border-border/50 hover:bg-secondary/20 ${isAdmin && item.person_id ? "cursor-pointer" : ""}`}
+                          >
                             <td className="px-3 py-2 text-xs font-medium">{String(item.full_name)}</td>
                             <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{String(item.personal_code)}</td>
                             <td className="px-3 py-2 text-xs text-muted-foreground">{String(item.position || "—")}</td>
@@ -1403,6 +1425,17 @@ const Aho = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {isAdmin && (
+        <AdminMedicalMarkDialog
+          person={markPerson}
+          onClose={() => setMarkPerson(null)}
+          onMarked={() => {
+            loadArrivals();
+            loadItrStats();
+            if (tab === "medical") loadMedicals();
+          }}
+        />
+      )}
     </AppLayout>
   );
 };

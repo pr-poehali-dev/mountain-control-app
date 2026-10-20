@@ -228,6 +228,8 @@ export const medicalApi = {
     request(API.medical, "", { method: "POST", body, params: { action: "schedule" } }),
   getPersonnelList: (filter: string) =>
     request(API.medical, "", { params: { action: "personnel_list", filter } }),
+  adminMark: (personnel_id: number, status: "passed" | "failed" | "pending", notes = "") =>
+    request(API.medical, "", { method: "POST", body: { personnel_id, status, notes }, params: { action: "admin-mark" } }),
 };
 
 export const eventsApi = {
