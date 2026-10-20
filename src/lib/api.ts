@@ -156,6 +156,7 @@ export const personnelApi = {
   getAll: (params?: Record<string, string>) =>
     request(API.personnel, "", { params: { action: "list", ...params } }),
   getStats: () => request(API.personnel, "", { params: { action: "stats" } }),
+  getResidences: () => request(API.personnel, "", { params: { action: "residences" } }),
   add: (body: Record<string, unknown>) =>
     request(API.personnel, "", { method: "POST", body, params: { action: "add" } }),
   updateStatus: (id: number, status: string) =>

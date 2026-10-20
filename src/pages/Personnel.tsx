@@ -22,6 +22,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { personnelApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import ResidenceSelect, { ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -112,7 +113,12 @@ interface PersonnelItem {
   organization?: string;
   organization_type?: string;
   tab_number?: string;
+  residence?: string;
+  residence_building_id?: number | null;
+  residence_room_id?: number | null;
 }
+
+const EMPTY_RESIDENCE: ResidenceValue = { residence_building_id: null, residence_room_id: null };
 
 interface HistoryEvent {
   id: number;
@@ -184,6 +190,7 @@ const Personnel = () => {
   const [formCategory, setFormCategory] = useState("mine");
   const [formPhone, setFormPhone] = useState("");
   const [formRoom, setFormRoom] = useState("");
+  const [formResidence, setFormResidence] = useState<ResidenceValue>(EMPTY_RESIDENCE);
   const [formShift, setFormShift] = useState("");
   const [formOrg, setFormOrg] = useState("");
   const [formOrgType, setFormOrgType] = useState("");
@@ -195,6 +202,7 @@ const Personnel = () => {
   const [editCategory, setEditCategory] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editRoom, setEditRoom] = useState("");
+  const [editResidence, setEditResidence] = useState<ResidenceValue>(EMPTY_RESIDENCE);
   const [editShift, setEditShift] = useState("");
   const [editStatus, setEditStatus] = useState("");
   const [editMedical, setEditMedical] = useState("");
@@ -256,6 +264,7 @@ const Personnel = () => {
     setFormCategory("mine");
     setFormPhone("");
     setFormRoom("");
+    setFormResidence(EMPTY_RESIDENCE);
     setFormShift("");
     setFormOrg("");
     setFormOrgType("");
@@ -286,6 +295,7 @@ const Personnel = () => {
         organization: formOrg.trim(),
         organization_type: formOrgType,
         tabular_number: formTabNum.trim(),
+        ...formResidence,
       });
       setAddSuccess({
         personal_code: res.personal_code,
@@ -324,6 +334,10 @@ const Personnel = () => {
     setEditCategory(selectedPerson.category);
     setEditPhone(selectedPerson.phone || "");
     setEditRoom(selectedPerson.room || "");
+    setEditResidence({
+      residence_building_id: selectedPerson.residence_building_id ?? null,
+      residence_room_id: selectedPerson.residence_room_id ?? null,
+    });
     setEditShift(selectedPerson.shift || "");
     setEditStatus(selectedPerson.status);
     setEditMedical(selectedPerson.medical_status || "pending");
@@ -347,7 +361,7 @@ const Personnel = () => {
     setEditError("");
     const finalShift = (editMedical === "failed" || editMedical === "pending") ? "" : editShift;
     try {
-      await personnelApi.edit({
+      const editRes = await personnelApi.edit({
         id: selectedPerson.id,
         full_name: editName.trim(),
         position: editPosition.trim(),
@@ -361,6 +375,7 @@ const Personnel = () => {
         organization: editOrg.trim(),
         organization_type: editOrgType,
         tab_number: editTabNum.trim(),
+        ...editResidence,
       });
       const updated = {
         ...selectedPerson,
@@ -377,7 +392,7 @@ const Personnel = () => {
         organization_type: editOrgType,
         tab_number: editTabNum.trim(),
       };
-      setSelectedPerson(updated);
+      setSelectedPerson({ ...updated, ...editResidence, residence: editRes?.residence ?? updated.residence });
       setEditing(false);
       fetchData();
       const hRes = await personnelApi.getHistory(selectedPerson.id);
@@ -993,6 +1008,13 @@ const Personnel = () => {
                       </p>
                     </div>
                   </div>
+                  <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                    <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Icon name="Home" size={11} />
+                      Место проживания
+                    </p>
+                    <p className="text-sm font-medium text-foreground">{selectedPerson.residence || "Не указано"}</p>
+                  </div>
                   {(selectedPerson.organization || selectedPerson.phone) && (
                     <div className="grid grid-cols-2 gap-2">
                       {selectedPerson.organization && (
@@ -1182,6 +1204,10 @@ const Personnel = () => {
                   <label className="text-xs text-muted-foreground mb-1 block">Телефон</label>
                   <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="bg-secondary/50" />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Место проживания</label>
+                <ResidenceSelect value={editResidence} onChange={setEditResidence} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1384,6 +1410,10 @@ const Personnel = () => {
                   <label className="text-xs text-muted-foreground mb-1 block">Телефон</label>
                   <Input placeholder="+7 900 111-22-33" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} className="bg-secondary/50" />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Место проживания</label>
+                <ResidenceSelect value={formResidence} onChange={setFormResidence} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -55,6 +55,8 @@ def handler(event, context):
         return edit_person(body, event)
     elif method == 'GET' and action == 'history':
         return get_history(params)
+    elif method == 'GET' and action == 'residences':
+        return get_residences(event)
     elif method == 'GET' and action == 'search':
         return search_personnel(params, event)
 
@@ -75,7 +77,8 @@ def get_personnel(params, event):
     query = """
         SELECT id, personal_code, full_name, position, department, category, 
                phone, room, status, qr_code, medical_status, shift, created_at,
-               organization, organization_type, COALESCE(tab_number, '')
+               organization, organization_type, COALESCE(tab_number, ''),
+               COALESCE(residence, ''), residence_building_id, residence_room_id
         FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s
     """ % demo_filter
     if category:
@@ -102,7 +105,10 @@ def get_personnel(params, event):
             'qr_code': r[9], 'medical_status': r[10], 'shift': r[11],
             'created_at': r[12], 'organization': r[13] or '',
             'organization_type': r[14] or '',
-            'tab_number': r[15] or ''
+            'tab_number': r[15] or '',
+            'residence': r[16] or '',
+            'residence_building_id': r[17],
+            'residence_room_id': r[18]
         })
 
     return json_response(200, {'personnel': personnel, 'total': len(personnel)})
@@ -203,6 +209,11 @@ def add_person(body):
         tabular_number.replace("'", "''")
     ))
     row = cur.fetchone()
+
+    res_b, res_r, res_label = resolve_residence(cur, body)
+    if res_label:
+        cur.execute("UPDATE personnel SET residence = '%s', residence_building_id = %s, residence_room_id = %s WHERE id = %d" % (
+            res_label.replace("'", "''"), int(res_b) if res_b else 'NULL', int(res_r) if res_r else 'NULL', row[0]))
 
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
@@ -321,6 +332,50 @@ def is_admin_request(cur, event):
     return cur.fetchone() is not None
 
 
+def get_residences(event):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT b.id, b.name, b.number, r.id, r.room_number, r.floor, r.capacity
+        FROM buildings b
+        LEFT JOIN rooms r ON r.building_id = b.id AND r.is_active = TRUE
+        WHERE b.is_active = TRUE
+        ORDER BY b.sort_order, b.id, r.floor, r.room_number
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    buildings = []
+    by_id = {}
+    for r in rows:
+        if r[0] not in by_id:
+            by_id[r[0]] = {'id': r[0], 'name': r[1], 'number': r[2] or '', 'rooms': []}
+            buildings.append(by_id[r[0]])
+        if r[3]:
+            by_id[r[0]]['rooms'].append({'id': r[3], 'room_number': r[4], 'floor': r[5], 'capacity': r[6]})
+    return json_response(200, {'buildings': buildings})
+
+
+def resolve_residence(cur, body):
+    room_id = body.get('residence_room_id')
+    building_id = body.get('residence_building_id')
+    if room_id:
+        cur.execute("""
+            SELECT b.id, b.name, r.id, r.room_number FROM rooms r JOIN buildings b ON b.id = r.building_id
+            WHERE r.id = %d
+        """ % int(room_id))
+        row = cur.fetchone()
+        if row:
+            return row[0], row[2], '%s, комн. %s' % (row[1], row[3])
+    if building_id:
+        cur.execute("SELECT id, name FROM buildings WHERE id = %d" % int(building_id))
+        row = cur.fetchone()
+        if row:
+            return row[0], None, row[1]
+    return None, None, ''
+
+
 def edit_person(body, event=None):
     person_id = body.get('id')
     if not person_id:
@@ -331,7 +386,7 @@ def edit_person(body, event=None):
         if key in body:
             fields[key] = str(body[key]).strip()
 
-    if not fields:
+    if not fields and 'residence_room_id' not in body and 'residence_building_id' not in body:
         return json_response(400, {'error': 'Нет полей для обновления'})
 
     conn = get_db()
@@ -365,6 +420,12 @@ def edit_person(body, event=None):
     set_parts = []
     for key, val in fields.items():
         set_parts.append("%s = '%s'" % (key, val.replace("'", "''")))
+    if 'residence_room_id' in body or 'residence_building_id' in body:
+        res_b, res_r, res_label = resolve_residence(cur, body)
+        set_parts.append("residence = '%s'" % res_label.replace("'", "''"))
+        set_parts.append("residence_building_id = %s" % (int(res_b) if res_b else 'NULL'))
+        set_parts.append("residence_room_id = %s" % (int(res_r) if res_r else 'NULL'))
+        fields['residence'] = res_label
     set_parts.append("updated_at = NOW()")
 
     cur.execute("""
@@ -416,7 +477,7 @@ def edit_person(body, event=None):
         if user_sets:
             cur.execute("UPDATE users SET %s, updated_at = NOW() WHERE personal_code = '%s'" % (', '.join(user_sets), PROTECTED_CODE))
 
-    changed = ', '.join(fields.keys())
+    changed = ', '.join('место проживания' if k == 'residence' else k for k in fields.keys())
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
         VALUES ('edit', '%s — изменены данные (%s)', %d)
@@ -426,7 +487,7 @@ def edit_person(body, event=None):
     cur.close()
     conn.close()
 
-    return json_response(200, {'message': 'Данные обновлены'})
+    return json_response(200, {'message': 'Данные обновлены', 'residence': fields.get('residence')})
 
 def get_history(params):
     person_id = params.get('id', '')
