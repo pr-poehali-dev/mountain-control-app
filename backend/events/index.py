@@ -110,6 +110,13 @@ def mark_all_read():
 
     return json_response(200, {'message': 'Все прочитаны', 'count': count})
 
+ADMIN_EVENTS_HIDDEN = (
+    "e.event_type NOT IN ('checkpoint_edit', 'checkpoint_delete', 'system_reset') "
+    "AND e.event_type NOT LIKE 'admin\\_%' "
+    "AND COALESCE(e.description, '') NOT LIKE '%администратор%'"
+)
+
+
 def get_events(params, event):
     limit = int(params.get('limit', '20'))
     demo_filter = "AND p.is_demo_data = TRUE" if is_demo_request(event) else "AND p.is_demo_data = FALSE"
@@ -122,9 +129,10 @@ def get_events(params, event):
         FROM events e
         LEFT JOIN personnel p ON e.personnel_id = p.id
         WHERE (p.id IS NULL OR p.is_demo_data = %s)
+          AND %s
         ORDER BY e.created_at DESC
         LIMIT %d
-    """ % ('TRUE' if is_demo_request(event) else 'FALSE', min(limit, 100)))
+    """ % ('TRUE' if is_demo_request(event) else 'FALSE', ADMIN_EVENTS_HIDDEN, min(limit, 100)))
     rows = cur.fetchall()
     cur.close()
     conn.close()
