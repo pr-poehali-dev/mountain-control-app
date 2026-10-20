@@ -818,31 +818,31 @@ def admin_mark(event, body):
         return json_response(404, {'error': 'Сотрудник не найден'})
 
     person_id, person_name, old_status = row[0], row[1], row[2] or 'pending'
-    admin_name = admin[1] or 'Администратор'
     shift_type, check_direction, shift_date = detect_shift()
     shift_label = SHIFT_LABELS.get(shift_type, shift_type)
     dir_label = DIRECTION_LABELS.get(check_direction, check_direction)
 
     check_id = None
     if status in ('passed', 'failed'):
-        note_text = 'Отметка администратора — %s, %s' % (shift_label, dir_label)
+        note_text = '%s — %s' % (shift_label, dir_label)
         if notes:
             note_text += '. ' + notes
         cur.execute("""
             INSERT INTO medical_checks (personnel_id, check_type, status, blood_pressure, pulse, alcohol_level, temperature, doctor_name, notes, shift_type, check_direction, shift_date)
-            VALUES (%d, 'pre_shift', '%s', '', 0, 0, 0, '%s', '%s', '%s', '%s', '%s')
+            VALUES (%d, 'pre_shift', '%s', '', 0, 0, 0, '', '%s', '%s', '%s', '%s')
             RETURNING id
-        """ % (person_id, status, ('Админ: ' + admin_name).replace("'", "''")[:255], note_text.replace("'", "''"),
+        """ % (person_id, status, note_text.replace("'", "''"),
                shift_type, check_direction, shift_date))
         check_id = cur.fetchone()[0]
 
     cur.execute("UPDATE personnel SET medical_status = '%s', updated_at = NOW() WHERE id = %d" % (status, person_id))
     cur.execute("UPDATE aho_arrivals SET medical_status = '%s', updated_at = NOW() WHERE personnel_id = %d" % (status, person_id))
 
-    event_type = {'passed': 'medical_pass', 'failed': 'medical_fail', 'pending': 'medical_reset'}[status]
-    desc = '%s — медосмотр %s (отметка администратора %s)' % (person_name, ADMIN_MARK_LABELS[status], admin_name)
-    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('%s', '%s', %d)" % (
-        event_type, desc.replace("'", "''"), person_id))
+    if status in ('passed', 'failed'):
+        event_type = 'medical_pass' if status == 'passed' else 'medical_fail'
+        desc = '%s — %s медосмотр (%s, %s)' % (person_name, 'прошёл' if status == 'passed' else 'не прошёл', shift_label, dir_label)
+        cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('%s', '%s', %d)" % (
+            event_type, desc.replace("'", "''"), person_id))
 
     conn.commit()
     cur.close()

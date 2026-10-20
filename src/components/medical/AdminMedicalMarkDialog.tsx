@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import Icon from "@/components/ui/icon";
 import { medicalApi } from "@/lib/api";
@@ -68,7 +68,6 @@ export default function AdminMedicalMarkDialog({ person, onClose, onMarked }: Pr
             <Icon name="HeartPulse" size={18} className="text-mine-green" />
             Отметка медосмотра
           </DialogTitle>
-          <DialogDescription>Отметка будет записана от имени администратора</DialogDescription>
         </DialogHeader>
 
         {person && (

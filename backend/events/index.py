@@ -129,6 +129,7 @@ def get_events(params, event):
         FROM events e
         LEFT JOIN personnel p ON e.personnel_id = p.id
         WHERE (p.id IS NULL OR p.is_demo_data = %s)
+          AND COALESCE(e.is_hidden, FALSE) = FALSE
           AND %s
         ORDER BY e.created_at DESC
         LIMIT %d

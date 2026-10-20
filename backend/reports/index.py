@@ -426,7 +426,7 @@ def report_events_log(params, event):
     cur = conn.cursor()
 
     demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
-    where = ["e.created_at::date >= '%s'" % df, "e.created_at::date <= '%s'" % dt, "(p.id IS NULL OR p.is_demo_data = %s)" % demo_val]
+    where = ["e.created_at::date >= '%s'" % df, "e.created_at::date <= '%s'" % dt, "(p.id IS NULL OR p.is_demo_data = %s)" % demo_val, "COALESCE(e.is_hidden, FALSE) = FALSE"]
     if event_type:
         where.append("e.event_type = '%s'" % event_type.replace("'", "''"))
     where_sql = ' AND '.join(where)

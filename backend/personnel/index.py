@@ -408,7 +408,7 @@ def get_history(params):
     cur.execute("""
         SELECT id, event_type, description, created_at
         FROM events
-        WHERE personnel_id = %d
+        WHERE personnel_id = %d AND COALESCE(is_hidden, FALSE) = FALSE
         ORDER BY created_at DESC
         LIMIT 50
     """ % int(person_id))

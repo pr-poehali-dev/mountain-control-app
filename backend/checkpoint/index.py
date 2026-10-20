@@ -456,9 +456,6 @@ def update_pass(event, body):
 
     cur.execute("UPDATE checkpoint_passes SET %s WHERE id = %d" % (', '.join(sets), int(pass_id)))
     sync_person_status(cur, row[1])
-    desc = 'Журнал КПП: запись #%d (%s) изменена администратором %s' % (int(pass_id), row[2], admin[1])
-    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('checkpoint_edit', '%s', %s)" % (
-        desc.replace("'", "''"), int(row[1]) if row[1] else 'NULL'))
     conn.commit()
     cur.close()
     conn.close()
@@ -487,10 +484,6 @@ def delete_pass(event, body, params):
 
     cur.execute("DELETE FROM checkpoint_passes WHERE id = %d" % int(pass_id))
     sync_person_status(cur, row[1])
-    desc = 'Журнал КПП: удалена запись #%d (%s, %s, %s) администратором %s' % (
-        int(pass_id), row[2], 'вход' if row[3] == 'in' else 'выход', row[4].strftime('%d.%m.%Y %H:%M'), admin[1])
-    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('checkpoint_delete', '%s', %s)" % (
-        desc.replace("'", "''"), int(row[1]) if row[1] else 'NULL'))
     conn.commit()
     cur.close()
     conn.close()
