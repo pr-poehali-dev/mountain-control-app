@@ -1030,11 +1030,11 @@ const Personnel = () => {
                   variant="outline"
                   className="flex-1 gap-2"
                   onClick={startEdit}
-                  disabled={selectedPerson.personal_code === PROTECTED_CODE}
-                  title={selectedPerson.personal_code === PROTECTED_CODE ? "Данные администратора защищены" : "Редактировать"}
+                  disabled={selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser}
+                  title={selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser ? "Данные администратора защищены" : "Редактировать"}
                 >
-                  <Icon name={selectedPerson.personal_code === PROTECTED_CODE ? "Lock" : "Pencil"} size={14} />
-                  {selectedPerson.personal_code === PROTECTED_CODE ? "Защищён" : "Редактировать"}
+                  <Icon name={selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser ? "Lock" : "Pencil"} size={14} />
+                  {selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser ? "Защищён" : "Редактировать"}
                 </Button>
                 <Button
                   variant="outline"

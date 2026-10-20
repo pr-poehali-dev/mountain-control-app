@@ -50,9 +50,9 @@ def handler(event, context):
     elif method == 'POST' and action == 'add':
         return add_person(body)
     elif method == 'PUT' and action == 'status':
-        return update_status(body)
+        return update_status(body, event)
     elif method == 'PUT' and action == 'edit':
-        return edit_person(body)
+        return edit_person(body, event)
     elif method == 'GET' and action == 'history':
         return get_history(params)
     elif method == 'GET' and action == 'search':
@@ -220,7 +220,7 @@ def add_person(body):
         'message': 'Сотрудник добавлен'
     })
 
-def update_status(body):
+def update_status(body, event=None):
     person_id = body.get('id')
     new_status = body.get('status', '')
 
@@ -235,7 +235,7 @@ def update_status(body):
     if code_row and code_row[0] == PROTECTED_CODE:
         cur.close()
         conn.close()
-        return json_response(403, {'error': 'Данные администратора защищены от изменений'})
+        return json_response(403, {'error': 'Статус администратора нельзя менять'})
 
     cur.execute("""
         UPDATE personnel SET status = '%s', updated_at = NOW()
@@ -304,7 +304,24 @@ def search_personnel(params, event):
 
     return json_response(200, {'results': results, 'total': len(results)})
 
-def edit_person(body):
+def is_admin_request(cur, event):
+    headers = (event or {}).get('headers') or {}
+    token = ''
+    for key in ('X-Authorization', 'x-authorization', 'Authorization', 'authorization'):
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        return False
+    cur.execute("""
+        SELECT u.id FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    return cur.fetchone() is not None
+
+
+def edit_person(body, event=None):
     person_id = body.get('id')
     if not person_id:
         return json_response(400, {'error': 'ID обязателен'})
@@ -322,10 +339,16 @@ def edit_person(body):
 
     cur.execute("SELECT personal_code FROM personnel WHERE id = %d" % int(person_id))
     code_row = cur.fetchone()
-    if code_row and code_row[0] == PROTECTED_CODE:
-        cur.close()
-        conn.close()
-        return json_response(403, {'error': 'Данные администратора защищены от изменений'})
+    is_protected = bool(code_row and code_row[0] == PROTECTED_CODE)
+    if is_protected:
+        if not is_admin_request(cur, event):
+            cur.close()
+            conn.close()
+            return json_response(403, {'error': 'Данные администратора защищены от изменений'})
+        if fields.get('status') == 'archived':
+            cur.close()
+            conn.close()
+            return json_response(403, {'error': 'Администратора нельзя отправить в архив'})
 
     new_medical = fields.get('medical_status', '')
 
@@ -384,6 +407,14 @@ def edit_person(body):
             INSERT INTO notifications (type, title, message, person_name, person_code)
             VALUES ('%s', '%s', '%s — %s → %s (ручное изменение)', '%s', '%s')
         """ % (n_type, n_title, safe_pname, old_label, new_label, safe_pname, ''))
+
+    if is_protected:
+        user_sets = []
+        for key in ('full_name', 'position', 'department', 'organization', 'organization_type'):
+            if key in fields and (key != 'full_name' or fields[key]):
+                user_sets.append("%s = '%s'" % (key, fields[key].replace("'", "''")))
+        if user_sets:
+            cur.execute("UPDATE users SET %s, updated_at = NOW() WHERE personal_code = '%s'" % (', '.join(user_sets), PROTECTED_CODE))
 
     changed = ', '.join(fields.keys())
     cur.execute("""
