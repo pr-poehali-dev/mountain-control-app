@@ -800,6 +800,37 @@ def save_itr_positions(body):
     return json_response(200, {'message': 'Список ИТР должностей сохранён', 'count': len(positions)})
 
 
+CYR_UPPER = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯё'
+CYR_LOWER = 'абвгдеежзийклмнопрстуфхцчшщъыьэюяе'
+
+
+def normalize_position(value):
+    s = ' '.join(str(value or '').replace('\u00a0', ' ').split()).lower().replace('ё', 'е')
+    return s.replace(' - ', '-').replace(' -', '-').replace('- ', '-')
+
+
+def sql_normalized(column):
+    return ("REPLACE(REPLACE(REPLACE(TRANSLATE(LOWER(TRIM(REGEXP_REPLACE(COALESCE(%s, ''), '\\s+', ' ', 'g'))), '%s', '%s'), ' - ', '-'), ' -', '-'), '- ', '-')"
+            % (column, CYR_UPPER, CYR_LOWER))
+
+
+def build_itr_where(cur, column='p.position'):
+    cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
+    row = cur.fetchone()
+    raw = row[0] if row else []
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    names = sorted({normalize_position(p) for p in (raw or []) if normalize_position(p)})
+    if not names:
+        return "FALSE"
+    col = sql_normalized(column)
+    conds = []
+    for n in names:
+        safe = n.replace("'", "''").replace('%', '').replace('_', '\\_')
+        conds.append("%s LIKE '%s%%'" % (col, safe))
+    return "(%s)" % " OR ".join(conds)
+
+
 def get_medical_itr_stats(params, event):
     batch_id = params.get('batch_id', '')
 
@@ -810,22 +841,8 @@ def get_medical_itr_stats(params, event):
 
     cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
     row = cur.fetchone()
-    itr_positions = row[0] if row else []
-
-    keywords = set()
-    for pos in itr_positions:
-        first_word = pos.strip().split()[0] if pos.strip() else ''
-        if first_word:
-            keywords.add(first_word.lower())
-    itr_conditions = []
-    for kw in keywords:
-        safe_kw = kw.replace("'", "''")
-        itr_conditions.append("LOWER(COALESCE(a.position, '')) LIKE '%%%s%%'" % safe_kw)
-
-    if itr_conditions:
-        itr_where = "(%s)" % " OR ".join(itr_conditions)
-    else:
-        itr_where = "FALSE"
+    itr_positions = (row[0] if row else []) or []
+    itr_where = build_itr_where(cur, 'COALESCE(NULLIF(a.position, \'\'), p.position)')
 
     base_where = "a.arrival_status IN ('arrived', 'expected') AND a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
     if batch_id:

@@ -304,20 +304,35 @@ def get_checks(params, event):
 
     return json_response(200, {'checks': checks, 'total': len(checks)})
 
-def build_itr_where(cur, table_alias='p'):
+CYR_UPPER = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯё'
+CYR_LOWER = 'абвгдеежзийклмнопрстуфхцчшщъыьэюяе'
+
+
+def normalize_position(value):
+    s = ' '.join(str(value or '').replace('\u00a0', ' ').split()).lower().replace('ё', 'е')
+    return s.replace(' - ', '-').replace(' -', '-').replace('- ', '-')
+
+
+def sql_normalized(column):
+    return ("REPLACE(REPLACE(REPLACE(TRANSLATE(LOWER(TRIM(REGEXP_REPLACE(COALESCE(%s, ''), '\\s+', ' ', 'g'))), '%s', '%s'), ' - ', '-'), ' -', '-'), '- ', '-')"
+            % (column, CYR_UPPER, CYR_LOWER))
+
+
+def build_itr_where(cur, column='p.position'):
     cur.execute("SELECT value FROM settings WHERE key = 'itr_positions'")
     row = cur.fetchone()
-    itr_positions = row[0] if row else []
-    conditions = []
-    for pos in itr_positions:
-        name = pos.strip().lower()
-        if not name:
-            continue
-        safe_name = name.replace("'", "''")
-        conditions.append("LOWER(COALESCE(%s.position, '')) LIKE '%s%%'" % (table_alias, safe_name))
-    if conditions:
-        return "(%s)" % " OR ".join(conditions)
-    return "FALSE"
+    raw = row[0] if row else []
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    names = sorted({normalize_position(p) for p in (raw or []) if normalize_position(p)})
+    if not names:
+        return "FALSE"
+    col = sql_normalized(column)
+    conds = []
+    for n in names:
+        safe = n.replace("'", "''").replace('%', '').replace('_', '\\_')
+        conds.append("%s LIKE '%s%%'" % (col, safe))
+    return "(%s)" % " OR ".join(conds)
 
 def get_medical_stats(params, event):
     date_from = params.get('date_from', '')

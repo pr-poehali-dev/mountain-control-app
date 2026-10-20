@@ -35,7 +35,9 @@
       "name": "Reset with invalid type returns error",
       "method": "POST",
       "path": "/?action=reset",
-      "body": {"reset_type": "invalid"},
+      "body": {
+        "reset_type": "invalid"
+      },
       "expectedStatus": 400
     },
     {
@@ -54,7 +56,10 @@
       "name": "Create building",
       "method": "POST",
       "path": "/?action=buildings",
-      "body": {"name": "Тестовое здание", "number": "Т-1"},
+      "body": {
+        "name": "Тестовое здание",
+        "number": "Т-1"
+      },
       "expectedStatus": 200
     },
     {
@@ -74,6 +79,12 @@
       "name": "Get housing stats",
       "method": "GET",
       "path": "/?action=housing-stats",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Medical ITR stats",
+      "method": "GET",
+      "path": "/?action=medical-itr-stats",
       "expectedStatus": 200
     }
   ]
