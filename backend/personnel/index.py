@@ -78,7 +78,9 @@ def get_personnel(params, event):
         SELECT id, personal_code, full_name, position, department, category, 
                phone, room, status, qr_code, medical_status, shift, created_at,
                organization, organization_type, COALESCE(tab_number, ''),
-               COALESCE(residence, ''), residence_building_id, residence_room_id
+               COALESCE(residence, ''), residence_building_id, residence_room_id,
+               COALESCE(pass_number, ''), pass_permanent, pass_valid_from, pass_valid_to,
+               COALESCE(inspection_mode, 'general')
         FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s
     """ % demo_filter
     if category:
@@ -108,7 +110,12 @@ def get_personnel(params, event):
             'tab_number': r[15] or '',
             'residence': r[16] or '',
             'residence_building_id': r[17],
-            'residence_room_id': r[18]
+            'residence_room_id': r[18],
+            'pass_number': r[19] or '',
+            'pass_permanent': bool(r[20]),
+            'pass_valid_from': r[21].isoformat() if r[21] else '',
+            'pass_valid_to': r[22].isoformat() if r[22] else '',
+            'inspection_mode': r[23] or 'general'
         })
 
     return json_response(200, {'personnel': personnel, 'total': len(personnel)})
@@ -209,6 +216,10 @@ def add_person(body):
         tabular_number.replace("'", "''")
     ))
     row = cur.fetchone()
+
+    pass_sets, pass_error = build_pass_sets(body)
+    if pass_sets and not pass_error:
+        cur.execute("UPDATE personnel SET %s WHERE id = %d" % (', '.join(pass_sets), row[0]))
 
     res_b, res_r, res_label = resolve_residence(cur, body)
     if res_label:
@@ -376,6 +387,43 @@ def resolve_residence(cur, body):
     return None, None, ''
 
 
+PASS_KEYS = ('pass_number', 'pass_permanent', 'pass_valid_from', 'pass_valid_to', 'inspection_mode')
+
+
+def valid_date(val):
+    val = str(val or '').strip()[:10]
+    if not val:
+        return None
+    datetime.strptime(val, '%Y-%m-%d')
+    return val
+
+
+def build_pass_sets(body):
+    if not any(k in body for k in PASS_KEYS):
+        return [], None
+    sets = []
+    if 'pass_number' in body:
+        sets.append("pass_number = '%s'" % str(body.get('pass_number') or '').strip()[:50].replace("'", "''"))
+    if 'inspection_mode' in body:
+        mode = body.get('inspection_mode')
+        if mode not in ('general', 'none'):
+            return None, 'Неверный режим досмотра'
+        sets.append("inspection_mode = '%s'" % mode)
+    permanent = bool(body.get('pass_permanent'))
+    if 'pass_permanent' in body or 'pass_valid_from' in body or 'pass_valid_to' in body:
+        try:
+            d_from = None if permanent else valid_date(body.get('pass_valid_from'))
+            d_to = None if permanent else valid_date(body.get('pass_valid_to'))
+        except ValueError:
+            return None, 'Неверный формат даты пропуска'
+        if d_from and d_to and d_from > d_to:
+            return None, 'Дата окончания пропуска раньше даты начала'
+        sets.append("pass_permanent = %s" % ('TRUE' if permanent else 'FALSE'))
+        sets.append("pass_valid_from = %s" % ("'%s'" % d_from if d_from else 'NULL'))
+        sets.append("pass_valid_to = %s" % ("'%s'" % d_to if d_to else 'NULL'))
+    return sets, None
+
+
 def edit_person(body, event=None):
     person_id = body.get('id')
     if not person_id:
@@ -386,7 +434,11 @@ def edit_person(body, event=None):
         if key in body:
             fields[key] = str(body[key]).strip()
 
-    if not fields and 'residence_room_id' not in body and 'residence_building_id' not in body:
+    pass_sets, pass_error = build_pass_sets(body)
+    if pass_error:
+        return json_response(400, {'error': pass_error})
+
+    if not fields and not pass_sets and 'residence_room_id' not in body and 'residence_building_id' not in body:
         return json_response(400, {'error': 'Нет полей для обновления'})
 
     conn = get_db()
@@ -426,6 +478,7 @@ def edit_person(body, event=None):
         set_parts.append("residence_building_id = %s" % (int(res_b) if res_b else 'NULL'))
         set_parts.append("residence_room_id = %s" % (int(res_r) if res_r else 'NULL'))
         fields['residence'] = res_label
+    set_parts.extend(pass_sets)
     set_parts.append("updated_at = NOW()")
 
     cur.execute("""
@@ -477,7 +530,10 @@ def edit_person(body, event=None):
         if user_sets:
             cur.execute("UPDATE users SET %s, updated_at = NOW() WHERE personal_code = '%s'" % (', '.join(user_sets), PROTECTED_CODE))
 
-    changed = ', '.join('место проживания' if k == 'residence' else k for k in fields.keys())
+    changed_keys = list(fields.keys())
+    if pass_sets:
+        changed_keys.append('пропуск/досмотр')
+    changed = ', '.join('место проживания' if k == 'residence' else k for k in changed_keys)
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
         VALUES ('edit', '%s — изменены данные (%s)', %d)

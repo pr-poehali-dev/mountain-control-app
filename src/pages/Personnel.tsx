@@ -23,6 +23,7 @@ import { flushSync } from "react-dom";
 import { personnelApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import ResidenceSelect, { ResidenceValue } from "@/components/personnel/ResidenceSelect";
+import PassFields, { PassValue, EMPTY_PASS, inspectionLabels, passPeriodLabel, isPassExpired } from "@/components/personnel/PassFields";
 import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -116,6 +117,11 @@ interface PersonnelItem {
   residence?: string;
   residence_building_id?: number | null;
   residence_room_id?: number | null;
+  pass_number?: string;
+  pass_permanent?: boolean;
+  pass_valid_from?: string;
+  pass_valid_to?: string;
+  inspection_mode?: string;
 }
 
 const EMPTY_RESIDENCE: ResidenceValue = { residence_building_id: null, residence_room_id: null };
@@ -191,6 +197,7 @@ const Personnel = () => {
   const [formPhone, setFormPhone] = useState("");
   const [formRoom, setFormRoom] = useState("");
   const [formResidence, setFormResidence] = useState<ResidenceValue>(EMPTY_RESIDENCE);
+  const [formPass, setFormPass] = useState<PassValue>(EMPTY_PASS);
   const [formShift, setFormShift] = useState("");
   const [formOrg, setFormOrg] = useState("");
   const [formOrgType, setFormOrgType] = useState("");
@@ -203,6 +210,7 @@ const Personnel = () => {
   const [editPhone, setEditPhone] = useState("");
   const [editRoom, setEditRoom] = useState("");
   const [editResidence, setEditResidence] = useState<ResidenceValue>(EMPTY_RESIDENCE);
+  const [editPass, setEditPass] = useState<PassValue>(EMPTY_PASS);
   const [editShift, setEditShift] = useState("");
   const [editStatus, setEditStatus] = useState("");
   const [editMedical, setEditMedical] = useState("");
@@ -265,6 +273,7 @@ const Personnel = () => {
     setFormPhone("");
     setFormRoom("");
     setFormResidence(EMPTY_RESIDENCE);
+    setFormPass(EMPTY_PASS);
     setFormShift("");
     setFormOrg("");
     setFormOrgType("");
@@ -296,6 +305,7 @@ const Personnel = () => {
         organization_type: formOrgType,
         tabular_number: formTabNum.trim(),
         ...formResidence,
+        ...formPass,
       });
       setAddSuccess({
         personal_code: res.personal_code,
@@ -338,6 +348,13 @@ const Personnel = () => {
       residence_building_id: selectedPerson.residence_building_id ?? null,
       residence_room_id: selectedPerson.residence_room_id ?? null,
     });
+    setEditPass({
+      pass_number: selectedPerson.pass_number || "",
+      pass_permanent: !!selectedPerson.pass_permanent,
+      pass_valid_from: selectedPerson.pass_valid_from || "",
+      pass_valid_to: selectedPerson.pass_valid_to || "",
+      inspection_mode: selectedPerson.inspection_mode || "general",
+    });
     setEditShift(selectedPerson.shift || "");
     setEditStatus(selectedPerson.status);
     setEditMedical(selectedPerson.medical_status || "pending");
@@ -376,6 +393,7 @@ const Personnel = () => {
         organization_type: editOrgType,
         tab_number: editTabNum.trim(),
         ...editResidence,
+        ...editPass,
       });
       const updated = {
         ...selectedPerson,
@@ -392,7 +410,7 @@ const Personnel = () => {
         organization_type: editOrgType,
         tab_number: editTabNum.trim(),
       };
-      setSelectedPerson({ ...updated, ...editResidence, residence: editRes?.residence ?? updated.residence });
+      setSelectedPerson({ ...updated, ...editResidence, ...editPass, residence: editRes?.residence ?? updated.residence });
       setEditing(false);
       fetchData();
       const hRes = await personnelApi.getHistory(selectedPerson.id);
@@ -1015,6 +1033,34 @@ const Personnel = () => {
                     </p>
                     <p className="text-sm font-medium text-foreground">{selectedPerson.residence || "Не указано"}</p>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Icon name="IdCard" fallback="CreditCard" size={11} />
+                        № пропуска
+                      </p>
+                      <p className="text-sm font-medium text-foreground font-mono">{selectedPerson.pass_number || "—"}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Icon name="CalendarRange" size={11} />
+                        Действие пропуска
+                      </p>
+                      <p className={`text-sm font-medium ${isPassExpired(selectedPerson) ? "text-mine-red" : "text-foreground"}`}>
+                        {passPeriodLabel(selectedPerson)}
+                        {isPassExpired(selectedPerson) && <span className="text-[10px] ml-1">(истёк)</span>}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2 col-span-2">
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Icon name="ShieldCheck" size={11} />
+                        Досмотр
+                      </p>
+                      <p className={`text-sm font-medium ${selectedPerson.inspection_mode === "none" ? "text-mine-amber" : "text-foreground"}`}>
+                        {inspectionLabels[selectedPerson.inspection_mode || "general"]}
+                      </p>
+                    </div>
+                  </div>
                   {(selectedPerson.organization || selectedPerson.phone) && (
                     <div className="grid grid-cols-2 gap-2">
                       {selectedPerson.organization && (
@@ -1208,6 +1254,10 @@ const Personnel = () => {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Место проживания</label>
                 <ResidenceSelect value={editResidence} onChange={setEditResidence} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Пропуск</label>
+                <PassFields value={editPass} onChange={setEditPass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1414,6 +1464,10 @@ const Personnel = () => {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Место проживания</label>
                 <ResidenceSelect value={formResidence} onChange={setFormResidence} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Пропуск</label>
+                <PassFields value={formPass} onChange={setFormPass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
