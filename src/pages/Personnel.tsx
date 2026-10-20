@@ -22,6 +22,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { personnelApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import AutoGrowInput from "@/components/personnel/AutoGrowInput";
 import ResidenceSelect, { ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import PassFields, { PassValue, EMPTY_PASS, inspectionLabels, passPeriodLabel, isPassExpired } from "@/components/personnel/PassFields";
 import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
@@ -122,6 +123,13 @@ interface PersonnelItem {
   pass_valid_from?: string;
   pass_valid_to?: string;
   inspection_mode?: string;
+}
+
+function growSpan(text: string, base: 1 | 2 = 1) {
+  const len = (text || "").length;
+  if (len > 56 || (base === 2 && len > 40)) return "sm:col-span-3";
+  if (len > 24 || base === 2) return "sm:col-span-2";
+  return "";
 }
 
 const inlineInput = "h-8 px-2 -mx-2 w-[calc(100%+1rem)] bg-transparent border-transparent shadow-none text-sm font-medium text-foreground hover:bg-secondary/40 hover:border-border focus:bg-secondary/50 focus-visible:ring-1 focus-visible:ring-mine-cyan/50 focus-visible:ring-offset-0 disabled:opacity-100 disabled:cursor-default disabled:hover:bg-transparent";
@@ -994,7 +1002,7 @@ const Personnel = () => {
 
       {/* === Карточка сотрудника === */}
       <Dialog open={showCard} onOpenChange={setShowCard}>
-        <DialogContent className="sm:max-w-4xl bg-card border-border max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl bg-card border-border max-h-[92vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
               <Icon name="User" size={20} className="text-primary" />
@@ -1029,22 +1037,22 @@ const Personnel = () => {
                 <div className="flex-1 min-w-0 space-y-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <CardField label="ФИО" className="sm:col-span-2">
-                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} className={`${inlineInput} text-base font-bold`} />
+                      <AutoGrowInput value={editName} onChange={setEditName} className="text-base font-bold" />
                     </CardField>
                     <CardField label="Должность" className="sm:col-span-2">
-                      <Input value={editPosition} onChange={(e) => setEditPosition(e.target.value)} className={inlineInput} placeholder="—" />
+                      <AutoGrowInput value={editPosition} onChange={setEditPosition} placeholder="—" />
                     </CardField>
                     <CardField label="Код">
                       <code className="text-sm font-mono font-bold text-mine-cyan leading-8">{selectedPerson.personal_code}</code>
                     </CardField>
-                    <CardField label="Табельный №">
-                      <Input value={editTabNum} onChange={(e) => setEditTabNum(e.target.value)} className={`${inlineInput} font-mono`} placeholder="—" />
+                    <CardField label="Табельный №" className={editTabNum.length > 18 ? "sm:col-span-2" : ""}>
+                      <AutoGrowInput value={editTabNum} onChange={setEditTabNum} className="font-mono" placeholder="—" />
                     </CardField>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 grid-flow-row-dense">
                 <CardField label="Статус">
                   <Select value={editStatus} onValueChange={setEditStatus}>
                     <SelectTrigger className={inlineInput}><SelectValue /></SelectTrigger>
@@ -1094,8 +1102,8 @@ const Personnel = () => {
                   </Select>
                   {shiftBlocked && <p className="text-[10px] text-mine-red">Медосмотр не пройден</p>}
                 </CardField>
-                <CardField label="Подразделение">
-                  <Input value={editDept} onChange={(e) => setEditDept(e.target.value)} className={inlineInput} placeholder="—" />
+                <CardField label="Подразделение" className={growSpan(editDept)}>
+                  <AutoGrowInput value={editDept} onChange={setEditDept} placeholder="—" />
                 </CardField>
                 <CardField label="Категория">
                   <Select value={editCategory} onValueChange={setEditCategory}>
@@ -1108,11 +1116,11 @@ const Personnel = () => {
                     </SelectContent>
                   </Select>
                 </CardField>
-                <CardField label="Телефон">
-                  <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className={inlineInput} placeholder="—" />
+                <CardField label="Телефон" className={growSpan(editPhone)}>
+                  <AutoGrowInput value={editPhone} onChange={setEditPhone} placeholder="—" />
                 </CardField>
-                <CardField label="Организация" className="sm:col-span-2">
-                  <Input value={editOrg} onChange={(e) => setEditOrg(e.target.value)} className={inlineInput} placeholder="—" />
+                <CardField label="Организация" className={growSpan(editOrg, 2)}>
+                  <AutoGrowInput value={editOrg} onChange={setEditOrg} placeholder="—" />
                 </CardField>
                 <CardField label="Тип организации">
                   <Select value={editOrgType || "none"} onValueChange={(v) => setEditOrgType(v === "none" ? "" : v)}>
@@ -1129,11 +1137,11 @@ const Personnel = () => {
                 <CardField label="Место проживания" icon="Home" className="sm:col-span-2">
                   <ResidenceSelect value={editResidence} onChange={setEditResidence} compact />
                 </CardField>
-                <CardField label="Комната">
-                  <Input value={editRoom} onChange={(e) => setEditRoom(e.target.value)} className={inlineInput} placeholder="—" />
+                <CardField label="Комната" className={growSpan(editRoom)}>
+                  <AutoGrowInput value={editRoom} onChange={setEditRoom} placeholder="—" />
                 </CardField>
-                <CardField label="№ пропуска" icon="CreditCard">
-                  <Input value={editPass.pass_number} onChange={(e) => setEditPass({ ...editPass, pass_number: e.target.value })} className={`${inlineInput} font-mono`} placeholder="—" />
+                <CardField label="№ пропуска" icon="CreditCard" className={growSpan(editPass.pass_number)}>
+                  <AutoGrowInput value={editPass.pass_number} onChange={(v) => setEditPass({ ...editPass, pass_number: v })} className="font-mono" placeholder="—" />
                 </CardField>
                 <CardField
                   label="Действие пропуска"
