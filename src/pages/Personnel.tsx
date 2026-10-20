@@ -124,6 +124,18 @@ interface PersonnelItem {
   inspection_mode?: string;
 }
 
+function CardField({ label, icon, className = "", children }: { label: string; icon?: string; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={`rounded-lg border border-border bg-background/50 px-3 py-2 min-h-[54px] ${className}`}>
+      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+        {icon && <Icon name={icon} size={11} />}
+        {label}
+      </p>
+      <div className="text-sm font-medium text-foreground break-words">{children}</div>
+    </div>
+  );
+}
+
 const EMPTY_RESIDENCE: ResidenceValue = { residence_building_id: null, residence_room_id: null };
 
 interface HistoryEvent {
@@ -951,7 +963,7 @@ const Personnel = () => {
 
       {/* === Карточка сотрудника === */}
       <Dialog open={showCard} onOpenChange={setShowCard}>
-        <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl bg-card border-border max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
               <Icon name="User" size={20} className="text-primary" />
@@ -975,28 +987,24 @@ const Personnel = () => {
                     level="L"
                   />
                 </button>
-                <div className="flex-1 space-y-3">
+                <div className="flex-1 min-w-0 space-y-3">
                   <div>
                     <p className="text-lg font-bold text-foreground">{selectedPerson.full_name}</p>
                     <p className="text-sm text-muted-foreground">{selectedPerson.position || "—"}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">Код</p>
+                    <CardField label="Код">
                       <code className="text-sm font-mono font-bold text-mine-cyan">{selectedPerson.personal_code}</code>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">Подразделение</p>
-                      <p className="text-sm font-medium text-foreground">{selectedPerson.department || "—"}</p>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">Категория</p>
-                      <Badge variant="outline" className={`text-[11px] ${categoryColors[categoryLabels[selectedPerson.category] || ""] || ""}`}>
-                        {categoryLabels[selectedPerson.category] || selectedPerson.category}
+                    </CardField>
+                    <CardField label="Табельный №">
+                      <span className="font-mono">{selectedPerson.tab_number || "—"}</span>
+                    </CardField>
+                    <CardField label="Статус">
+                      <Badge variant="outline" className={`text-[11px] ${statusColors[statusLabels[selectedPerson.status] || ""] || ""}`}>
+                        {statusLabels[selectedPerson.status] || selectedPerson.status}
                       </Badge>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">Медосмотр</p>
+                    </CardField>
+                    <CardField label="Медосмотр">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className={`text-[11px] ${medicalColors[selectedPerson.medical_status || "pending"] || ""}`}>
                           {medicalLabels[selectedPerson.medical_status || "pending"]}
@@ -1012,85 +1020,46 @@ const Personnel = () => {
                           </button>
                         )}
                       </div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">Статус</p>
-                      <Badge variant="outline" className={`text-[11px] ${statusColors[statusLabels[selectedPerson.status] || ""] || ""}`}>
-                        {statusLabels[selectedPerson.status] || selectedPerson.status}
-                      </Badge>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground">Комната / Смена</p>
-                      <p className="text-sm font-medium text-foreground">
-                        {selectedPerson.room || "—"} / {selectedPerson.shift || "—"}
-                      </p>
-                    </div>
+                    </CardField>
                   </div>
-                  <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                    <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <Icon name="Home" size={11} />
-                      Место проживания
-                    </p>
-                    <p className="text-sm font-medium text-foreground">{selectedPerson.residence || "Не указано"}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Icon name="IdCard" fallback="CreditCard" size={11} />
-                        № пропуска
-                      </p>
-                      <p className="text-sm font-medium text-foreground font-mono">{selectedPerson.pass_number || "—"}</p>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Icon name="CalendarRange" size={11} />
-                        Действие пропуска
-                      </p>
-                      <p className={`text-sm font-medium ${isPassExpired(selectedPerson) ? "text-mine-red" : "text-foreground"}`}>
-                        {passPeriodLabel(selectedPerson)}
-                        {isPassExpired(selectedPerson) && <span className="text-[10px] ml-1">(истёк)</span>}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2 col-span-2">
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Icon name="ShieldCheck" size={11} />
-                        Досмотр
-                      </p>
-                      <p className={`text-sm font-medium ${selectedPerson.inspection_mode === "none" ? "text-mine-amber" : "text-foreground"}`}>
-                        {inspectionLabels[selectedPerson.inspection_mode || "general"]}
-                      </p>
-                    </div>
-                  </div>
-                  {(selectedPerson.organization || selectedPerson.phone) && (
-                    <div className="grid grid-cols-2 gap-2">
-                      {selectedPerson.organization && (
-                        <div className="rounded-lg border border-border bg-background/50 px-3 py-2 col-span-2">
-                          <p className="text-[10px] text-muted-foreground">Организация</p>
-                          <p className="text-sm font-medium text-foreground">
-                            {selectedPerson.organization}
-                            {selectedPerson.organization_type && (
-                              <Badge variant="outline" className={`text-[10px] ml-2 ${orgTypeColors[selectedPerson.organization_type] || ""}`}>
-                                {orgTypeLabels[selectedPerson.organization_type] || selectedPerson.organization_type}
-                              </Badge>
-                            )}
-                          </p>
-                        </div>
-                      )}
-                      {selectedPerson.tab_number && (
-                        <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
-                          <p className="text-[10px] text-muted-foreground">Табельный №</p>
-                          <p className="text-sm font-medium text-foreground font-mono">{selectedPerson.tab_number}</p>
-                        </div>
-                      )}
-                      {selectedPerson.phone && (
-                        <div className="rounded-lg border border-border bg-background/50 px-3 py-2 col-span-2">
-                          <p className="text-[10px] text-muted-foreground">Телефон</p>
-                          <p className="text-sm font-medium text-foreground">{selectedPerson.phone}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <CardField label="Подразделение">{selectedPerson.department || "—"}</CardField>
+                <CardField label="Категория">
+                  <Badge variant="outline" className={`text-[11px] ${categoryColors[categoryLabels[selectedPerson.category] || ""] || ""}`}>
+                    {categoryLabels[selectedPerson.category] || selectedPerson.category}
+                  </Badge>
+                </CardField>
+                <CardField label="Смена">{selectedPerson.shift || "—"}</CardField>
+                <CardField label="Организация" className="sm:col-span-2">
+                  {selectedPerson.organization || "—"}
+                  {selectedPerson.organization_type && (
+                    <Badge variant="outline" className={`text-[10px] ml-2 ${orgTypeColors[selectedPerson.organization_type] || ""}`}>
+                      {orgTypeLabels[selectedPerson.organization_type] || selectedPerson.organization_type}
+                    </Badge>
+                  )}
+                </CardField>
+                <CardField label="Телефон">{selectedPerson.phone || "—"}</CardField>
+                <CardField label="Место проживания" icon="Home" className="sm:col-span-2">
+                  {selectedPerson.residence || "Не указано"}
+                </CardField>
+                <CardField label="Комната">{selectedPerson.room || "—"}</CardField>
+                <CardField label="№ пропуска" icon="CreditCard">
+                  <span className="font-mono">{selectedPerson.pass_number || "—"}</span>
+                </CardField>
+                <CardField label="Действие пропуска" icon="CalendarRange">
+                  <span className={isPassExpired(selectedPerson) ? "text-mine-red" : ""}>
+                    {passPeriodLabel(selectedPerson)}
+                    {isPassExpired(selectedPerson) && <span className="text-[10px] ml-1">(истёк)</span>}
+                  </span>
+                </CardField>
+                <CardField label="Досмотр" icon="ShieldCheck">
+                  <span className={selectedPerson.inspection_mode === "none" ? "text-mine-amber" : ""}>
+                    {inspectionLabels[selectedPerson.inspection_mode || "general"]}
+                  </span>
+                </CardField>
               </div>
 
               <div className="flex gap-2">
