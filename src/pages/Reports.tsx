@@ -10,7 +10,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
-import { reportsApi } from "@/lib/api";
+import { reportsApi, eventsApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface ReportConfig {
   key: string;
@@ -84,6 +86,44 @@ const Reports = () => {
   const [reportData, setReportData] = useState<{ items: Record<string, unknown>[]; summary: Record<string, unknown> } | null>(null);
   const [error, setError] = useState("");
   const tableRef = useRef<HTMLDivElement>(null);
+  const { user: authUser } = useAuth();
+  const { toast } = useToast();
+  const isAdminUser = authUser?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
+  const [editEventId, setEditEventId] = useState<number | null>(null);
+  const [eventDraft, setEventDraft] = useState("");
+  const [busyEventId, setBusyEventId] = useState<number | null>(null);
+
+  const saveEventEdit = async (id: number) => {
+    const text = eventDraft.trim();
+    if (!text) return;
+    setBusyEventId(id);
+    try {
+      await eventsApi.editEvent(id, text);
+      setReportData(prev => prev ? { ...prev, items: prev.items.map(it => it.id === id ? { ...it, description: text } : it) } : prev);
+      setEditEventId(null);
+    } catch (err) {
+      toast({ title: "Не удалось сохранить", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally {
+      setBusyEventId(null);
+    }
+  };
+
+  const hideEventRow = async (id: number) => {
+    if (!confirm("Убрать это событие из журнала, ленты и отчётов?")) return;
+    setBusyEventId(id);
+    try {
+      await eventsApi.hideEvent(id);
+      setReportData(prev => {
+        if (!prev) return prev;
+        const total = Number(prev.summary.total) || 0;
+        return { items: prev.items.filter(it => it.id !== id), summary: { ...prev.summary, total: Math.max(0, total - 1) } };
+      });
+    } catch (err) {
+      toast({ title: "Не удалось убрать событие", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally {
+      setBusyEventId(null);
+    }
+  };
 
   const activeReport = REPORTS.find(r => r.key === active);
 
@@ -141,6 +181,7 @@ th{background:#f0f0f0;font-weight:600}
 .summary-item{background:#f8f8f8;padding:8px 16px;border-radius:6px}
 .summary-item .val{font-size:20px;font-weight:700}
 .summary-item .lbl{font-size:11px;color:#666}
+.no-print{display:none}
 @media print{body{padding:0}}
 </style></head><body>
 <h2>${activeReport.title}</h2>
@@ -218,7 +259,7 @@ ${html}
     );
   };
 
-  type TableCol = { key: string; label: string; render?: (v: unknown, row: Record<string, unknown>) => React.ReactNode };
+  type TableCol = { key: string; label: string; noPrint?: boolean; render?: (v: unknown, row: Record<string, unknown>) => React.ReactNode };
 
   const getColumns = (): TableCol[] => {
     if (active === "attendance") return [
@@ -301,9 +342,62 @@ ${html}
     if (active === "events-log") return [
       { key: "created_at", label: "Дата/Время", render: v => formatDateTime(v as string) },
       { key: "type_label", label: "Тип" },
-      { key: "description", label: "Описание" },
+      { key: "description", label: "Описание", render: (v, row) => {
+        const id = row.id as number;
+        if (editEventId === id) return (
+          <div className="space-y-1.5 min-w-[260px]">
+            <textarea
+              value={eventDraft}
+              onChange={e => setEventDraft(e.target.value)}
+              rows={3}
+              autoFocus
+              className="w-full text-xs rounded-md border border-border bg-secondary/50 text-foreground p-2 whitespace-normal focus:outline-none focus:ring-1 focus:ring-mine-cyan"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => saveEventEdit(id)}
+                disabled={busyEventId === id || !eventDraft.trim()}
+                className="text-xs px-2.5 py-1 rounded-md bg-mine-cyan text-background font-medium disabled:opacity-50"
+              >
+                Сохранить
+              </button>
+              <button
+                onClick={() => setEditEventId(null)}
+                className="text-xs px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        );
+        return String(v ?? "—");
+      }},
       { key: "person_name", label: "Сотрудник" },
       { key: "person_code", label: "Код" },
+      ...(isAdminUser ? [{ key: "__actions", label: "", noPrint: true, render: (_v: unknown, row: Record<string, unknown>) => {
+        const id = row.id as number;
+        if (editEventId === id) return null;
+        return (
+          <div className="flex gap-1 justify-end">
+            <button
+              onClick={() => { setEditEventId(id); setEventDraft(String(row.description ?? "")); }}
+              disabled={busyEventId === id}
+              title="Редактировать"
+              className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-mine-cyan"
+            >
+              <Icon name="Pencil" size={13} />
+            </button>
+            <button
+              onClick={() => hideEventRow(id)}
+              disabled={busyEventId === id}
+              title="Убрать запись"
+              className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-mine-red"
+            >
+              <Icon name={busyEventId === id ? "Loader2" : "Trash2"} size={13} className={busyEventId === id ? "animate-spin" : ""} />
+            </button>
+          </div>
+        );
+      }} as TableCol] : []),
     ];
     return [];
   };
@@ -326,15 +420,15 @@ ${html}
           <thead>
             <tr className="border-b border-border bg-secondary/30">
               {cols.map(c => (
-                <th key={c.key} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground whitespace-nowrap">{c.label}</th>
+                <th key={c.key} className={`${c.noPrint ? "no-print " : ""}px-3 py-2 text-left text-xs font-semibold text-muted-foreground whitespace-nowrap`}>{c.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {items.map((item, i) => (
-              <tr key={i} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
+              <tr key={(item.id as number) ?? i} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                 {cols.map(c => (
-                  <td key={c.key} className="px-3 py-2 text-xs whitespace-nowrap">
+                  <td key={c.key} className={`${c.noPrint ? "no-print " : ""}px-3 py-2 text-xs whitespace-nowrap`}>
                     {c.render ? c.render(item[c.key], item) : (String(item[c.key] ?? "—"))}
                   </td>
                 ))}
