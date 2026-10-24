@@ -1278,9 +1278,13 @@ def export_all_data():
         'reset_log': ['id','reset_type','description','affected_rows','performed_by','performed_at'],
     }
 
+    table_filters = {
+        'rooms': "WHERE is_active = TRUE AND building_id IN (SELECT id FROM buildings WHERE is_active = TRUE)",
+    }
+
     result = {}
     for table, cols in tables_cols.items():
-        cur.execute("SELECT %s FROM %s ORDER BY id" % (', '.join(cols), table))
+        cur.execute("SELECT %s FROM %s %s ORDER BY id" % (', '.join(cols), table, table_filters.get(table, '')))
         rows = cur.fetchall()
         result[table] = []
         for r in rows:
