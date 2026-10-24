@@ -169,11 +169,13 @@ const Aho = () => {
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [newRoomNumber, setNewRoomNumber] = useState("");
   const [newRoomCapacity, setNewRoomCapacity] = useState("2");
+  const [newRoomFloor, setNewRoomFloor] = useState("1");
+  const [batchFloor, setBatchFloor] = useState("1");
   const [batchFrom, setBatchFrom] = useState("");
   const [batchTo, setBatchTo] = useState("");
   const [batchCapacity, setBatchCapacity] = useState("2");
 
-  const [editingRoom, setEditingRoom] = useState<{ id: number; room_number: string; capacity: string } | null>(null);
+  const [editingRoom, setEditingRoom] = useState<{ id: number; room_number: string; capacity: string; floor: string } | null>(null);
   const [savingRoom, setSavingRoom] = useState(false);
   const [editingBuilding, setEditingBuilding] = useState<number | null>(null);
   const [editBuildingName, setEditBuildingName] = useState("");
@@ -423,6 +425,7 @@ const Aho = () => {
         building_id: selectedBuilding,
         room_number: newRoomNumber.trim(),
         capacity: parseInt(newRoomCapacity) || 2,
+        floor: parseInt(newRoomFloor) || 1,
       });
       setNewRoomNumber("");
       openBuilding(selectedBuilding);
@@ -442,7 +445,7 @@ const Aho = () => {
     }
     const rooms = [];
     for (let i = from; i <= to; i++) {
-      rooms.push({ room_number: String(i), capacity: parseInt(batchCapacity) || 2 });
+      rooms.push({ room_number: String(i), capacity: parseInt(batchCapacity) || 2, floor: parseInt(batchFloor) || 1 });
     }
     try {
       const res = await ahoApi.createRoomsBatch(selectedBuilding, rooms);
@@ -471,6 +474,11 @@ const Aho = () => {
     if (!selectedBuilding || !editingRoom) return;
     const num = editingRoom.room_number.trim();
     const cap = parseInt(editingRoom.capacity);
+    const floor = parseInt(editingRoom.floor);
+    if (isNaN(floor)) {
+      toast({ title: "Укажите этаж", variant: "destructive" });
+      return;
+    }
     if (!num) {
       toast({ title: "Укажите номер комнаты", variant: "destructive" });
       return;
@@ -481,7 +489,7 @@ const Aho = () => {
     }
     setSavingRoom(true);
     try {
-      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap });
+      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap, floor });
       setEditingRoom(null);
       openBuilding(selectedBuilding);
       loadBuildings();
@@ -1340,6 +1348,14 @@ const Aho = () => {
                   type="number"
                   className="bg-secondary/50 w-20"
                 />
+                <Input
+                  value={newRoomFloor}
+                  onChange={e => setNewRoomFloor(e.target.value)}
+                  placeholder="Этаж"
+                  title="Этаж"
+                  type="number"
+                  className="bg-secondary/50 w-20"
+                />
                 <Button onClick={handleAddRoom} disabled={!newRoomNumber.trim()} size="sm" className="gap-1 bg-mine-green text-white hover:bg-mine-green/90">
                   <Icon name="Plus" size={14} />
                   Добавить
@@ -1347,7 +1363,7 @@ const Aho = () => {
               </div>
               <div className="border-t border-border/50 pt-3">
                 <p className="text-xs font-semibold text-muted-foreground mb-2">Массовое добавление</p>
-                <div className="flex gap-2 items-center">
+                <div className="flex gap-2 items-center flex-wrap">
                   <span className="text-xs text-muted-foreground">С</span>
                   <Input
                     value={batchFrom}
@@ -1372,6 +1388,14 @@ const Aho = () => {
                     type="number"
                     className="bg-secondary/50 w-16"
                   />
+                  <span className="text-xs text-muted-foreground">этаж:</span>
+                  <Input
+                    value={batchFloor}
+                    onChange={e => setBatchFloor(e.target.value)}
+                    placeholder="1"
+                    type="number"
+                    className="bg-secondary/50 w-16"
+                  />
                   <Button onClick={handleBatchRooms} disabled={!batchFrom || !batchTo} size="sm" className="gap-1 bg-mine-cyan text-white hover:bg-mine-cyan/90 shrink-0">
                     <Icon name="Layers" size={14} />
                     Создать
@@ -1392,10 +1416,24 @@ const Aho = () => {
                 <span>Комнат: <b className="text-foreground">{buildingRooms.length}</b></span>
                 <span>Койко-мест: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.capacity, 0)}</b></span>
                 <span>Занято: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.occupied, 0)}</b></span>
-                <span className="ml-auto flex items-center gap-1"><Icon name="Pencil" size={10} />— изменить номер и количество мест</span>
+                <span>Этажей: <b className="text-foreground">{new Set(buildingRooms.map(r => r.floor ?? 1)).size}</b></span>
+                <span className="ml-auto flex items-center gap-1"><Icon name="Pencil" size={10} />— изменить номер, места и этаж</span>
               </div>
+              {Array.from(new Set(buildingRooms.map(r => r.floor ?? 1))).sort((a, b) => a - b).map(fl => (
+              <div key={fl} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Icon name="Layers" size={13} className="text-mine-cyan" />
+                  <span className="text-xs font-semibold text-foreground">{fl} этаж</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {buildingRooms.filter(r => (r.floor ?? 1) === fl).length} комн. · {buildingRooms.filter(r => (r.floor ?? 1) === fl).reduce((s, r) => s + r.occupied, 0)}/{buildingRooms.filter(r => (r.floor ?? 1) === fl).reduce((s, r) => s + r.capacity, 0)} мест
+                  </span>
+                  <div className="flex-1 border-t border-border/50" />
+                </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {buildingRooms.map(r => {
+                {buildingRooms
+                  .filter(r => (r.floor ?? 1) === fl)
+                  .sort((a, b) => a.room_number.localeCompare(b.room_number, "ru", { numeric: true }))
+                  .map(r => {
                   const isFull = r.occupied >= r.capacity;
                   if (editingRoom?.id === r.id) {
                     return (
@@ -1421,6 +1459,16 @@ const Aho = () => {
                             className="h-8 bg-secondary/50 text-sm"
                           />
                         </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">Этаж</p>
+                          <Input
+                            type="number"
+                            value={editingRoom.floor}
+                            onChange={e => setEditingRoom({ ...editingRoom, floor: e.target.value })}
+                            onKeyDown={e => { if (e.key === "Enter") handleSaveRoom(); if (e.key === "Escape") setEditingRoom(null); }}
+                            className="h-8 bg-secondary/50 text-sm"
+                          />
+                        </div>
                         <div className="flex gap-1">
                           <Button size="sm" onClick={handleSaveRoom} disabled={savingRoom} className="h-7 flex-1 px-2 bg-mine-green text-white hover:bg-mine-green/90">
                             <Icon name={savingRoom ? "Loader2" : "Check"} size={12} className={savingRoom ? "animate-spin" : ""} />
@@ -1438,9 +1486,9 @@ const Aho = () => {
                         <span className="text-sm font-bold">{r.room_number}</span>
                         <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() => setEditingRoom({ id: r.id, room_number: r.room_number, capacity: String(r.capacity) })}
+                            onClick={() => setEditingRoom({ id: r.id, room_number: r.room_number, capacity: String(r.capacity), floor: String(r.floor ?? 1) })}
                             className="text-muted-foreground hover:text-mine-cyan transition-colors"
-                            title="Изменить номер и количество мест"
+                            title="Изменить номер, места и этаж"
                           >
                             <Icon name="Pencil" size={12} />
                           </button>
@@ -1482,6 +1530,8 @@ const Aho = () => {
                   );
                 })}
               </div>
+              </div>
+              ))}
               </>
             )}
           </div>
