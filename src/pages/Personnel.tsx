@@ -240,6 +240,7 @@ const Personnel = () => {
   const [formOrg, setFormOrg] = useState("");
   const [formOrgType, setFormOrgType] = useState("");
   const [formTabNum, setFormTabNum] = useState("");
+  const [formPhoto, setFormPhoto] = useState("");
 
   const [editName, setEditName] = useState("");
   const [editPosition, setEditPosition] = useState("");
@@ -316,6 +317,7 @@ const Personnel = () => {
     setFormOrg("");
     setFormOrgType("");
     setFormTabNum("");
+    setFormPhoto("");
     setAddError("");
     setAddSuccess(null);
   };
@@ -345,6 +347,15 @@ const Personnel = () => {
         ...formResidence,
         ...formPass,
       });
+      let photoFailed = false;
+      if (formPhoto && res.id) {
+        try {
+          await personnelApi.uploadPhoto({ personnel_id: res.id, photo: formPhoto });
+        } catch {
+          photoFailed = true;
+        }
+      }
+      if (photoFailed) setAddError("Сотрудник добавлен, но фото не сохранилось — добавьте его в карточке");
       setAddSuccess({
         personal_code: res.personal_code,
         qr_code: res.qr_code,
@@ -1408,6 +1419,12 @@ const Personnel = () => {
 
           {addSuccess ? (
             <div className="space-y-5 animate-fade-in">
+              {addError && (
+                <div className="p-3 rounded-lg bg-mine-amber/10 border border-mine-amber/20 text-mine-amber text-sm flex items-center gap-2">
+                  <Icon name="AlertTriangle" size={14} />
+                  {addError}
+                </div>
+              )}
               <div className="rounded-xl border border-mine-green/20 bg-mine-green/5 p-5 glow-green">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-lg bg-mine-green/20 flex items-center justify-center">
@@ -1453,7 +1470,9 @@ const Personnel = () => {
                   {addError}
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 grid-flow-row-dense">
+              <div className="flex gap-4 flex-wrap sm:flex-nowrap">
+              <PhotoField photoUrl={formPhoto} size={120} onPick={setFormPhoto} />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 grid-flow-row-dense flex-1 min-w-0 content-start">
                 <CardField label="ФИО *" className="sm:col-span-3">
                   <AutoGrowInput value={formName} onChange={setFormName} placeholder="Иванов Иван Иванович" className="text-base font-bold" />
                 </CardField>
@@ -1513,6 +1532,7 @@ const Personnel = () => {
                     <PassFields value={formPass} onChange={setFormPass} />
                   </div>
                 </CardField>
+              </div>
               </div>
               <div className="rounded-lg border border-mine-cyan/20 bg-mine-cyan/5 p-3 flex items-start gap-2">
                 <Icon name="Info" size={14} className="text-mine-cyan mt-0.5 flex-shrink-0" />

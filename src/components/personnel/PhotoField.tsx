@@ -12,6 +12,7 @@ interface PhotoFieldProps {
   disabled?: boolean;
   size?: number;
   onChange?: (url: string) => void;
+  onPick?: (dataUrl: string) => void;
 }
 
 const MAX_SIDE = 800;
@@ -41,7 +42,7 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export default function PhotoField({ photoUrl = "", personnelId, userId, disabled, size = 112, onChange }: PhotoFieldProps) {
+export default function PhotoField({ photoUrl = "", personnelId, userId, disabled, size = 112, onChange, onPick }: PhotoFieldProps) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
@@ -57,6 +58,11 @@ export default function PhotoField({ photoUrl = "", personnelId, userId, disable
   useEffect(() => setUrl(photoUrl), [photoUrl]);
 
   const save = async (dataUrl: string) => {
+    if (onPick) {
+      setUrl(dataUrl);
+      onPick(dataUrl);
+      return;
+    }
     if (!personnelId && !userId) return;
     setBusy(true);
     try {
