@@ -114,6 +114,7 @@ interface PersonnelItem {
   id: number;
   photo_url?: string;
   personal_code: string;
+  is_protected?: boolean;
   full_name: string;
   position: string;
   department: string;
@@ -474,7 +475,7 @@ const Personnel = () => {
   };
 
   const shiftBlocked = editMedical === "failed" || editMedical === "pending";
-  const cardLocked = !!selectedPerson && selectedPerson.personal_code === PROTECTED_CODE && !isAdminUser;
+  const cardLocked = !!selectedPerson && (selectedPerson.is_protected || selectedPerson.personal_code === PROTECTED_CODE) && !isAdminUser;
   const passInvalid = !editPass.pass_permanent && !!editPass.pass_valid_from && !!editPass.pass_valid_to && editPass.pass_valid_from > editPass.pass_valid_to;
   const isDirty = !!selectedPerson && (
     editName !== selectedPerson.full_name ||
@@ -932,13 +933,13 @@ const Personnel = () => {
                             type="checkbox"
                             checked={selectedIds.has(p.id)}
                             onChange={() => toggleSelect(p.id)}
-                            disabled={p.personal_code === PROTECTED_CODE}
+                            disabled={p.is_protected || p.personal_code === PROTECTED_CODE}
                             className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                           />
                         </td>
                         {isAdminUser && (
                           <td className="px-4 py-3">
-                            <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                            <code className="text-xs text-red-500 font-mono bg-red-500/10 px-1.5 py-0.5 rounded">
                               {p.personal_code}
                             </code>
                           </td>
@@ -1140,7 +1141,7 @@ const Personnel = () => {
                     </CardField>
                     {isAdminUser && (
                       <CardField label="Код">
-                        <code className="text-sm font-mono font-bold text-mine-cyan leading-8">{selectedPerson.personal_code}</code>
+                        <code className="text-sm font-mono font-bold text-red-500 leading-8">{selectedPerson.personal_code}</code>
                       </CardField>
                     )}
                     <CardField label="Табельный №" className={editTabNum.length > 18 ? "sm:col-span-2" : ""}>
@@ -1371,7 +1372,7 @@ const Personnel = () => {
               <div className="text-center">
                 <p className="text-base font-bold text-foreground">{qrPerson.full_name}</p>
                 <p className="text-sm text-muted-foreground">{qrPerson.position}</p>
-                {isAdminUser && <code className="text-lg font-mono font-bold text-mine-cyan">{qrPerson.personal_code}</code>}
+                {isAdminUser && <code className="text-lg font-mono font-bold text-red-500">{qrPerson.personal_code}</code>}
               </div>
               <div className="flex justify-center" ref={printRef}>
                 <div className="bg-white rounded-xl p-5">
@@ -1440,7 +1441,7 @@ const Personnel = () => {
                 {isAdminUser && (
                   <div className="rounded-lg border border-border p-3">
                     <p className="text-[10px] text-muted-foreground mb-1">Личный код</p>
-                    <code className="text-lg font-mono font-bold text-mine-cyan">{addSuccess.personal_code}</code>
+                    <code className="text-lg font-mono font-bold text-red-500">{addSuccess.personal_code}</code>
                   </div>
                 )}
               </div>

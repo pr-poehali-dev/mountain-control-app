@@ -336,7 +336,7 @@ const Medical = () => {
       const name = r.person_name || r.full_name || "";
       const st = medicalStatusLabels[r.status] || r.status;
       return `<tr>
-        ${canSeeCode ? `<td>${code}</td>` : ""}
+        ${canSeeCode ? `<td style="color:#dc2626;font-family:monospace">${code}</td>` : ""}
         <td>${name}</td>
         <td>${r.is_itr ? "ИТР" : "Рабочий"}</td>
         <td>${r.position || "—"}</td>
@@ -699,7 +699,7 @@ const Medical = () => {
                       className="rounded-lg border border-border/50 bg-background/50 px-3 py-2"
                     >
                       <p className="text-[10px] text-muted-foreground">{f.label}</p>
-                      <p className="text-xs font-medium text-foreground">{f.value || "—"}</p>
+                      <p className={`text-xs font-medium ${f.label === "Код" ? "font-mono text-red-500" : "text-foreground"}`}>{f.value || "—"}</p>
                     </div>
                   ))}
                 </div>
@@ -741,7 +741,7 @@ const Medical = () => {
                   ].map((f) => (
                     <div key={f.label} className="rounded-lg border border-border/50 bg-background/50 px-3 py-2">
                       <p className="text-[10px] text-muted-foreground">{f.label}</p>
-                      <p className="text-xs font-medium text-foreground">{f.value || "—"}</p>
+                      <p className={`text-xs font-medium ${f.label === "Код" ? "font-mono text-red-500" : "text-foreground"}`}>{f.value || "—"}</p>
                     </div>
                   ))}
                 </div>
@@ -953,7 +953,7 @@ const Medical = () => {
                         </td>
                         {canSeeCode && (
                           <td className="px-3 py-3">
-                            <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                            <code className="text-xs text-red-500 font-mono bg-red-500/10 px-1.5 py-0.5 rounded">
                               {code}
                             </code>
                           </td>
@@ -1090,7 +1090,7 @@ const Medical = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium text-foreground truncate">{r.full_name}</p>
-                          {canSeeCode && <code className="text-[10px] text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded shrink-0">{r.personal_code}</code>}
+                          {canSeeCode && <code className="text-[10px] text-red-500 font-mono bg-red-500/10 px-1.5 py-0.5 rounded shrink-0">{r.personal_code}</code>}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground truncate">{r.position || "—"}</span>

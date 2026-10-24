@@ -14,6 +14,34 @@ from logo_data import LOGO_PNG_B64
 from email.header import Header
 from datetime import datetime, timedelta, date as date_type
 
+
+def caller_is_admin(event):
+    """Цифровой код сотрудников видит только администратор (не в демо-режиме)"""
+    headers = event.get('headers') or {}
+    params = event.get('queryStringParameters') or {}
+    if headers.get('X-Demo', headers.get('x-demo', '')) == 'true' or params.get('demo') == '1':
+        return False
+    token = ''
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        token = params.get('auth', '')
+    if not token:
+        return False
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    ok = cur.fetchone() is not None
+    cur.close()
+    conn.close()
+    return ok
+
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
@@ -29,7 +57,21 @@ def serialize_default(obj):
         return obj.isoformat()
     return str(obj)
 
+
+CODE_KEYS = ('personal_code', 'person_code')
+HIDE_CODES = {'on': False}
+
+
+def strip_codes(obj):
+    if isinstance(obj, dict):
+        return {k: ('' if k in CODE_KEYS else strip_codes(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [strip_codes(v) for v in obj]
+    return obj
+
 def json_response(status, body):
+    if HIDE_CODES['on'] and not (isinstance(body, dict) and 'token' in body and isinstance(body.get('user'), dict) and body['user'].get('role') == 'admin'):
+        body = strip_codes(body)
     return {
         'statusCode': status,
         'headers': {
@@ -124,6 +166,7 @@ def handler(event, context):
     """Авторизация и управление пользователями системы Горный контроль"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
+    HIDE_CODES['on'] = not caller_is_admin(event)
 
     method = event.get('httpMethod', 'GET')
     params = event.get('queryStringParameters') or {}

@@ -3,6 +3,34 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+
+def caller_is_admin(event):
+    """Цифровой код сотрудников видит только администратор (не в демо-режиме)"""
+    headers = event.get('headers') or {}
+    params = event.get('queryStringParameters') or {}
+    if headers.get('X-Demo', headers.get('x-demo', '')) == 'true' or params.get('demo') == '1':
+        return False
+    token = ''
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        token = params.get('auth', '')
+    if not token:
+        return False
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    ok = cur.fetchone() is not None
+    cur.close()
+    conn.close()
+    return ok
+
 def is_demo_request(event):
     headers = event.get('headers') or {}
     return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
@@ -19,7 +47,21 @@ def serialize_default(obj):
         return obj.isoformat()
     return str(obj)
 
+
+CODE_KEYS = ('personal_code', 'person_code')
+HIDE_CODES = {'on': False}
+
+
+def strip_codes(obj):
+    if isinstance(obj, dict):
+        return {k: ('' if k in CODE_KEYS else strip_codes(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [strip_codes(v) for v in obj]
+    return obj
+
 def json_response(status, body):
+    if HIDE_CODES['on']:
+        body = strip_codes(body)
     return {
         'statusCode': status,
         'headers': {
@@ -42,6 +84,7 @@ def handler(event, context):
     """Ламповая — выдача и приём фонарей и самоспасателей, учёт недопусков"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
+    HIDE_CODES['on'] = not caller_is_admin(event)
 
     method = event.get('httpMethod', 'GET')
     params = event.get('queryStringParameters') or {}
@@ -293,7 +336,7 @@ def search_person(params, event):
 
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
-               p.medical_status, p.organization, p.tabular_number
+               p.medical_status, p.organization, p.tabular_number, p.qr_code
         FROM personnel p
         WHERE p.status != 'archived'
           AND (p.full_name ILIKE '%%%s%%' OR p.personal_code ILIKE '%%%s%%' OR p.qr_code ILIKE '%%%s%%') %s
@@ -308,7 +351,7 @@ def search_person(params, event):
         results.append({
             'id': r[0], 'personal_code': r[1], 'full_name': r[2],
             'position': r[3], 'department': r[4], 'medical_status': r[5],
-            'organization': r[6], 'tabular_number': r[7] or ''
+            'organization': r[6], 'tabular_number': r[7] or '', 'qr_code': r[8] or ''
         })
 
     return json_response(200, {'results': results})
@@ -326,7 +369,7 @@ def identify_person(body):
 
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
-               p.medical_status, p.organization, p.category, p.tabular_number
+               p.medical_status, p.organization, p.category, p.tabular_number, p.qr_code
         FROM personnel p
         WHERE (p.personal_code = '%s' OR p.qr_code = '%s') AND p.status != 'archived'
         LIMIT 1
@@ -359,7 +402,8 @@ def identify_person(body):
         'person': {
             'id': row[0], 'personal_code': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4], 'medical_status': row[5],
-            'organization': row[6], 'category': row[7], 'tabular_number': row[8] or ''
+            'organization': row[6], 'category': row[7], 'tabular_number': row[8] or '',
+            'qr_code': row[9] or ''
         },
         'active_issues': active_issues
     })
@@ -546,10 +590,12 @@ def deny_person(body):
     person_id_val = 'NULL'
     if person_id and int(person_id) > 0:
         person_id_val = str(int(person_id))
-        cur.execute("SELECT tabular_number FROM personnel WHERE id = %s" % person_id_val)
+        cur.execute("SELECT tabular_number, personal_code FROM personnel WHERE id = %s" % person_id_val)
         tr = cur.fetchone()
         if tr:
             tab_num = (tr[0] or '').replace("'", "''")
+            if tr[1] and (not person_code or person_code == '—'):
+                safe_code = tr[1].replace("'", "''")
 
     cur.execute("""
         INSERT INTO lamp_room_denials (person_id, person_code, person_name, reason, denied_by, tabular_number)

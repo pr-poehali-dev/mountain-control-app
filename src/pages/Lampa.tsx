@@ -34,6 +34,7 @@ interface PersonInfo {
   organization: string;
   category: string;
   tabular_number?: string;
+  qr_code?: string;
 }
 
 interface DetailItem {
@@ -354,7 +355,7 @@ const Lampa = () => {
     setPersonResults([]);
     setPersonSearch("");
     try {
-      const data = await lampRoomApi.identify(p.personal_code);
+      const data = await lampRoomApi.identify(p.qr_code || p.personal_code);
       setIdentifiedPerson(data.person);
       setActiveIssues(data.active_issues || []);
       setLanternNum("");
@@ -408,7 +409,7 @@ const Lampa = () => {
       playSuccess();
       fetchData();
 
-      const updated = await lampRoomApi.identify(identifiedPerson.personal_code);
+      const updated = await lampRoomApi.identify(identifiedPerson.qr_code || identifiedPerson.personal_code);
       setActiveIssues(updated.active_issues || []);
     } catch (err: unknown) {
       playDenied();
@@ -666,7 +667,7 @@ const Lampa = () => {
                     >
                       <p className="text-sm font-medium text-foreground">{p.full_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {canSeeCode ? `${p.personal_code} · ` : ""}{p.department || p.organization || "—"}
+                        {canSeeCode && <span className="font-mono text-red-500">{p.personal_code} · </span>}{p.department || p.organization || "—"}
                       </p>
                     </button>
                   ))}
@@ -755,7 +756,7 @@ const Lampa = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border">
-                        {["Время", "Код", "Таб.№", "ФИО", "Тип", "Фонарь", "СС", "Статус", "Возврат", "Состояние", ""].map((h) => (
+                        {["Время", ...(canSeeCode ? ["Код"] : []), "Таб.№", "ФИО", "Тип", "Фонарь", "СС", "Статус", "Возврат", "Состояние", ""].map((h) => (
                           <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3">
                             {h}
                           </th>
@@ -768,7 +769,7 @@ const Lampa = () => {
                           <td className="px-3 py-3 text-xs text-muted-foreground font-mono whitespace-nowrap">
                             {formatDateTime(r.issued_at)}
                           </td>
-                          <td className="px-3 py-3 text-xs font-mono text-foreground">{r.person_code}</td>
+                          {canSeeCode && <td className="px-3 py-3 text-xs font-mono text-red-500">{r.person_code}</td>}
                           <td className="px-3 py-3 text-xs font-mono text-muted-foreground">{r.tabular_number || "—"}</td>
                           <td className="px-3 py-3 text-sm text-foreground font-medium max-w-[180px] truncate">{r.person_name}</td>
                           <td className="px-3 py-3">
@@ -806,7 +807,7 @@ const Lampa = () => {
                       ))}
                       {filteredIssues.length === 0 && (
                         <tr>
-                          <td colSpan={11} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                          <td colSpan={canSeeCode ? 11 : 10} className="px-4 py-12 text-center text-sm text-muted-foreground">
                             Нет записей о выдаче
                           </td>
                         </tr>
@@ -819,7 +820,7 @@ const Lampa = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border">
-                        {["Время", "Код", "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
+                        {["Время", ...(canSeeCode ? ["Код"] : []), "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
                           <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3">
                             {h}
                           </th>
@@ -832,7 +833,7 @@ const Lampa = () => {
                           <td className="px-3 py-3 text-xs text-muted-foreground font-mono whitespace-nowrap">
                             {formatDateTime(d.denied_at)}
                           </td>
-                          <td className="px-3 py-3 text-xs font-mono text-foreground">{d.person_code}</td>
+                          {canSeeCode && <td className="px-3 py-3 text-xs font-mono text-red-500">{d.person_code}</td>}
                           <td className="px-3 py-3 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
                           <td className="px-3 py-3 text-sm text-foreground font-medium">{d.person_name}</td>
                           <td className="px-3 py-3 text-sm text-mine-red">{d.reason}</td>
@@ -841,7 +842,7 @@ const Lampa = () => {
                       ))}
                       {filteredDenials.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                          <td colSpan={canSeeCode ? 6 : 5} className="px-4 py-12 text-center text-sm text-muted-foreground">
                             Нет записей о недопусках
                           </td>
                         </tr>
@@ -939,7 +940,7 @@ const Lampa = () => {
                   <div>
                     <p className="text-sm font-semibold text-foreground">{identifiedPerson.full_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {canSeeCode ? `${identifiedPerson.personal_code} · ` : ""}
+                      {canSeeCode && <span className="font-mono text-red-500">{identifiedPerson.personal_code} · </span>}
                       {identifiedPerson.tabular_number ? `Таб.№ ${identifiedPerson.tabular_number} · ` : ""}
                       {identifiedPerson.department || identifiedPerson.organization}
                     </p>
@@ -1091,7 +1092,7 @@ const Lampa = () => {
             <div className="space-y-4">
               <div className="rounded-xl border border-border bg-secondary/30 p-4">
                 <p className="text-sm font-semibold text-foreground">{showReturnDialog.person_name}</p>
-                <p className="text-xs text-muted-foreground mb-2">{showReturnDialog.person_code}</p>
+                {canSeeCode && <p className="text-xs font-mono text-red-500 mb-2">{showReturnDialog.person_code}</p>}
                 <div className="flex flex-wrap gap-2">
                   {showReturnDialog.lantern_number && (
                     <Badge variant="outline" className="text-xs text-mine-amber border-mine-amber/30">
@@ -1155,7 +1156,7 @@ const Lampa = () => {
             {denyPerson ? (
               <div className="rounded-xl border border-border bg-secondary/30 p-4">
                 <p className="text-sm font-semibold text-foreground">{denyPerson.full_name}</p>
-                <p className="text-xs text-muted-foreground">{canSeeCode ? `${denyPerson.personal_code} · ` : ""}{denyPerson.department}</p>
+                <p className="text-xs text-muted-foreground">{canSeeCode && <span className="font-mono text-red-500">{denyPerson.personal_code} · </span>}{denyPerson.department}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1228,7 +1229,7 @@ const Lampa = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Дата/Время", "Код", "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
+                    {["Дата/Время", ...(canSeeCode ? ["Код"] : []), "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
                       <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">{h}</th>
                     ))}
                   </tr>
@@ -1237,7 +1238,7 @@ const Lampa = () => {
                   {detailItems.map((d) => (
                     <tr key={d.id} className="border-b border-border/50 hover:bg-secondary/30">
                       <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(d.denied_at)}</td>
-                      <td className="px-3 py-2.5 text-xs font-mono text-foreground">{d.person_code}</td>
+                      {canSeeCode && <td className="px-3 py-2.5 text-xs font-mono text-red-500">{d.person_code}</td>}
                       <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
                       <td className="px-3 py-2.5 text-sm font-medium text-foreground">{d.person_name}</td>
                       <td className="px-3 py-2.5 text-sm text-mine-red">{d.reason}</td>
@@ -1250,7 +1251,7 @@ const Lampa = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Дата/Время", "Код", "Таб.№", "ФИО", "Должность", "Подразделение", "Фонарь", "СС", "Кто выдал"].map((h) => (
+                    {["Дата/Время", ...(canSeeCode ? ["Код"] : []), "Таб.№", "ФИО", "Должность", "Подразделение", "Фонарь", "СС", "Кто выдал"].map((h) => (
                       <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">{h}</th>
                     ))}
                   </tr>
@@ -1259,7 +1260,7 @@ const Lampa = () => {
                   {detailItems.map((d) => (
                     <tr key={d.id} className="border-b border-border/50 hover:bg-secondary/30">
                       <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(d.time)}</td>
-                      <td className="px-3 py-2.5 text-xs font-mono text-foreground">{d.person_code}</td>
+                      {canSeeCode && <td className="px-3 py-2.5 text-xs font-mono text-red-500">{d.person_code}</td>}
                       <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
                       <td className="px-3 py-2.5 text-sm font-medium text-foreground">{d.person_name}</td>
                       <td className="px-3 py-2.5 text-xs text-muted-foreground">{d.position || "—"}</td>

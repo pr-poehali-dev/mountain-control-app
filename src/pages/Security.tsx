@@ -408,7 +408,7 @@ const Security = () => {
                     ].map((item, i) => (
                       <div key={i} className="bg-background/50 rounded-lg p-2">
                         <span className="text-muted-foreground">{item.label}: </span>
-                        <span className="font-medium text-foreground">{item.value}</span>
+                        <span className={`font-medium ${item.label === "Код" ? "font-mono text-red-500" : "text-foreground"}`}>{item.value}</span>
                       </div>
                     ))}
                   </div>
@@ -486,7 +486,7 @@ const Security = () => {
                     {journal.map((item) => (
                       <tr key={item.id} className="hover:bg-secondary/30 transition-colors">
                         <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(item.created_at)}</td>
-                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>}
+                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs text-red-500">{item.personal_code}</td>}
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -576,7 +576,7 @@ function PersonDetailView({
           </div>
           <div>
             <h2 className="text-lg font-bold text-foreground">{p.full_name}</h2>
-            <p className="text-sm text-muted-foreground">{canSeeCode ? `${p.personal_code} | ` : ""}{p.organization}</p>
+            <p className="text-sm text-muted-foreground">{canSeeCode && <span className="font-mono text-red-500">{p.personal_code} | </span>}{p.organization}</p>
           </div>
         </div>
 

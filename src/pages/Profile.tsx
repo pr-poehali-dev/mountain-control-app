@@ -101,7 +101,7 @@ const Profile = () => {
                   <span className="text-xs text-muted-foreground">{f.label}</span>
                   <span
                     className={`text-sm text-foreground ${
-                      f.mono ? "font-mono text-mine-cyan" : ""
+                      f.mono ? "font-mono text-red-500" : ""
                     }`}
                   >
                     {f.value || "—"}

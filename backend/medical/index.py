@@ -49,7 +49,21 @@ def serialize_default(obj):
         return obj.isoformat()
     return str(obj)
 
+
+CODE_KEYS = ('personal_code', 'person_code')
+HIDE_CODES = {'on': False}
+
+
+def strip_codes(obj):
+    if isinstance(obj, dict):
+        return {k: ('' if k in CODE_KEYS else strip_codes(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [strip_codes(v) for v in obj]
+    return obj
+
 def json_response(status, body):
+    if HIDE_CODES['on']:
+        body = strip_codes(body)
     return {
         'statusCode': status,
         'headers': {
@@ -190,6 +204,7 @@ def handler(event, context):
     """Медицинский контроль — предсменные/послесменные осмотры, смены, история, экспорт, автосброс"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
+    HIDE_CODES['on'] = not caller_is_admin(event)
 
     method = event.get('httpMethod', 'GET')
     params = event.get('queryStringParameters') or {}

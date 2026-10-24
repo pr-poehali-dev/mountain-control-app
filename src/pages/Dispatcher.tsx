@@ -12,6 +12,7 @@ import Icon from "@/components/ui/icon";
 import { useState, useEffect, useCallback } from "react";
 import { dispatcherApi, lampRoomApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useNavigate } from "react-router-dom";
 
 interface ChatMessage {
@@ -102,6 +103,7 @@ const detailColors: Record<string, string> = {
 
 const Dispatcher = () => {
   const { user } = useAuth();
+  const canSeeCode = useCanSeeCode();
   const navigate = useNavigate();
   const [stats, setStats] = useState<LampStats>({ active: 0, lanterns_out: 0, rescuers_out: 0, today_issued: 0, today_returned: 0, today_denied: 0, total_lanterns: 300, total_rescuers: 300, lanterns_repair: 0, rescuers_repair: 0 });
   const [loading, setLoading] = useState(true);
@@ -320,7 +322,7 @@ const Dispatcher = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Время", "Код", "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
+                    {["Время", ...(canSeeCode ? ["Код"] : []), "Таб.№", "ФИО", "Причина", "Кто оформил"].map((h) => (
                       <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">{h}</th>
                     ))}
                   </tr>
@@ -329,7 +331,7 @@ const Dispatcher = () => {
                   {detailItems.map((d) => (
                     <tr key={d.id} className="border-b border-border/50 hover:bg-secondary/30">
                       <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(d.denied_at)}</td>
-                      <td className="px-3 py-2.5 text-xs font-mono text-foreground">{d.person_code}</td>
+                      {canSeeCode && <td className="px-3 py-2.5 text-xs font-mono text-red-500">{d.person_code}</td>}
                       <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
                       <td className="px-3 py-2.5 text-sm font-medium text-foreground">{d.person_name}</td>
                       <td className="px-3 py-2.5 text-sm text-mine-red">{d.reason}</td>
@@ -342,7 +344,7 @@ const Dispatcher = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Время", "Код", "Таб.№", "ФИО", "Должность", "Подразделение", "Фонарь", "СС", "Кто выдал"].map((h) => (
+                    {["Время", ...(canSeeCode ? ["Код"] : []), "Таб.№", "ФИО", "Должность", "Подразделение", "Фонарь", "СС", "Кто выдал"].map((h) => (
                       <th key={h} className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">{h}</th>
                     ))}
                   </tr>
@@ -351,7 +353,7 @@ const Dispatcher = () => {
                   {detailItems.map((d) => (
                     <tr key={d.id} className="border-b border-border/50 hover:bg-secondary/30">
                       <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatDateTime(d.time)}</td>
-                      <td className="px-3 py-2.5 text-xs font-mono text-foreground">{d.person_code}</td>
+                      {canSeeCode && <td className="px-3 py-2.5 text-xs font-mono text-red-500">{d.person_code}</td>}
                       <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">{d.tabular_number || "—"}</td>
                       <td className="px-3 py-2.5 text-sm font-medium text-foreground">{d.person_name}</td>
                       <td className="px-3 py-2.5 text-xs text-muted-foreground">{d.position || "—"}</td>

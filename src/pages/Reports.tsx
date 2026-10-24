@@ -463,7 +463,7 @@ ${html}
               <tr key={(item.id as number) ?? i} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                 {cols.map(c => (
                   <td key={c.key} className={`${c.noPrint ? "no-print " : ""}px-3 py-2 text-xs whitespace-nowrap`}>
-                    {c.render ? c.render(item[c.key], item) : (String(item[c.key] ?? "—"))}
+                    {c.render ? c.render(item[c.key], item) : (c.key === "personal_code" || c.key === "person_code") ? <span className="font-mono text-red-500">{String(item[c.key] ?? "—")}</span> : (String(item[c.key] ?? "—"))}
                   </td>
                 ))}
               </tr>

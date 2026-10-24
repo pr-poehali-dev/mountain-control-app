@@ -110,7 +110,7 @@ export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
                   >
                     {canSeeCode && (
                       <td className="px-4 py-3">
-                        <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                        <code className="text-xs text-red-500 font-mono bg-red-500/10 px-1.5 py-0.5 rounded">
                           {p.personal_code}
                         </code>
                       </td>

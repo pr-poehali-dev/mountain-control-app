@@ -82,7 +82,7 @@ export default function AdminMedicalMarkDialog({ person, onClose, onMarked }: Pr
                     {[person.position, person.department].filter(Boolean).join(" · ") || "—"}
                   </p>
                   {canSeeCode && person.personal_code && (
-                    <code className="text-[11px] text-mine-cyan font-mono">{person.personal_code}</code>
+                    <code className="text-[11px] text-red-500 font-mono">{person.personal_code}</code>
                   )}
                 </div>
                 <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>

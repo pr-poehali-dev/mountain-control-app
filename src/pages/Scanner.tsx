@@ -252,7 +252,7 @@ const Scanner = () => {
                       className="rounded-lg border border-border/50 bg-background/50 px-3 py-2"
                     >
                       <p className="text-[10px] text-muted-foreground">{f.label}</p>
-                      <p className="text-xs font-medium text-foreground">{f.value || "—"}</p>
+                      <p className={`text-xs font-medium ${f.label === "Код" ? "font-mono text-red-500" : "text-foreground"}`}>{f.value || "—"}</p>
                     </div>
                   ))}
                 </div>
@@ -318,9 +318,11 @@ const Scanner = () => {
                         {s.person_name}
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <code className="text-xs text-mine-cyan font-mono">
-                          {s.person_code}
-                        </code>
+                        {canSeeCode && (
+                          <code className="text-xs text-red-500 font-mono">
+                            {s.person_code}
+                          </code>
+                        )}
                         <span className="text-[10px] text-muted-foreground">
                           QR-скан
                         </span>

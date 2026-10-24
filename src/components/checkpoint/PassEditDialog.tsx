@@ -79,7 +79,7 @@ export default function PassEditDialog({ item, onClose, onSaved }: Props) {
         <DialogHeader>
           <DialogTitle>Редактирование прохода</DialogTitle>
           <DialogDescription>
-            {item?.full_name}{canSeeCode && <> · <span className="font-mono">{item?.personal_code}</span></>}
+            {item?.full_name}{canSeeCode && <> · <span className="font-mono text-red-500">{item?.personal_code}</span></>}
           </DialogDescription>
         </DialogHeader>
 

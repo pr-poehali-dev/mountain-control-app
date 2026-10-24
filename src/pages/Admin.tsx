@@ -519,7 +519,7 @@ const Admin = () => {
                         <td className="px-4 py-3">
                           <div className="text-sm font-medium text-foreground">{u.full_name}</div>
                           {u.personal_code && (
-                            <span className="text-[10px] text-muted-foreground font-mono">{u.personal_code}</span>
+                            <span className="text-[10px] text-red-500 font-mono">{u.personal_code}</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">

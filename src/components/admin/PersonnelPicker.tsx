@@ -48,7 +48,7 @@ const PersonnelPicker = ({ value, onSelect, excludeCodes = [] }: Props) => {
             {value ? (
               <span className="truncate text-foreground">
                 {value.full_name}
-                <span className="text-muted-foreground"> · {value.personal_code}</span>
+                <span className="text-muted-foreground"> · </span><span className="font-mono text-red-500">{value.personal_code}</span>
               </span>
             ) : (
               <span className="text-muted-foreground">
@@ -76,7 +76,7 @@ const PersonnelPicker = ({ value, onSelect, excludeCodes = [] }: Props) => {
                     <div className="flex flex-col min-w-0">
                       <span className="text-sm truncate">{p.full_name}</span>
                       <span className="text-[11px] text-muted-foreground truncate">
-                        {p.personal_code}
+                        <span className="font-mono text-red-500">{p.personal_code}</span>
                         {p.position ? ` · ${p.position}` : ""}
                         {p.department ? ` · ${p.department}` : ""}
                       </span>

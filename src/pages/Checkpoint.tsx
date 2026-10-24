@@ -447,7 +447,7 @@ const Checkpoint = () => {
                       ].map((item, i) => (
                         <div key={i} className="bg-background/50 rounded-lg p-2">
                           <span className="text-muted-foreground">{item.label}: </span>
-                          <span className="font-medium text-foreground">{item.value}</span>
+                          <span className={`font-medium ${item.label === "Код" ? "font-mono text-red-500" : "text-foreground"}`}>{item.value}</span>
                         </div>
                       ))}
                     </div>
@@ -517,7 +517,7 @@ const Checkpoint = () => {
                     {journal.map((item) => (
                       <tr key={item.id} className="hover:bg-secondary/30 transition-colors">
                         <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(item.created_at)}</td>
-                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>}
+                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs text-red-500">{item.personal_code}</td>}
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{item.tab_number || "—"}</td>
                         <td className="px-4 py-3">
@@ -611,7 +611,7 @@ const Checkpoint = () => {
                   <tbody className="divide-y divide-border">
                     {onSite.map((item) => (
                       <tr key={item.personnel_id} className="hover:bg-secondary/30 transition-colors">
-                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>}
+                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs text-red-500">{item.personal_code}</td>}
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{item.tab_number || "—"}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{item.position}</td>

@@ -791,7 +791,7 @@ const Aho = () => {
                       return (
                         <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                           <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
-                          {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>}
+                          {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-red-500">{item.personal_code}</td>}
                           <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
                           <td className="px-3 py-2 text-xs">{formatDate(item.arrival_date)}</td>
                           <td className="px-3 py-2 text-xs">{formatDate(item.departure_date)}</td>
@@ -970,7 +970,7 @@ const Aho = () => {
                         return (
                           <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20">
                             <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
-                            {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>}
+                            {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-red-500">{item.personal_code}</td>}
                             <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
                             <td className="px-3 py-2">
                               <span className={`text-xs ${st.color}`}>{st.label}</span>
@@ -1169,7 +1169,7 @@ const Aho = () => {
                             className={`border-b border-border/50 hover:bg-secondary/20 ${isAdmin && item.person_id ? "cursor-pointer" : ""}`}
                           >
                             <td className="px-3 py-2 text-xs font-medium">{String(item.full_name)}</td>
-                            {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{String(item.personal_code)}</td>}
+                            {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-red-500">{String(item.personal_code)}</td>}
                             <td className="px-3 py-2 text-xs text-muted-foreground">{String(item.position || "—")}</td>
                             <td className="px-3 py-2 text-xs text-muted-foreground">{String(item.organization || "—")}</td>
                             <td className="px-3 py-2">
@@ -1620,7 +1620,7 @@ const Aho = () => {
                   <div key={a.personnel_id} className="rounded-lg border border-border p-2.5 flex items-center justify-between hover:bg-secondary/20">
                     <div>
                       <p className="text-sm font-medium">{a.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{canSeeCode ? `${a.personal_code} · ` : ""}{a.organization || "—"}</p>
+                      <p className="text-xs text-muted-foreground">{canSeeCode && <span className="font-mono text-red-500">{a.personal_code} · </span>}{a.organization || "—"}</p>
                     </div>
                     <Button size="sm" className="h-7 text-[11px] gap-1 bg-mine-green text-white hover:bg-mine-green/90" onClick={() => handleAssignFromRoom(a.personnel_id)}>
                       <Icon name="UserPlus" size={12} />

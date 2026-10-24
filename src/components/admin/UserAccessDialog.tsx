@@ -194,7 +194,7 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [],
                   <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                     <Icon name="QrCode" size={12} className="text-mine-amber" />
                     Будет присвоен существующий код и QR-код:
-                    <span className="font-mono text-foreground">{picked.personal_code}</span>
+                    <span className="font-mono text-red-500">{picked.personal_code}</span>
                   </p>
                 ) : (
                   <p className="text-[11px] text-muted-foreground">
@@ -217,7 +217,7 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [],
             </div>
             {!isNew && user?.personal_code && (
               <p className="text-xs text-muted-foreground">
-                Личный код: <span className="font-mono text-foreground">{user.personal_code}</span>
+                Личный код: <span className="font-mono text-red-500">{user.personal_code}</span>
               </p>
             )}
           </section>
