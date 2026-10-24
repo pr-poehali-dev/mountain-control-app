@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import FaceCamera, { type FaceTone } from "./FaceCamera";
 import { descriptorDistance, type FaceResult } from "@/lib/face";
 
-type Challenge = "blink" | "left" | "right";
+type Challenge = "left" | "right";
 type Phase = "position" | "challenge" | "verify" | "sending" | "done";
 
 const MIN_FACE_RATIO = 0.18;
@@ -17,20 +17,17 @@ const FACE_LOST_LIMIT = 1200;
 const SAME_PERSON_DISTANCE = 0.5;
 
 const challengeText: Record<Challenge, string> = {
-  blink: "Медленно моргните",
-  left: "Поверните голову влево",
+  left: "Теперь поверните голову влево",
   right: "Поверните голову вправо",
 };
 
 const challengeIcon: Record<Challenge, string> = {
-  blink: "Eye",
   left: "ArrowLeft",
   right: "ArrowRight",
 };
 
 function pickChallenges(): Challenge[] {
-  const turn: Challenge = Math.random() < 0.5 ? "left" : "right";
-  return Math.random() < 0.5 ? ["blink", turn] : [turn, "blink"];
+  return ["right", "left"];
 }
 
 export default function FaceLogin() {
@@ -50,7 +47,6 @@ export default function FaceLogin() {
   const challengesRef = useRef<Challenge[]>([]);
   const stepRef = useRef(0);
   const stepStartRef = useRef(0);
-  const eyesClosedRef = useRef(false);
   const lastSeenRef = useRef(0);
 
   const setPhaseBoth = (p: Phase) => {
@@ -62,7 +58,6 @@ export default function FaceLogin() {
     stableRef.current = 0;
     baseRef.current = null;
     stepRef.current = 0;
-    eyesClosedRef.current = false;
     setStep(0);
     setChallenges([]);
     setPhaseBoth("position");
@@ -80,7 +75,6 @@ export default function FaceLogin() {
     stepRef.current = index;
     setStep(index);
     stepStartRef.current = Date.now();
-    eyesClosedRef.current = false;
     setTone("found");
     setHint(challengeText[challengesRef.current[index]]);
   };
@@ -89,12 +83,6 @@ export default function FaceLogin() {
     const base = baseRef.current;
     if (!base) return false;
     const ch = challengesRef.current[stepRef.current];
-    if (ch === "blink") {
-      const closedThreshold = Math.min(0.22, base.ear * 0.72);
-      const openThreshold = base.ear * 0.88;
-      if (face.ear < closedThreshold) eyesClosedRef.current = true;
-      return eyesClosedRef.current && face.ear > openThreshold;
-    }
     if (ch === "left") return face.yaw - base.yaw > TURN_DELTA;
     return base.yaw - face.yaw > TURN_DELTA;
   };
@@ -215,7 +203,7 @@ export default function FaceLogin() {
           <Icon name="ScanFace" size={30} className="text-mine-cyan" />
         </div>
         <p className="text-sm text-muted-foreground max-w-[280px]">
-          Войдите без пароля — камера узнает вас по лицу. Система попросит моргнуть и повернуть голову, чтобы убедиться, что перед камерой живой человек.
+          Войдите без пароля — камера узнает вас по лицу. Система попросит повернуть голову вправо, а затем влево, чтобы убедиться, что перед камерой живой человек.
         </p>
         <Button
           type="button"
@@ -259,7 +247,7 @@ export default function FaceLogin() {
                 }`}
               >
                 <Icon name={done ? "Check" : challengeIcon[ch]} size={12} />
-                {ch === "blink" ? "Моргнуть" : ch === "left" ? "Влево" : "Вправо"}
+                {ch === "left" ? "Влево" : "Вправо"}
               </div>
             );
           })}
