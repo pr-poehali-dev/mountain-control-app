@@ -3,6 +3,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import QrScanner from "@/components/scanner/QrScanner";
 import { scannerApi } from "@/lib/api";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
@@ -34,6 +35,7 @@ interface ScanRecord {
 }
 
 const Scanner = () => {
+  const canSeeCode = useCanSeeCode();
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [person, setPerson] = useState<PersonResult | null>(null);
@@ -236,7 +238,7 @@ const Scanner = () => {
 
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Код", value: person.personal_code },
+                    ...(canSeeCode ? [{ label: "Код", value: person.personal_code }] : []),
                     { label: "Организация", value: person.organization || "—" },
                     { label: "Тип", value: person.organization_type || "—" },
                     { label: "Должность", value: person.position },

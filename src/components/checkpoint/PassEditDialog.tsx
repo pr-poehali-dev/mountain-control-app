@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import Icon from "@/components/ui/icon";
 import { checkpointApi } from "@/lib/api";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 
 export interface EditablePass {
   id: number;
@@ -31,6 +32,7 @@ function toLocalInput(v: string): string {
 }
 
 export default function PassEditDialog({ item, onClose, onSaved }: Props) {
+  const canSeeCode = useCanSeeCode();
   const [direction, setDirection] = useState<"in" | "out">("in");
   const [checkpointName, setCheckpointName] = useState("");
   const [createdAt, setCreatedAt] = useState("");
@@ -77,7 +79,7 @@ export default function PassEditDialog({ item, onClose, onSaved }: Props) {
         <DialogHeader>
           <DialogTitle>Редактирование прохода</DialogTitle>
           <DialogDescription>
-            {item?.full_name} · <span className="font-mono">{item?.personal_code}</span>
+            {item?.full_name}{canSeeCode && <> · <span className="font-mono">{item?.personal_code}</span></>}
           </DialogDescription>
         </DialogHeader>
 

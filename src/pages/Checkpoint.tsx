@@ -7,6 +7,7 @@ import QrScanner from "@/components/scanner/QrScanner";
 import { checkpointApi } from "@/lib/api";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useToast } from "@/hooks/use-toast";
 import PassEditDialog from "@/components/checkpoint/PassEditDialog";
 import {
@@ -87,6 +88,7 @@ const Checkpoint = () => {
   const [dateTo, setDateTo] = useState("");
   const [dirFilter, setDirFilter] = useState("");
   const { user } = useAuth();
+  const canSeeCode = useCanSeeCode();
   const { toast } = useToast();
   const isAdmin = user?.role === "admin";
   const [editItem, setEditItem] = useState<JournalItem | null>(null);
@@ -438,7 +440,7 @@ const Checkpoint = () => {
                   {passResult.person && (
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       {[
-                        { label: "Код", value: passResult.person.personal_code },
+                        ...(canSeeCode ? [{ label: "Код", value: passResult.person.personal_code }] : []),
                         { label: "Организация", value: passResult.person.organization },
                         { label: "Должность", value: passResult.person.position },
                         { label: "Подразделение", value: passResult.person.department },
@@ -502,7 +504,7 @@ const Checkpoint = () => {
                   <thead className="bg-secondary/50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Дата/время</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>
+                      {canSeeCode && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>}
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">ФИО</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Таб. №</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Направление</th>
@@ -515,7 +517,7 @@ const Checkpoint = () => {
                     {journal.map((item) => (
                       <tr key={item.id} className="hover:bg-secondary/30 transition-colors">
                         <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(item.created_at)}</td>
-                        <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>
+                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>}
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{item.tab_number || "—"}</td>
                         <td className="px-4 py-3">
@@ -548,7 +550,7 @@ const Checkpoint = () => {
                     ))}
                     {journal.length === 0 && (
                       <tr>
-                        <td colSpan={isAdmin ? 8 : 7} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                        <td colSpan={(isAdmin ? 8 : 7) - (canSeeCode ? 0 : 1)} className="px-4 py-8 text-center text-muted-foreground text-sm">
                           Нет записей за выбранный период
                         </td>
                       </tr>
@@ -597,7 +599,7 @@ const Checkpoint = () => {
                 <table className="w-full text-sm">
                   <thead className="bg-secondary/50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>
+                      {canSeeCode && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>}
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">ФИО</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Таб. №</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Должность</th>
@@ -609,7 +611,7 @@ const Checkpoint = () => {
                   <tbody className="divide-y divide-border">
                     {onSite.map((item) => (
                       <tr key={item.personnel_id} className="hover:bg-secondary/30 transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>
+                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>}
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{item.tab_number || "—"}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{item.position}</td>
@@ -620,7 +622,7 @@ const Checkpoint = () => {
                     ))}
                     {onSite.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                        <td colSpan={canSeeCode ? 7 : 6} className="px-4 py-8 text-center text-muted-foreground text-sm">
                           Нет людей на территории
                         </td>
                       </tr>

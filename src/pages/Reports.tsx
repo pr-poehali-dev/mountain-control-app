@@ -438,7 +438,7 @@ ${html}
 
   const renderTable = () => {
     if (!reportData) return null;
-    const cols = getColumns();
+    const cols = getColumns().filter((c) => isAdminUser || (c.key !== "personal_code" && c.key !== "person_code"));
     const items = reportData.items;
 
     if (items.length === 0) return (

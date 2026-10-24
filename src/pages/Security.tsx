@@ -7,6 +7,7 @@ import QrScanner from "@/components/scanner/QrScanner";
 import { securityApi } from "@/lib/api";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 
 interface PersonData {
   id: number;
@@ -78,6 +79,7 @@ type Tab = "scanner" | "journal" | "person";
 
 const Security = () => {
   const { user } = useAuth();
+  const canSeeCode = useCanSeeCode();
   const [tab, setTab] = useState<Tab>("scanner");
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState("");
@@ -395,7 +397,7 @@ const Security = () => {
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     {[
-                      { label: "Код", value: verifyResult.person.personal_code },
+                      ...(canSeeCode ? [{ label: "Код", value: verifyResult.person.personal_code }] : []),
                       { label: "Организация", value: verifyResult.person.organization },
                       { label: "Должность", value: verifyResult.person.position },
                       { label: "Подразделение", value: verifyResult.person.department },
@@ -473,7 +475,7 @@ const Security = () => {
                   <thead className="bg-secondary/50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Дата/время</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>
+                      {canSeeCode && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Код</th>}
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">ФИО</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Результат</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Проверил</th>
@@ -484,7 +486,7 @@ const Security = () => {
                     {journal.map((item) => (
                       <tr key={item.id} className="hover:bg-secondary/30 transition-colors">
                         <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(item.created_at)}</td>
-                        <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>
+                        {canSeeCode && <td className="px-4 py-3 font-mono text-xs">{item.personal_code}</td>}
                         <td className="px-4 py-3 font-medium">{item.full_name}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -510,7 +512,7 @@ const Security = () => {
                     ))}
                     {journal.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                        <td colSpan={canSeeCode ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground text-sm">
                           Нет записей за выбранный период
                         </td>
                       </tr>
@@ -561,6 +563,7 @@ function PersonDetailView({
   formatTime: (s: string) => string;
 }) {
   const p = data.person;
+  const canSeeCode = useCanSeeCode();
 
   return (
     <div className="space-y-6 print:space-y-4">
@@ -573,7 +576,7 @@ function PersonDetailView({
           </div>
           <div>
             <h2 className="text-lg font-bold text-foreground">{p.full_name}</h2>
-            <p className="text-sm text-muted-foreground">{p.personal_code} | {p.organization}</p>
+            <p className="text-sm text-muted-foreground">{canSeeCode ? `${p.personal_code} | ` : ""}{p.organization}</p>
           </div>
         </div>
 

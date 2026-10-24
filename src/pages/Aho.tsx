@@ -22,6 +22,7 @@ import ResidenceSelect, { type ResidenceValue } from "@/components/personnel/Res
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 
 interface ArrivalItem {
@@ -142,6 +143,7 @@ const Aho = () => {
   } | null>(null);
   const [itrView, setItrView] = useState<"itr" | "worker">("itr");
   const { user: authUser } = useAuth();
+  const canSeeCode = useCanSeeCode();
   const isAdmin = authUser?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
   const [markPerson, setMarkPerson] = useState<MarkPerson | null>(null);
 
@@ -773,7 +775,7 @@ const Aho = () => {
                   <thead>
                     <tr className="border-b border-border bg-secondary/30">
                       <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>
+                      {canSeeCode && <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>}
                       <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
                       <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Заезд</th>
                       <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Выезд</th>
@@ -789,7 +791,7 @@ const Aho = () => {
                       return (
                         <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                           <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
-                          <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>
+                          {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>}
                           <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
                           <td className="px-3 py-2 text-xs">{formatDate(item.arrival_date)}</td>
                           <td className="px-3 py-2 text-xs">{formatDate(item.departure_date)}</td>
@@ -954,7 +956,7 @@ const Aho = () => {
                     <thead>
                       <tr className="border-b border-border bg-secondary/30">
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>
+                        {canSeeCode && <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>}
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Статус</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Комната</th>
@@ -968,7 +970,7 @@ const Aho = () => {
                         return (
                           <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20">
                             <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
-                            <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>
+                            {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{item.personal_code}</td>}
                             <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
                             <td className="px-3 py-2">
                               <span className={`text-xs ${st.color}`}>{st.label}</span>
@@ -1145,7 +1147,7 @@ const Aho = () => {
                     <thead>
                       <tr className="border-b border-border bg-secondary/30">
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>
+                        {canSeeCode && <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>}
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Должность</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Медосмотр</th>
@@ -1167,7 +1169,7 @@ const Aho = () => {
                             className={`border-b border-border/50 hover:bg-secondary/20 ${isAdmin && item.person_id ? "cursor-pointer" : ""}`}
                           >
                             <td className="px-3 py-2 text-xs font-medium">{String(item.full_name)}</td>
-                            <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{String(item.personal_code)}</td>
+                            {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-mine-cyan">{String(item.personal_code)}</td>}
                             <td className="px-3 py-2 text-xs text-muted-foreground">{String(item.position || "—")}</td>
                             <td className="px-3 py-2 text-xs text-muted-foreground">{String(item.organization || "—")}</td>
                             <td className="px-3 py-2">
@@ -1618,7 +1620,7 @@ const Aho = () => {
                   <div key={a.personnel_id} className="rounded-lg border border-border p-2.5 flex items-center justify-between hover:bg-secondary/20">
                     <div>
                       <p className="text-sm font-medium">{a.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{a.personal_code} · {a.organization || "—"}</p>
+                      <p className="text-xs text-muted-foreground">{canSeeCode ? `${a.personal_code} · ` : ""}{a.organization || "—"}</p>
                     </div>
                     <Button size="sm" className="h-7 text-[11px] gap-1 bg-mine-green text-white hover:bg-mine-green/90" onClick={() => handleAssignFromRoom(a.personnel_id)}>
                       <Icon name="UserPlus" size={12} />

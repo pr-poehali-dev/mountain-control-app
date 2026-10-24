@@ -21,6 +21,7 @@ import Icon from "@/components/ui/icon";
 import QrScanner from "@/components/scanner/QrScanner";
 import { lampRoomApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { playSuccess, playDenied, playScan, playWarning } from "@/lib/sounds";
 
 interface PersonInfo {
@@ -155,6 +156,7 @@ function formatDateTime(dateStr?: string): string {
 
 const Lampa = () => {
   const { user } = useAuth();
+  const canSeeCode = useCanSeeCode();
 
   const [stats, setStats] = useState<Stats>({ active: 0, lanterns_out: 0, rescuers_out: 0, today_issued: 0, today_returned: 0, today_denied: 0, total_lanterns: 300, total_rescuers: 300, lanterns_repair: 0, rescuers_repair: 0 });
   const [issues, setIssues] = useState<IssueRecord[]>([]);
@@ -257,7 +259,7 @@ const Lampa = () => {
       if (scanMode === "return") {
         if (!hasActive) {
           playDenied();
-          setError(`${data.person.full_name} (${data.person.personal_code}) — нет активных выдач, нечего принимать`);
+          setError(`${data.person.full_name} — нет активных выдач, нечего принимать`);
           return;
         }
         const firstIssue = data.active_issues[0];
@@ -664,7 +666,7 @@ const Lampa = () => {
                     >
                       <p className="text-sm font-medium text-foreground">{p.full_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {p.personal_code} · {p.department || p.organization || "—"}
+                        {canSeeCode ? `${p.personal_code} · ` : ""}{p.department || p.organization || "—"}
                       </p>
                     </button>
                   ))}
@@ -937,9 +939,9 @@ const Lampa = () => {
                   <div>
                     <p className="text-sm font-semibold text-foreground">{identifiedPerson.full_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {identifiedPerson.personal_code}
-                      {identifiedPerson.tabular_number ? ` · Таб.№ ${identifiedPerson.tabular_number}` : ""}
-                      {" · "}{identifiedPerson.department || identifiedPerson.organization}
+                      {canSeeCode ? `${identifiedPerson.personal_code} · ` : ""}
+                      {identifiedPerson.tabular_number ? `Таб.№ ${identifiedPerson.tabular_number} · ` : ""}
+                      {identifiedPerson.department || identifiedPerson.organization}
                     </p>
                   </div>
                   <div className="ml-auto">
@@ -1153,7 +1155,7 @@ const Lampa = () => {
             {denyPerson ? (
               <div className="rounded-xl border border-border bg-secondary/30 p-4">
                 <p className="text-sm font-semibold text-foreground">{denyPerson.full_name}</p>
-                <p className="text-xs text-muted-foreground">{denyPerson.personal_code} · {denyPerson.department}</p>
+                <p className="text-xs text-muted-foreground">{canSeeCode ? `${denyPerson.personal_code} · ` : ""}{denyPerson.department}</p>
               </div>
             ) : (
               <div className="space-y-3">

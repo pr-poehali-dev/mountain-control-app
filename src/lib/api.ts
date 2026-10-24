@@ -17,6 +17,14 @@ function getToken(): string | null {
   return localStorage.getItem("mc_token");
 }
 
+function authQuery(): Record<string, string> {
+  const t = getToken();
+  const q: Record<string, string> = {};
+  if (t) q.auth = t;
+  if (localStorage.getItem("mc_demo") === "true") q.demo = "1";
+  return q;
+}
+
 export function setToken(token: string) {
   localStorage.setItem("mc_token", token);
 }
@@ -218,7 +226,7 @@ export const medicalApi = {
     request(API.medical, "", { params: { action: "stats", ...params } }),
   getShift: () => request(API.medical, "", { params: { action: "shift" } }),
   getExportUrl: (params?: Record<string, string>) => {
-    const qs = new URLSearchParams({ action: "export", ...params }).toString();
+    const qs = new URLSearchParams({ action: "export", ...authQuery(), ...params }).toString();
     return `${API.medical}?${qs}`;
   },
   addCheck: (body: Record<string, unknown>) =>
@@ -257,7 +265,7 @@ export const reportsApi = {
   getReport: (reportType: string, params?: Record<string, string>) =>
     request(API.reports, "", { params: { action: reportType, ...params } }),
   getExportUrl: (reportType: string, params?: Record<string, string>) => {
-    const qs = new URLSearchParams({ action: "export", report_type: reportType, ...params }).toString();
+    const qs = new URLSearchParams({ action: "export", ...authQuery(), report_type: reportType, ...params }).toString();
     return `${API.reports}?${qs}`;
   },
 };
@@ -378,7 +386,7 @@ export const securityApi = {
   getStats: () =>
     request(API.security, "", { params: { action: "stats" } }),
   getExportUrl: (params?: Record<string, string>) => {
-    const qs = new URLSearchParams({ action: "export", ...params }).toString();
+    const qs = new URLSearchParams({ action: "export", ...authQuery(), ...params }).toString();
     return `${API.security}?${qs}`;
   },
 };
@@ -397,7 +405,7 @@ export const checkpointApi = {
   deletePass: (id: number) =>
     request(API.checkpoint, "", { method: "DELETE", body: { id }, params: { action: "pass-delete" } }),
   getExportUrl: (params?: Record<string, string>) => {
-    const qs = new URLSearchParams({ action: "export", ...params }).toString();
+    const qs = new URLSearchParams({ action: "export", ...authQuery(), ...params }).toString();
     return `${API.checkpoint}?${qs}`;
   },
 };

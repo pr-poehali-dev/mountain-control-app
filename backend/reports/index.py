@@ -6,6 +6,34 @@ from datetime import datetime, date as date_type, timedelta
 import psycopg2
 from decimal import Decimal
 
+
+def caller_is_admin(event):
+    """Цифровой код сотрудников видит только администратор (не в демо-режиме)"""
+    headers = event.get('headers') or {}
+    params = event.get('queryStringParameters') or {}
+    if headers.get('X-Demo', headers.get('x-demo', '')) == 'true' or params.get('demo') == '1':
+        return False
+    token = ''
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        token = params.get('auth', '')
+    if not token:
+        return False
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    ok = cur.fetchone() is not None
+    cur.close()
+    conn.close()
+    return ok
+
 def is_demo_request(event):
     headers = event.get('headers') or {}
     return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
@@ -630,14 +658,23 @@ def export_report(params, event):
     raw = json.loads(handlers[report_type](params)['body'])
     items = raw.get('items', [])
 
+    headers_out = list(config['headers'])
+    fields_out = list(config['fields'])
+    if not caller_is_admin(event):
+        for code_field in ('personal_code', 'person_code'):
+            if code_field in fields_out:
+                idx = fields_out.index(code_field)
+                fields_out.pop(idx)
+                headers_out.pop(idx)
+
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output, delimiter=';')
-    writer.writerow(config['headers'])
+    writer.writerow(headers_out)
 
     for item in items:
         row = []
-        for f in config['fields']:
+        for f in fields_out:
             val = item.get(f, '')
             if val is None:
                 val = ''

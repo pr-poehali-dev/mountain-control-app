@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import Icon from "@/components/ui/icon";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 
 const statusLabels: Record<string, string> = {
   on_shift: "на смене",
@@ -46,6 +47,7 @@ interface PersonnelTableProps {
 }
 
 export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
+  const canSeeCode = useCanSeeCode();
   const personnel = (data || []).slice(0, 6);
 
   return (
@@ -71,9 +73,11 @@ export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
-                  Код
-                </th>
+                {canSeeCode && (
+                  <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
+                    Код
+                  </th>
+                )}
                 <th className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3">
                   ФИО
                 </th>
@@ -104,11 +108,13 @@ export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
                     className="border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer animate-fade-in"
                     style={{ animationDelay: `${i * 50}ms` }}
                   >
-                    <td className="px-4 py-3">
-                      <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
-                        {p.personal_code}
-                      </code>
-                    </td>
+                    {canSeeCode && (
+                      <td className="px-4 py-3">
+                        <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                          {p.personal_code}
+                        </code>
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-sm font-medium text-foreground">
                       {p.full_name}
                     </td>
@@ -154,7 +160,7 @@ export default function PersonnelTable({ data, loading }: PersonnelTableProps) {
               })}
               {personnel.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={canSeeCode ? 7 : 6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Нет данных
                   </td>
                 </tr>

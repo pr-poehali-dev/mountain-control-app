@@ -3,6 +3,34 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+
+def caller_is_admin(event):
+    """Цифровой код сотрудников видит только администратор (не в демо-режиме)"""
+    headers = event.get('headers') or {}
+    params = event.get('queryStringParameters') or {}
+    if headers.get('X-Demo', headers.get('x-demo', '')) == 'true' or params.get('demo') == '1':
+        return False
+    token = ''
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        token = params.get('auth', '')
+    if not token:
+        return False
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    ok = cur.fetchone() is not None
+    cur.close()
+    conn.close()
+    return ok
+
 def is_demo_request(event):
     headers = event.get('headers') or {}
     return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
@@ -50,7 +78,7 @@ def handler(event, context):
     elif method == 'GET' and action == 'stats':
         return get_stats()
     elif method == 'GET' and action == 'export':
-        return export_journal(params)
+        return export_journal(params, caller_is_admin(event))
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -379,7 +407,7 @@ def get_stats():
         'total_checks': total_checks
     })
 
-def export_journal(params):
+def export_journal(params, show_code=False):
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
 
@@ -408,11 +436,11 @@ def export_journal(params):
         'not_found': 'Не найден', 'expired': 'Просрочен'
     }
 
-    lines = ['Код;ФИО;Результат;Примечание;Проверил;Дата и время']
+    lines = [('Код;' if show_code else '') + 'ФИО;Результат;Примечание;Проверил;Дата и время']
     for r in rows:
         dt = r[5].strftime('%d.%m.%Y %H:%M') if r[5] else ''
-        lines.append('%s;%s;%s;%s;%s;%s' % (
-            r[0], r[1], result_labels.get(r[2], r[2]), r[3] or '', r[4] or '', dt
+        lines.append(('%s;' % r[0] if show_code else '') + '%s;%s;%s;%s;%s' % (
+            r[1], result_labels.get(r[2], r[2]), r[3] or '', r[4] or '', dt
         ))
 
     csv_content = '\n'.join(lines)

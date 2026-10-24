@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import Icon from "@/components/ui/icon";
 import { medicalApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 
 export interface MarkPerson {
   id: number;
@@ -36,6 +37,7 @@ const actions: { status: MarkStatus; label: string; icon: string; cls: string }[
 
 export default function AdminMedicalMarkDialog({ person, onClose, onMarked }: Props) {
   const { toast } = useToast();
+  const canSeeCode = useCanSeeCode();
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState<MarkStatus | null>(null);
 
@@ -79,7 +81,7 @@ export default function AdminMedicalMarkDialog({ person, onClose, onMarked }: Pr
                   <p className="text-xs text-muted-foreground truncate">
                     {[person.position, person.department].filter(Boolean).join(" · ") || "—"}
                   </p>
-                  {person.personal_code && (
+                  {canSeeCode && person.personal_code && (
                     <code className="text-[11px] text-mine-cyan font-mono">{person.personal_code}</code>
                   )}
                 </div>

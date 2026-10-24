@@ -179,8 +179,8 @@ interface StatsData {
   by_org_type?: Record<string, number>;
 }
 
-function buildQrPayload(p: PersonnelItem) {
-  return p.personal_code;
+function buildQrPayload(p: { personal_code: string; qr_code?: string }) {
+  return p.qr_code || p.personal_code;
 }
 
 const PROTECTED_CODE = "АД-001";
@@ -556,7 +556,6 @@ const Personnel = () => {
           <div class="badge-name">${person.full_name}</div>
           <div class="badge-position">${person.position || "—"}</div>
           <div class="badge-qr">${svgData}</div>
-          <div class="badge-code">${person.personal_code}</div>
           <div class="badge-dept">${person.department || ""}${person.organization ? " — " + person.organization : ""}</div>
           <div class="badge-info">Сканируйте QR для проверки данных</div>
         </div>
@@ -622,7 +621,6 @@ const Personnel = () => {
           <div class="badge-name">${escapeHtml(person.full_name)}</div>
           <div class="badge-position">${escapeHtml(person.position || "—")}</div>
           <div class="badge-qr">${svgMarkup}</div>
-          <div class="badge-code">${escapeHtml(person.personal_code)}</div>
           <div class="badge-dept">${escapeHtml(person.department || "")}${person.organization ? " — " + escapeHtml(person.organization) : ""}</div>
           <div class="badge-info">Сканируйте QR для проверки данных</div>
         </div>
@@ -907,7 +905,7 @@ const Personnel = () => {
                         className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer"
                       />
                     </th>
-                    {["Код", "QR", "ФИО", "Таб. №", "Организация", "Должность", "Подразделение", "Категория", "Медосмотр", "Статус", ""].map((h) => (
+                    {[...(isAdminUser ? ["Код"] : []), "QR", "ФИО", "Таб. №", "Организация", "Должность", "Подразделение", "Категория", "Медосмотр", "Статус", ""].map((h) => (
                       <th
                         key={h || "actions"}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-4 py-3"
@@ -938,11 +936,13 @@ const Personnel = () => {
                             className="w-4 h-4 rounded border-border accent-mine-cyan cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                           />
                         </td>
-                        <td className="px-4 py-3">
-                          <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
-                            {p.personal_code}
-                          </code>
-                        </td>
+                        {isAdminUser && (
+                          <td className="px-4 py-3">
+                            <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                              {p.personal_code}
+                            </code>
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <button
                             onClick={(e) => openQrModal(p, e)}
@@ -950,7 +950,7 @@ const Personnel = () => {
                             title="Открыть QR-код"
                           >
                             <QRCodeSVG
-                              value={p.personal_code}
+                              value={buildQrPayload(p)}
                               size={28}
                               bgColor="#ffffff"
                               fgColor="#000000"
@@ -1048,7 +1048,7 @@ const Personnel = () => {
                   })}
                   {personnel.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={isAdminUser ? 12 : 11} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет данных
                       </td>
                     </tr>
@@ -1138,9 +1138,11 @@ const Personnel = () => {
                     <CardField label="Должность" className="sm:col-span-2">
                       <AutoGrowInput value={editPosition} onChange={setEditPosition} placeholder="—" />
                     </CardField>
-                    <CardField label="Код">
-                      <code className="text-sm font-mono font-bold text-mine-cyan leading-8">{selectedPerson.personal_code}</code>
-                    </CardField>
+                    {isAdminUser && (
+                      <CardField label="Код">
+                        <code className="text-sm font-mono font-bold text-mine-cyan leading-8">{selectedPerson.personal_code}</code>
+                      </CardField>
+                    )}
                     <CardField label="Табельный №" className={editTabNum.length > 18 ? "sm:col-span-2" : ""}>
                       <AutoGrowInput value={editTabNum} onChange={setEditTabNum} className="font-mono" placeholder="—" />
                     </CardField>
@@ -1369,7 +1371,7 @@ const Personnel = () => {
               <div className="text-center">
                 <p className="text-base font-bold text-foreground">{qrPerson.full_name}</p>
                 <p className="text-sm text-muted-foreground">{qrPerson.position}</p>
-                <code className="text-lg font-mono font-bold text-mine-cyan">{qrPerson.personal_code}</code>
+                {isAdminUser && <code className="text-lg font-mono font-bold text-mine-cyan">{qrPerson.personal_code}</code>}
               </div>
               <div className="flex justify-center" ref={printRef}>
                 <div className="bg-white rounded-xl p-5">
@@ -1435,20 +1437,16 @@ const Personnel = () => {
                     <p className="text-xs text-mine-green">Успешно зарегистрирован</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                {isAdminUser && (
                   <div className="rounded-lg border border-border p-3">
                     <p className="text-[10px] text-muted-foreground mb-1">Личный код</p>
                     <code className="text-lg font-mono font-bold text-mine-cyan">{addSuccess.personal_code}</code>
                   </div>
-                  <div className="rounded-lg border border-border p-3">
-                    <p className="text-[10px] text-muted-foreground mb-1">QR-код</p>
-                    <code className="text-lg font-mono font-bold text-mine-amber">{addSuccess.qr_code}</code>
-                  </div>
-                </div>
+                )}
               </div>
               <div className="flex flex-col items-center gap-3">
                 <div className="bg-white rounded-lg p-4">
-                  <QRCodeSVG value={addSuccess.personal_code} size={180} bgColor="#ffffff" fgColor="#000000" level="M" />
+                  <QRCodeSVG value={buildQrPayload(addSuccess)} size={180} bgColor="#ffffff" fgColor="#000000" level="M" />
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Распечатайте QR-код для сотрудника</p>
               </div>

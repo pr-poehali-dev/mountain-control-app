@@ -21,6 +21,7 @@ import QrScanner from "@/components/scanner/QrScanner";
 import { useState, useEffect, useCallback } from "react";
 import { medicalApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 
@@ -184,6 +185,7 @@ const Medical = () => {
   }>>([]);
   const [cardPersonnelLoading, setCardPersonnelLoading] = useState(false);
   const { user } = useAuth();
+  const canSeeCode = useCanSeeCode();
   const isAdmin = user?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
   const [markPerson, setMarkPerson] = useState<MarkPerson | null>(null);
 
@@ -334,7 +336,7 @@ const Medical = () => {
       const name = r.person_name || r.full_name || "";
       const st = medicalStatusLabels[r.status] || r.status;
       return `<tr>
-        <td>${code}</td>
+        ${canSeeCode ? `<td>${code}</td>` : ""}
         <td>${name}</td>
         <td>${r.is_itr ? "ИТР" : "Рабочий"}</td>
         <td>${r.position || "—"}</td>
@@ -352,7 +354,7 @@ const Medical = () => {
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Медицинский контроль</title>
 <style>body{font-family:Arial,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f5f5f5;font-weight:600}h1{font-size:18px}h2{font-size:14px;color:#666;margin-top:4px}@media print{body{padding:0}}</style>
 </head><body><h1>Медицинский контроль — Журнал осмотров</h1><h2>${dateRange}${shiftTitle ? " | " + shiftTitle : ""}</h2>
-<table><thead><tr><th>Код</th><th>ФИО</th><th>Категория</th><th>Должность</th><th>Подразделение</th><th>Организация</th><th>Смена</th><th>Направл.</th><th>Результат</th><th>Дата</th><th>Время</th><th>Примечание</th></tr></thead>
+<table><thead><tr>${canSeeCode ? "<th>Код</th>" : ""}<th>ФИО</th><th>Категория</th><th>Должность</th><th>Подразделение</th><th>Организация</th><th>Смена</th><th>Направл.</th><th>Результат</th><th>Дата</th><th>Время</th><th>Примечание</th></tr></thead>
 <tbody>${rows}</tbody></table>
 <p style="margin-top:16px;font-size:11px;color:#999">Сформировано: ${new Date().toLocaleString("ru-RU")}</p>
 <script>window.print()<${"/"}script></body></html>`;
@@ -683,7 +685,7 @@ const Medical = () => {
 
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Код", value: scanResult.person.personal_code },
+                    ...(canSeeCode ? [{ label: "Код", value: scanResult.person.personal_code }] : []),
                     { label: "Должность", value: scanResult.person.position },
                     { label: "Подразделение", value: scanResult.person.department },
                     { label: "Организация", value: scanResult.person.organization || "—" },
@@ -730,7 +732,7 @@ const Medical = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Код", value: denyResult.person.personal_code },
+                    ...(canSeeCode ? [{ label: "Код", value: denyResult.person.personal_code }] : []),
                     { label: "Подразделение", value: denyResult.person.department },
                     { label: "Смена", value: denyResult.shift_label },
                     { label: "Режим", value: denyResult.direction_label },
@@ -923,7 +925,7 @@ const Medical = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Дата", "Код", "ФИО", "Таб. №", "Категория", "Должность", "Организация", "Смена", "Направл.", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Примечание"].map((h) => (
+                    {["Дата", ...(canSeeCode ? ["Код"] : []), "ФИО", "Таб. №", "Категория", "Должность", "Организация", "Смена", "Направл.", "Статус", "Время", "Давление", "Пульс", "Алкоголь", "Темп.", "Примечание"].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-3"
@@ -949,11 +951,13 @@ const Medical = () => {
                         <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {formatDate(r.shift_date)}
                         </td>
-                        <td className="px-3 py-3">
-                          <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
-                            {code}
-                          </code>
-                        </td>
+                        {canSeeCode && (
+                          <td className="px-3 py-3">
+                            <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded">
+                              {code}
+                            </code>
+                          </td>
+                        )}
                         <td className="px-3 py-3 text-sm font-medium text-foreground whitespace-nowrap">
                           {name}
                         </td>
@@ -1016,7 +1020,7 @@ const Medical = () => {
                   })}
                   {filtered.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={16} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={canSeeCode ? 16 : 15} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         Нет записей о медосмотрах за выбранный период
                       </td>
                     </tr>
@@ -1086,7 +1090,7 @@ const Medical = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium text-foreground truncate">{r.full_name}</p>
-                          <code className="text-[10px] text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded shrink-0">{r.personal_code}</code>
+                          {canSeeCode && <code className="text-[10px] text-mine-cyan font-mono bg-mine-cyan/10 px-1.5 py-0.5 rounded shrink-0">{r.personal_code}</code>}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground truncate">{r.position || "—"}</span>

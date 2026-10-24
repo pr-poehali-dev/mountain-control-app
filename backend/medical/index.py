@@ -5,6 +5,34 @@ import io
 from datetime import datetime, time, date as date_type
 import psycopg2
 
+
+def caller_is_admin(event):
+    """Цифровой код сотрудников видит только администратор (не в демо-режиме)"""
+    headers = event.get('headers') or {}
+    params = event.get('queryStringParameters') or {}
+    if headers.get('X-Demo', headers.get('x-demo', '')) == 'true' or params.get('demo') == '1':
+        return False
+    token = ''
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        token = params.get('auth', '')
+    if not token:
+        return False
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    ok = cur.fetchone() is not None
+    cur.close()
+    conn.close()
+    return ok
+
 def is_demo_request(event):
     headers = event.get('headers') or {}
     return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
@@ -752,7 +780,11 @@ def export_csv(params, event):
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output, delimiter=';')
-    writer.writerow(['Дата', 'Смена', 'Направление', 'Результат', 'Категория', 'ФИО', 'Таб. №', 'Должность', 'Код', 'Подразделение', 'Организация', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время'])
+    show_code = caller_is_admin(event)
+    header = ['Дата', 'Смена', 'Направление', 'Результат', 'Категория', 'ФИО', 'Таб. №', 'Должность', 'Код', 'Подразделение', 'Организация', 'Давление', 'Пульс', 'Алкоголь', 'Температура', 'Врач', 'Примечание', 'Время']
+    if not show_code:
+        header.remove('Код')
+    writer.writerow(header)
 
     status_map = {'passed': 'Допущен', 'failed': 'Не допущен'}
     for r in rows:
@@ -762,7 +794,7 @@ def export_csv(params, event):
             DIRECTION_LABELS.get(r[2] or 'to_shift', ''),
             status_map.get(r[3], r[3]),
             r[16],
-            r[4], r[17] or '', r[15] or '', r[5], r[6], r[7] or '',
+            r[4], r[17] or '', r[15] or '', *([r[5]] if show_code else []), r[6], r[7] or '',
             r[8] or '', r[9] or '', r[10] or '', r[11] or '',
             r[12] or '', r[13] or '', r[14]
         ])

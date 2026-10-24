@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import PhotoField from "@/components/personnel/PhotoField";
 import Icon from "@/components/ui/icon";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useDemo } from "@/contexts/DemoContext";
 import { useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
@@ -32,6 +33,7 @@ const demoUser = {
 
 const Profile = () => {
   const { user: realUser, logout, refreshUser } = useAuth();
+  const canSeeCode = useCanSeeCode();
   const { isDemo } = useDemo();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -89,7 +91,7 @@ const Profile = () => {
             </h4>
             <div className="space-y-3">
               {[
-                { label: "Личный код", value: user.personal_code, mono: true },
+                ...(canSeeCode ? [{ label: "Личный код", value: user.personal_code, mono: true }] : []),
                 { label: "Email", value: user.email },
                 { label: "Должность", value: user.position },
                 { label: "Подразделение", value: user.department },
@@ -127,9 +129,6 @@ const Profile = () => {
               <p className="text-xs text-muted-foreground">
                 Предъявите для сканирования при прохождении контроля
               </p>
-              <code className="text-xs text-mine-cyan font-mono bg-mine-cyan/10 px-2 py-0.5 rounded">
-                {user.qr_code || user.personal_code}
-              </code>
             </div>
           </div>
         </div>

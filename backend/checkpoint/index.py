@@ -3,6 +3,34 @@ import os
 from datetime import datetime, date as date_type
 import psycopg2
 
+
+def caller_is_admin(event):
+    """Цифровой код сотрудников видит только администратор (не в демо-режиме)"""
+    headers = event.get('headers') or {}
+    params = event.get('queryStringParameters') or {}
+    if headers.get('X-Demo', headers.get('x-demo', '')) == 'true' or params.get('demo') == '1':
+        return False
+    token = ''
+    for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
+        val = headers.get(key, '')
+        if val:
+            token = val[7:] if val.startswith('Bearer ') else val
+            break
+    if not token:
+        token = params.get('auth', '')
+    if not token:
+        return False
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE AND u.role = 'admin'
+    """ % token.replace("'", "''"))
+    ok = cur.fetchone() is not None
+    cur.close()
+    conn.close()
+    return ok
+
 def is_demo_request(event):
     headers = event.get('headers') or {}
     return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
@@ -355,13 +383,14 @@ def export_journal(params, event):
     cur.close()
     conn.close()
 
-    lines = ['Код;ФИО;Таб. №;Направление;КПП;Медосмотр;Примечание;Дата и время']
+    show_code = caller_is_admin(event)
+    lines = [('Код;' if show_code else '') + 'ФИО;Таб. №;Направление;КПП;Медосмотр;Примечание;Дата и время']
     for r in rows:
         dt = r[6].strftime('%d.%m.%Y %H:%M') if r[6] else ''
         direction = 'Вход' if r[2] == 'in' else 'Выход'
         medical = 'Да' if r[4] else 'Нет'
-        lines.append('%s;%s;%s;%s;%s;%s;%s;%s' % (
-            r[0], r[1], r[7] or '', direction, r[3], medical, r[5] or '', dt
+        lines.append(('%s;' % r[0] if show_code else '') + '%s;%s;%s;%s;%s;%s;%s' % (
+            r[1], r[7] or '', direction, r[3], medical, r[5] or '', dt
         ))
 
     csv_content = '\n'.join(lines)
