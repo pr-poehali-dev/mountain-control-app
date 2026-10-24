@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Icon from "@/components/ui/icon";
+import HousingFloorSummary, { type HousingFloorRow } from "@/components/reports/HousingFloorSummary";
 import { reportsApi, eventsApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -262,15 +263,20 @@ ${html}
       });
     }
 
+    const byFloor = active === "housing" ? ((s.by_floor as HousingFloorRow[]) || []) : [];
+
     return (
-      <div className="summary flex flex-wrap gap-3 mb-4">
-        {cards.map((c, i) => (
-          <div key={i} className="rounded-lg border border-border bg-secondary/30 px-4 py-2 min-w-[120px]">
-            <div className={`text-xl font-bold ${c.color || "text-foreground"}`}>{c.value}</div>
-            <div className="text-[11px] text-muted-foreground">{c.label}</div>
-          </div>
-        ))}
-      </div>
+      <>
+        <div className="summary flex flex-wrap gap-3 mb-4">
+          {cards.map((c, i) => (
+            <div key={i} className="rounded-lg border border-border bg-secondary/30 px-4 py-2 min-w-[120px]">
+              <div className={`text-xl font-bold ${c.color || "text-foreground"}`}>{c.value}</div>
+              <div className="text-[11px] text-muted-foreground">{c.label}</div>
+            </div>
+          ))}
+        </div>
+        {byFloor.length > 0 && <HousingFloorSummary rows={byFloor} />}
+      </>
     );
   };
 
@@ -329,6 +335,7 @@ ${html}
     if (active === "housing") return [
       { key: "room_number", label: "Комната" },
       { key: "building", label: "Корпус" },
+      { key: "floor", label: "Этаж", render: v => ((v as number) > 0 ? String(v) : "—") },
       { key: "capacity", label: "Вместимость" },
       { key: "occupied", label: "Заселено" },
       { key: "free", label: "Свободно", render: (v) => (

@@ -307,16 +307,16 @@ def report_housing(params):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT r.id, r.room_number, b.name, r.capacity, %s AS occ
+        SELECT r.id, r.room_number, b.name, r.capacity, %s AS occ, COALESCE(r.floor, 0)
         FROM rooms r JOIN buildings b ON b.id = r.building_id
         WHERE r.is_active = TRUE AND b.is_active = TRUE
-        ORDER BY b.sort_order, b.name, r.room_number
+        ORDER BY b.sort_order, b.name, COALESCE(r.floor, 0), r.room_number
     """ % "(SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)")
     raw = cur.fetchall()
     rows = []
     for r in raw:
         st = 'free' if r[4] == 0 else ('full' if r[4] >= r[3] else 'partial')
-        rows.append((r[0], r[1], r[2], r[3], r[4], st))
+        rows.append((r[0], r[1], r[2], r[3], r[4], st, r[5]))
 
     totals = (sum(r[3] for r in rows), sum(r[4] for r in rows))
     by_status = {}
@@ -331,6 +331,26 @@ def report_housing(params):
         agg[r[2]][1] += r[4]
     by_building = [{'building': b, 'capacity': agg[b][0], 'occupied': agg[b][1]} for b in order]
 
+    fagg = {}
+    forder = []
+    for r in rows:
+        key = (r[2], r[6])
+        if key not in fagg:
+            fagg[key] = [0, 0, 0]
+            forder.append(key)
+        fagg[key][0] += 1
+        fagg[key][1] += r[3]
+        fagg[key][2] += r[4]
+    by_floor = []
+    for key in forder:
+        cap, occ = fagg[key][1], fagg[key][2]
+        free = max(cap - occ, 0)
+        by_floor.append({
+            'building': key[0] or '', 'floor': key[1], 'rooms_count': fagg[key][0],
+            'capacity': cap, 'occupied': occ, 'free': free,
+            'status': 'full' if cap > 0 and free == 0 else ('almost_full' if cap > 0 and free / cap <= 0.2 else 'free'),
+        })
+
     cur.close()
     conn.close()
 
@@ -339,7 +359,7 @@ def report_housing(params):
         items.append({
             'id': r[0], 'room_number': r[1], 'building': r[2] or '',
             'capacity': r[3], 'occupied': r[4], 'status': r[5],
-            'free': r[3] - r[4]
+            'free': r[3] - r[4], 'floor': r[6]
         })
 
     total_cap = totals[0]
@@ -353,7 +373,8 @@ def report_housing(params):
             'total_free': total_cap - total_occ,
             'occupancy_pct': round(total_occ / total_cap * 100) if total_cap > 0 else 0,
             'by_status': by_status,
-            'by_building': by_building
+            'by_building': by_building,
+            'by_floor': by_floor
         }
     })
 
@@ -557,8 +578,8 @@ EXPORT_CONFIGS = {
     },
     'housing': {
         'filename': 'housing_report.csv',
-        'headers': ['Комната', 'Корпус', 'Вместимость', 'Заселено', 'Свободно', 'Статус'],
-        'fields': ['room_number', 'building', 'capacity', 'occupied', 'free', 'status']
+        'headers': ['Комната', 'Корпус', 'Этаж', 'Вместимость', 'Заселено', 'Свободно', 'Статус'],
+        'fields': ['room_number', 'building', 'floor', 'capacity', 'occupied', 'free', 'status']
     },
     'personnel-summary': {
         'filename': 'personnel_report.csv',
@@ -583,8 +604,11 @@ STATUS_LABELS = {
     'day_off': 'Выходной', 'sick_leave': 'Больничный', 'vacation': 'Отпуск',
     'issued': 'Выдан', 'available': 'Доступен', 'charging': 'Зарядка', 'missing': 'Утерян',
     'normal': 'Норма', 'damaged': 'Повреждён', 'needs_repair': 'Требует ремонта',
-    'active': 'Активна', 'maintenance': 'Обслуживание'
+    'active': 'Активна', 'maintenance': 'Обслуживание',
+    'full': 'Заполнена', 'partial': 'Частично', 'free': 'Свободна'
 }
+
+FLOOR_STATUS_LABELS = {'full': 'Заполнен', 'almost_full': 'Почти занят', 'free': 'Есть места'}
 
 def export_report(params, event):
     report_type = params.get('report_type', '')
@@ -622,5 +646,14 @@ def export_report(params, event):
                 val_str = STATUS_LABELS[val_str]
             row.append(val_str)
         writer.writerow(row)
+
+    if report_type == 'housing':
+        by_floor = (raw.get('summary') or {}).get('by_floor') or []
+        writer.writerow([])
+        writer.writerow(['Сводка по этажам'])
+        writer.writerow(['Корпус', 'Этаж', 'Комнат', 'Мест', 'Заселено', 'Свободно', 'Состояние'])
+        for f in by_floor:
+            writer.writerow([f['building'], f['floor'] if f['floor'] > 0 else 'Без этажа', f['rooms_count'],
+                             f['capacity'], f['occupied'], f['free'], FLOOR_STATUS_LABELS.get(f['status'], '')])
 
     return csv_response(output.getvalue(), config['filename'])
