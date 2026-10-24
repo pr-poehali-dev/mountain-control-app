@@ -24,6 +24,8 @@ import { personnelApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import ResizableDialogContent from "@/components/personnel/ResizableDialogContent";
 import AutoGrowInput from "@/components/personnel/AutoGrowInput";
+import PhotoField from "@/components/personnel/PhotoField";
+import HousingHistory from "@/components/personnel/HousingHistory";
 import ResidenceSelect, { ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import PassFields, { PassValue, EMPTY_PASS, inspectionLabels, passPeriodLabel, isPassExpired } from "@/components/personnel/PassFields";
 import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
@@ -110,6 +112,7 @@ const orgTypeColors: Record<string, string> = {
 
 interface PersonnelItem {
   id: number;
+  photo_url?: string;
   personal_code: string;
   full_name: string;
   position: string;
@@ -1077,15 +1080,28 @@ const Personnel = () => {
                 </div>
               )}
               <fieldset disabled={cardLocked || editLoading} className="space-y-5 min-w-0">
-              <div className="flex gap-5">
-                <button
-                  type="button"
-                  onClick={() => openQrModal(selectedPerson)}
-                  className="flex-shrink-0 self-start bg-white rounded-xl p-3 hover:ring-2 ring-mine-cyan/50 transition-all cursor-pointer"
-                  title="Увеличить QR"
-                >
-                  <QRCodeSVG value={buildQrPayload(selectedPerson)} size={120} bgColor="#ffffff" fgColor="#000000" level="L" />
-                </button>
+              <div className="flex gap-5 flex-wrap sm:flex-nowrap">
+                <div className="flex sm:flex-col gap-3 flex-shrink-0 self-start items-center">
+                  <PhotoField
+                    key={selectedPerson.id}
+                    personnelId={selectedPerson.id}
+                    photoUrl={selectedPerson.photo_url}
+                    disabled={cardLocked}
+                    size={120}
+                    onChange={(url) => {
+                      setSelectedPerson((prev) => (prev ? { ...prev, photo_url: url } : prev));
+                      setPersonnel((list) => list.map((x) => (x.id === selectedPerson.id ? { ...x, photo_url: url } : x)));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openQrModal(selectedPerson)}
+                    className="bg-white rounded-xl p-2 hover:ring-2 ring-mine-cyan/50 transition-all cursor-pointer"
+                    title="Увеличить QR"
+                  >
+                    <QRCodeSVG value={buildQrPayload(selectedPerson)} size={104} bgColor="#ffffff" fgColor="#000000" level="L" />
+                  </button>
+                </div>
                 <div className="flex-1 min-w-0 space-y-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <CardField label="ФИО" className="sm:col-span-2">
@@ -1272,6 +1288,8 @@ const Personnel = () => {
                   QR / Печать
                 </Button>
               </div>
+
+              <HousingHistory personnelId={selectedPerson.id} refreshKey={selectedPerson.residence_room_id} />
 
               <div>
                 <div className="flex items-center gap-2 mb-3">

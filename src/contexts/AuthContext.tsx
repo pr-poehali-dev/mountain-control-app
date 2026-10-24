@@ -18,6 +18,7 @@ interface User {
   role: string;
   organization?: string;
   residence?: string;
+  photo_url?: string;
   has_face?: boolean;
   face_photo_url?: string;
   face_can_self_enroll?: boolean;

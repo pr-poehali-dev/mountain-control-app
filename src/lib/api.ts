@@ -171,6 +171,10 @@ export const personnelApi = {
     request(API.personnel, "", { method: "PUT", body, params: { action: "edit" } }),
   getHistory: (id: number) =>
     request(API.personnel, "", { params: { action: "history", id: String(id) } }),
+  getHousingHistory: (id: number) =>
+    request(API.personnel, "", { params: { action: "housing-history", id: String(id) } }),
+  uploadPhoto: (body: { personnel_id?: number; user_id?: number; photo: string }) =>
+    request(API.personnel, "", { method: "POST", body, params: { action: "photo" } }),
 };
 
 export const dispatcherApi = {

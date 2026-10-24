@@ -1,3 +1,5 @@
+import base64
+import secrets
 import json
 import os
 from datetime import datetime, date as date_type
@@ -46,6 +48,38 @@ def sync_rooms(cur):
         WHERE s.id = r.id
     """)
 
+
+def log_housing(cur, pid, old_rid, new_rid, source):
+    """Записывает заселение / переселение / выселение в историю проживания"""
+    old_rid = int(old_rid) if old_rid else None
+    new_rid = int(new_rid) if new_rid else None
+    if not pid or old_rid == new_rid:
+        return
+
+    def info(rid):
+        if not rid:
+            return (None, '', '')
+        cur.execute("SELECT b.id, b.name, r.room_number FROM rooms r JOIN buildings b ON b.id = r.building_id WHERE r.id = %d" % rid)
+        row = cur.fetchone()
+        return row if row else (None, '', '')
+
+    ob, oname, onum = info(old_rid)
+    nb, nname, nnum = info(new_rid)
+    action = 'checkin' if not old_rid else ('evict' if not new_rid else 'move')
+    if action == 'evict':
+        nb, nname, nnum, old_rid_store = ob, oname, onum, old_rid
+        prev_b, prev_r = '', ''
+    else:
+        old_rid_store = new_rid
+        prev_b, prev_r = oname, onum
+    cur.execute("""
+        INSERT INTO housing_history (personnel_id, action, building_id, room_id, building_name, room_number,
+                                     prev_building_name, prev_room_number, source)
+        VALUES (%d, '%s', %s, %s, '%s', '%s', '%s', '%s', '%s')
+    """ % (int(pid), action, int(nb) if nb else 'NULL', int(old_rid_store) if old_rid_store else 'NULL',
+           (nname or '').replace("'", "''"), (nnum or '').replace("'", "''"),
+           (prev_b or '').replace("'", "''"), (prev_r or '').replace("'", "''"), source.replace("'", "''")))
+
 def handler(event, context):
     """Управление персоналом рудника — список, добавление, обновление статусов"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -68,6 +102,10 @@ def handler(event, context):
         return edit_person(body, event)
     elif method == 'GET' and action == 'history':
         return get_history(params)
+    elif method == 'GET' and action == 'housing-history':
+        return get_housing_history(params)
+    elif method == 'POST' and action == 'photo':
+        return upload_photo(body)
     elif method == 'GET' and action == 'residences':
         return get_residences(event)
     elif method == 'GET' and action == 'search':
@@ -93,7 +131,7 @@ def get_personnel(params, event):
                organization, organization_type, COALESCE(tab_number, ''),
                COALESCE(residence, ''), residence_building_id, residence_room_id,
                COALESCE(pass_number, ''), pass_permanent, pass_valid_from, pass_valid_to,
-               COALESCE(inspection_mode, 'general')
+               COALESCE(inspection_mode, 'general'), COALESCE(photo_url, '')
         FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s
     """ % demo_filter
     if category:
@@ -128,7 +166,8 @@ def get_personnel(params, event):
             'pass_permanent': bool(r[20]),
             'pass_valid_from': r[21].isoformat() if r[21] else '',
             'pass_valid_to': r[22].isoformat() if r[22] else '',
-            'inspection_mode': r[23] or 'general'
+            'inspection_mode': r[23] or 'general',
+            'photo_url': r[24] or ''
         })
 
     return json_response(200, {'personnel': personnel, 'total': len(personnel)})
@@ -247,6 +286,7 @@ def add_person(body):
             res_label.replace("'", "''"), int(res_b) if res_b else 'NULL', int(res_r) if res_r else 'NULL',
             room_number_set(cur, res_r), row[0]))
         sync_rooms(cur)
+        log_housing(cur, row[0], None, res_r, 'Раздел «Персонал»')
 
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
@@ -506,7 +546,7 @@ def edit_person(body, event=None):
 
     new_medical = fields.get('medical_status', '')
 
-    cur.execute("SELECT full_name, medical_status FROM personnel WHERE id = %d AND status != 'archived'" % int(person_id))
+    cur.execute("SELECT full_name, medical_status, residence_room_id FROM personnel WHERE id = %d AND status != 'archived'" % int(person_id))
     old_row = cur.fetchone()
     if not old_row:
         cur.close()
@@ -546,6 +586,7 @@ def edit_person(body, event=None):
     """ % (', '.join(set_parts), int(person_id)))
     sync_rooms(cur)
     if housing_changed:
+        log_housing(cur, int(person_id), old_row[2], res_r, 'Карточка сотрудника')
         cur.execute("""
             UPDATE aho_arrivals a SET room = COALESCE(r.room_number, ''), building = COALESCE(b.name, ''), updated_at = NOW()
             FROM personnel p LEFT JOIN rooms r ON r.id = p.residence_room_id LEFT JOIN buildings b ON b.id = r.building_id
@@ -656,3 +697,85 @@ def get_history(params):
         })
 
     return json_response(200, {'events': events})
+
+
+HOUSING_ACTIONS = {'checkin': 'Заселение', 'move': 'Переселение', 'evict': 'Выселение'}
+
+
+def get_housing_history(params):
+    """История проживания сотрудника"""
+    person_id = params.get('id', '')
+    if not person_id:
+        return json_response(400, {'error': 'ID обязателен'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, action, building_name, room_number, prev_building_name, prev_room_number, source, created_at
+        FROM housing_history WHERE personnel_id = %d ORDER BY created_at DESC, id DESC LIMIT 200
+    """ % int(person_id))
+    items = [{
+        'id': r[0], 'action': r[1], 'action_label': HOUSING_ACTIONS.get(r[1], r[1]),
+        'building': r[2], 'room': r[3], 'prev_building': r[4], 'prev_room': r[5],
+        'source': r[6], 'created_at': r[7],
+    } for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return json_response(200, {'items': items})
+
+
+def upload_photo(body):
+    """Загрузка фото сотрудника / пользователя (base64). Фото общее для карточки работника и пользователя"""
+    import boto3
+    personnel_id = body.get('personnel_id')
+    user_id = body.get('user_id')
+    photo = body.get('photo') or ''
+    if not (personnel_id or user_id):
+        return json_response(400, {'error': 'Не указан сотрудник'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    code = ''
+    if personnel_id:
+        cur.execute("SELECT personal_code FROM personnel WHERE id = %d" % int(personnel_id))
+    else:
+        cur.execute("SELECT personal_code FROM users WHERE id = %d" % int(user_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник не найден'})
+    code = row[0] or ''
+
+    url = ''
+    if photo:
+        content_type = 'image/jpeg'
+        if photo.startswith('data:') and ';' in photo:
+            content_type = photo[5:photo.index(';')]
+        if ',' in photo:
+            photo = photo.split(',', 1)[1]
+        data = base64.b64decode(photo)
+        if len(data) > 5 * 1024 * 1024:
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Фото слишком большое (больше 5 МБ)'})
+        ext = {'image/png': 'png', 'image/webp': 'webp'}.get(content_type, 'jpg')
+        key = 'photos/%s_%s.%s' % ('p%d' % int(personnel_id) if personnel_id else 'u%d' % int(user_id), secrets.token_hex(6), ext)
+        s3 = boto3.client('s3', endpoint_url='https://bucket.poehali.dev',
+                          aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+                          aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
+        s3.put_object(Bucket='files', Key=key, Body=data, ContentType=content_type)
+        url = 'https://cdn.poehali.dev/projects/%s/bucket/%s' % (os.environ['AWS_ACCESS_KEY_ID'], key)
+
+    safe_url = url.replace("'", "''")
+    if personnel_id:
+        cur.execute("UPDATE personnel SET photo_url = '%s', updated_at = NOW() WHERE id = %d" % (safe_url, int(personnel_id)))
+    if user_id:
+        cur.execute("UPDATE users SET photo_url = '%s', updated_at = NOW() WHERE id = %d" % (safe_url, int(user_id)))
+    if code:
+        safe_code = code.replace("'", "''")
+        cur.execute("UPDATE personnel SET photo_url = '%s', updated_at = NOW() WHERE personal_code = '%s'" % (safe_url, safe_code))
+        cur.execute("UPDATE users SET photo_url = '%s', updated_at = NOW() WHERE personal_code = '%s'" % (safe_url, safe_code))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'photo_url': url, 'message': 'Фото сохранено' if url else 'Фото удалено'})

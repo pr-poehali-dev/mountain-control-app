@@ -3,6 +3,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import ProfileSettingsDialog from "@/components/profile/ProfileSettingsDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import PhotoField from "@/components/personnel/PhotoField";
 import Icon from "@/components/ui/icon";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemo } from "@/contexts/DemoContext";
@@ -30,7 +31,7 @@ const demoUser = {
 };
 
 const Profile = () => {
-  const { user: realUser, logout } = useAuth();
+  const { user: realUser, logout, refreshUser } = useAuth();
   const { isDemo } = useDemo();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -57,9 +58,13 @@ const Profile = () => {
       <div className="max-w-3xl space-y-6">
         <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-start gap-6">
-            <div className="w-20 h-20 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Icon name="User" size={36} className="text-primary" />
-            </div>
+            {isDemo || !user.id ? (
+              <div className="w-20 h-20 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <Icon name="User" size={36} className="text-primary" />
+              </div>
+            ) : (
+              <PhotoField userId={user.id} photoUrl={(user as { photo_url?: string }).photo_url} size={96} onChange={() => refreshUser()} />
+            )}
             <div className="flex-1 space-y-1">
               <h3 className="text-xl font-semibold text-foreground">
                 {user.full_name}

@@ -396,7 +396,7 @@ def get_me(event):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role, u.organization, u.organization_type, u.face_descriptor IS NOT NULL, u.face_photo_url, u.face_self_enrolled
+        SELECT u.id, u.email, u.full_name, u.position, u.department, u.personal_code, u.qr_code, u.role, u.organization, u.organization_type, u.face_descriptor IS NOT NULL, u.face_photo_url, u.face_self_enrolled, COALESCE(u.photo_url, '')
         FROM users u
         JOIN sessions s ON s.user_id = u.id
         WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE
@@ -425,6 +425,7 @@ def get_me(event):
     return json_response(200, {
         'user': {
             'residence': residence,
+            'photo_url': row[13] or '',
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
@@ -476,7 +477,7 @@ def list_users(event):
     cur = conn.cursor()
     cur.execute("""
         SELECT id, email, full_name, position, department, personal_code, role, is_active, organization, organization_type,
-               created_at, login_email, login_code, face_descriptor IS NOT NULL, face_photo_url
+               created_at, login_email, login_code, face_descriptor IS NOT NULL, face_photo_url, COALESCE(photo_url, '')
         FROM users ORDER BY id
     """)
     rows = cur.fetchall()
@@ -493,7 +494,7 @@ def list_users(event):
             'organization_type': r[9] or '',
             'created_at': r[10],
             'login_email': r[11], 'login_code': r[12],
-            'has_face': bool(r[13]), 'face_photo_url': r[14] or ''
+            'has_face': bool(r[13]), 'face_photo_url': r[14] or '', 'photo_url': r[15] or ''
         })
 
     return json_response(200, {'users': users})

@@ -68,6 +68,8 @@ def handler(event, context):
         return report_housing(params)
     elif method == 'GET' and action == 'personnel-summary':
         return report_personnel_summary(params, event)
+    elif method == 'GET' and action == 'housing-history':
+        return report_housing_history(params, event)
     elif method == 'GET' and action == 'events-log':
         return report_events_log(params, event)
     elif method == 'GET' and action == 'export':
@@ -489,6 +491,54 @@ def report_events_log(params, event):
         }
     })
 
+def report_housing_history(params, event):
+    """История проживания: заселения, переселения, выселения за период"""
+    df, dt = date_range(params)
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    act = params.get('housing_action', '')
+    q = params.get('q', '').strip()
+    where = ["h.created_at::date >= '%s'" % df, "h.created_at::date <= '%s'" % dt, "p.is_demo_data = %s" % demo_val]
+    if act in ('checkin', 'move', 'evict'):
+        where.append("h.action = '%s'" % act)
+    if q:
+        safe = q.replace("'", "''").replace('%', '')
+        like = "'%" + safe + "%'"
+        where.append("(p.full_name ILIKE %s OR p.personal_code ILIKE %s OR h.building_name ILIKE %s OR h.room_number = '%s')" % (like, like, like, safe))
+    where_sql = ' AND '.join(where)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT h.id, h.created_at, h.action, p.full_name, p.personal_code, COALESCE(p.tab_number, ''),
+               COALESCE(p.organization, ''), h.building_name, h.room_number,
+               h.prev_building_name, h.prev_room_number, h.source
+        FROM housing_history h JOIN personnel p ON p.id = h.personnel_id
+        WHERE %s ORDER BY h.created_at DESC, h.id DESC LIMIT 2000
+    """ % where_sql)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    labels = {'checkin': 'Заселение', 'move': 'Переселение', 'evict': 'Выселение'}
+    items = []
+    counts = {'checkin': 0, 'move': 0, 'evict': 0}
+    people = set()
+    for r in rows:
+        counts[r[2]] = counts.get(r[2], 0) + 1
+        people.add(r[4])
+        place = '%s, комн. %s' % (r[7], r[8]) if r[8] else r[7]
+        prev = '%s, комн. %s' % (r[9], r[10]) if r[10] else r[9]
+        items.append({
+            'id': r[0], 'created_at': r[1], 'action': r[2], 'action_label': labels.get(r[2], r[2]),
+            'full_name': r[3], 'personal_code': r[4], 'tab_number': r[5], 'organization': r[6],
+            'building': r[7], 'room': r[8], 'place': place,
+            'prev_place': prev if r[2] == 'move' else '', 'source': r[11],
+        })
+    return json_response(200, {
+        'report': 'housing-history', 'date_from': df, 'date_to': dt, 'items': items,
+        'summary': {'total': len(items), 'checkin': counts.get('checkin', 0), 'move': counts.get('move', 0),
+                    'evict': counts.get('evict', 0), 'people': len(people)},
+    })
+
+
 EXPORT_CONFIGS = {
     'attendance': {
         'filename': 'attendance_report.csv',
@@ -514,6 +564,11 @@ EXPORT_CONFIGS = {
         'filename': 'personnel_report.csv',
         'headers': ['Код', 'ФИО', 'Таб. №', 'Должность', 'Подразделение', 'Категория', 'Организация', 'Тип орг.', 'Статус', 'Медосмотр', 'Смена', 'Комната', 'Телефон'],
         'fields': ['personal_code', 'full_name', 'tab_number', 'position', 'department', 'category_label', 'organization', 'org_type_label', 'status_label', 'medical_status', 'shift', 'room', 'phone']
+    },
+    'housing-history': {
+        'filename': 'housing_history.csv',
+        'headers': ['Дата/Время', 'Действие', 'ФИО', 'Код', 'Таб. №', 'Организация', 'Общежитие', 'Комната', 'Откуда переселён', 'Где оформлено'],
+        'fields': ['created_at', 'action_label', 'full_name', 'personal_code', 'tab_number', 'organization', 'building', 'room', 'prev_place', 'source']
     },
     'events-log': {
         'filename': 'events_report.csv',
@@ -544,7 +599,8 @@ def export_report(params, event):
         'equipment': lambda p: report_equipment(p, event),
         'housing': report_housing,
         'personnel-summary': lambda p: report_personnel_summary(p, event),
-        'events-log': lambda p: report_events_log(p, event)
+        'events-log': lambda p: report_events_log(p, event),
+        'housing-history': lambda p: report_housing_history(p, event)
     }
 
     raw = json.loads(handlers[report_type](params)['body'])

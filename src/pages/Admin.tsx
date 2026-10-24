@@ -44,6 +44,7 @@ interface SystemUser {
   login_code?: boolean;
   has_face?: boolean;
   face_photo_url?: string;
+  photo_url?: string;
 }
 
 const roleColors: Record<string, string> = {

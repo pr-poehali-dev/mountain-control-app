@@ -9,6 +9,7 @@ import { authApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { PAGE_LABELS, RoleItem } from "@/components/admin/RolesManager";
 import PersonnelPicker, { PersonnelOption } from "@/components/admin/PersonnelPicker";
+import PhotoField from "@/components/personnel/PhotoField";
 
 export interface AccessUser {
   id: number;
@@ -21,6 +22,7 @@ export interface AccessUser {
   personal_code: string;
   login_email?: boolean;
   login_code?: boolean;
+  photo_url?: string;
 }
 
 interface Props {
@@ -202,11 +204,16 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [],
               </div>
             )}
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Данные</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="flex gap-4 items-start">
+            {!isNew && user && (
+              <PhotoField key={user.id} userId={user.id} photoUrl={user.photo_url} size={88} onChange={() => onSaved()} />
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1 min-w-0">
               <Input placeholder="ФИО *" value={form.full_name} onChange={(e) => set("full_name", e.target.value)} />
               <Input placeholder="Должность" value={form.position} onChange={(e) => set("position", e.target.value)} />
               <Input placeholder="Подразделение" value={form.department} onChange={(e) => set("department", e.target.value)} />
               <Input placeholder="Организация" value={form.organization} onChange={(e) => set("organization", e.target.value)} />
+            </div>
             </div>
             {!isNew && user?.personal_code && (
               <p className="text-xs text-muted-foreground">

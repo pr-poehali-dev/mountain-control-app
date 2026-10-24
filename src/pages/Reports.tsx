@@ -30,6 +30,7 @@ const REPORTS: ReportConfig[] = [
   { key: "equipment", title: "Выдача фонарей и СС", desc: "Статистика выдачи и возврата, состояние", icon: "Flashlight", color: "cyan", freq: "Ежедневно", action: "equipment" },
   { key: "housing", title: "Жилой фонд", desc: "Заселение, загрузка по комнатам и корпусам", icon: "Home", color: "red", freq: "Еженедельно", action: "housing" },
   { key: "personnel-summary", title: "Сводный по персоналу", desc: "Все категории: рудничные, подрядчики, гости", icon: "BarChart3", color: "amber", freq: "Еженедельно", action: "personnel-summary" },
+  { key: "housing-history", title: "История проживания", desc: "Заселения, переселения и выселения за период", icon: "BedDouble", color: "green", freq: "По запросу", action: "housing-history" },
   { key: "events-log", title: "Журнал событий", desc: "Полный лог всех действий в системе", icon: "FileText", color: "cyan", freq: "По запросу", action: "events-log" },
 ];
 
@@ -82,6 +83,8 @@ const Reports = () => {
   const [dateTo, setDateTo] = useState(today());
   const [shiftType, setShiftType] = useState("all");
   const [direction, setDirection] = useState("all");
+  const [housingAction, setHousingAction] = useState("all");
+  const [housingQuery, setHousingQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState<{ items: Record<string, unknown>[]; summary: Record<string, unknown> } | null>(null);
   const [error, setError] = useState("");
@@ -142,6 +145,10 @@ const Reports = () => {
     }
     if (direction !== "all" && active === "medical") {
       p.direction = direction;
+    }
+    if (active === "housing-history") {
+      if (housingAction !== "all") p.housing_action = housingAction;
+      if (housingQuery.trim()) p.q = housingQuery.trim();
     }
     return p;
   };
@@ -233,6 +240,14 @@ ${html}
         { label: "Свободно", value: (s.total_free as number) || 0, color: "text-mine-green" },
         { label: "Загрузка", value: `${(s.occupancy_pct as number) || 0}%`, color: "text-mine-cyan" },
       );
+    } else if (active === "housing-history") {
+      cards.push(
+        { label: "Всего записей", value: (s.total as number) || 0 },
+        { label: "Заселений", value: (s.checkin as number) || 0, color: "text-mine-green" },
+        { label: "Переселений", value: (s.move as number) || 0, color: "text-mine-cyan" },
+        { label: "Выселений", value: (s.evict as number) || 0, color: "text-mine-red" },
+        { label: "Сотрудников", value: (s.people as number) || 0 },
+      );
     } else if (active === "personnel-summary") {
       cards.push({ label: "Всего", value: (s.total as number) || 0 });
       const bySt = (s.by_status as Record<string, number>) || {};
@@ -320,6 +335,18 @@ ${html}
         <span className={(v as number) > 0 ? "text-mine-green" : "text-muted-foreground"}>{String(v)}</span>
       )},
       { key: "status", label: "Статус", render: v => label(v as string) },
+    ];
+    if (active === "housing-history") return [
+      { key: "created_at", label: "Дата/Время", render: v => formatDateTime(v as string) },
+      { key: "action_label", label: "Действие", render: (v, row) => (
+        <span className={row.action === "checkin" ? "text-mine-green" : row.action === "evict" ? "text-mine-red" : "text-mine-cyan"}>{String(v)}</span>
+      )},
+      { key: "full_name", label: "ФИО" },
+      { key: "personal_code", label: "Код" },
+      { key: "organization", label: "Организация" },
+      { key: "place", label: "Общежитие / комната" },
+      { key: "prev_place", label: "Откуда переселён", render: v => (v as string) || "—" },
+      { key: "source", label: "Где оформлено" },
     ];
     if (active === "personnel-summary") return [
       { key: "personal_code", label: "Код" },
@@ -533,6 +560,46 @@ ${html}
                   </SelectContent>
                 </Select>
               </div>
+            )}
+
+            {active === "housing-history" && (
+              <>
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Действие</label>
+                  <Select value={housingAction} onValueChange={setHousingAction}>
+                    <SelectTrigger className="bg-secondary/50 w-[160px] h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все</SelectItem>
+                      <SelectItem value="checkin">Заселение</SelectItem>
+                      <SelectItem value="move">Переселение</SelectItem>
+                      <SelectItem value="evict">Выселение</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Сотрудник, общежитие или комната</label>
+                  <Input value={housingQuery} onChange={e => setHousingQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") loadReport(); }} placeholder="Например: Шнюков или 45" className="bg-secondary/50 w-[240px] h-9 text-sm" />
+                </div>
+                <div className="flex gap-1 flex-wrap">
+                  {[
+                    { label: "Неделя", days: 7 },
+                    { label: "Месяц", days: 30 },
+                    { label: "Квартал", days: 90 },
+                    { label: "Год", days: 365 },
+                  ].map(p => (
+                    <Button key={p.days} type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() - p.days + 1);
+                      setDateFrom(d.toISOString().slice(0, 10));
+                      setDateTo(today());
+                    }}>
+                      {p.label}
+                    </Button>
+                  ))}
+                </div>
+              </>
             )}
 
             {active === "medical" && (

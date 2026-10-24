@@ -78,6 +78,38 @@ def find_or_create_room(cur, room, building, room_id=None):
     return (new_id, room.strip(), b[0], b[1], 2)
 
 
+
+def log_housing(cur, pid, old_rid, new_rid, source):
+    """Записывает заселение / переселение / выселение в историю проживания"""
+    old_rid = int(old_rid) if old_rid else None
+    new_rid = int(new_rid) if new_rid else None
+    if not pid or old_rid == new_rid:
+        return
+
+    def info(rid):
+        if not rid:
+            return (None, '', '')
+        cur.execute("SELECT b.id, b.name, r.room_number FROM rooms r JOIN buildings b ON b.id = r.building_id WHERE r.id = %d" % rid)
+        row = cur.fetchone()
+        return row if row else (None, '', '')
+
+    ob, oname, onum = info(old_rid)
+    nb, nname, nnum = info(new_rid)
+    action = 'checkin' if not old_rid else ('evict' if not new_rid else 'move')
+    if action == 'evict':
+        nb, nname, nnum, old_rid_store = ob, oname, onum, old_rid
+        prev_b, prev_r = '', ''
+    else:
+        old_rid_store = new_rid
+        prev_b, prev_r = oname, onum
+    cur.execute("""
+        INSERT INTO housing_history (personnel_id, action, building_id, room_id, building_name, room_number,
+                                     prev_building_name, prev_room_number, source)
+        VALUES (%d, '%s', %s, %s, '%s', '%s', '%s', '%s', '%s')
+    """ % (int(pid), action, int(nb) if nb else 'NULL', int(old_rid_store) if old_rid_store else 'NULL',
+           (nname or '').replace("'", "''"), (nnum or '').replace("'", "''"),
+           (prev_b or '').replace("'", "''"), (prev_r or '').replace("'", "''"), source.replace("'", "''")))
+
 def handler(event, context):
     """АХО — загрузка списков, контроль въезда/выезда, расселение, статистика"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -516,6 +548,11 @@ def assign_room(body):
         conn.close()
         return json_response(404, {'error': 'Запись не найдена'})
     pid, full_name = who[0], who[1]
+    old_rid = None
+    if pid:
+        cur.execute("SELECT residence_room_id FROM personnel WHERE id = %d" % int(pid))
+        orow = cur.fetchone()
+        old_rid = orow[0] if orow else None
 
     cur.execute("""SELECT COUNT(*) FROM personnel WHERE residence_room_id = %d AND status IN ('arrived', 'on_shift')
                    AND COALESCE(is_hidden, FALSE) = FALSE AND id != %d""" % (r_id, int(pid or 0)))
@@ -542,6 +579,8 @@ def assign_room(body):
                     % (safe_num, safe_b, int(arrival_id)))
 
     sync_rooms(cur)
+    if pid:
+        log_housing(cur, pid, old_rid, r_id, 'АХО')
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
         VALUES ('housing', '%s — заселён: %s, комн. %s', %s)
@@ -578,6 +617,10 @@ def evict(body):
         return json_response(400, {'error': 'Не указан сотрудник'})
     conn = get_db()
     cur = conn.cursor()
+    cur.execute("SELECT residence_room_id FROM personnel WHERE id = %d" % int(personnel_id))
+    orow = cur.fetchone()
+    if orow and orow[0]:
+        log_housing(cur, int(personnel_id), orow[0], None, 'АХО')
     cur.execute("""UPDATE personnel SET residence_room_id = NULL, residence = COALESCE((SELECT name FROM buildings WHERE id = residence_building_id), ''),
                    room = '', updated_at = NOW() WHERE id = %d RETURNING full_name""" % int(personnel_id))
     row = cur.fetchone()
@@ -1454,6 +1497,9 @@ def update_room(body):
     if row:
         update_building_totals(cur, row[0])
     if 'is_active' in body and not body['is_active']:
+        cur.execute("SELECT id FROM personnel WHERE residence_room_id = %d" % int(room_id))
+        for ev in cur.fetchall():
+            log_housing(cur, ev[0], int(room_id), None, 'АХО — комната удалена')
         cur.execute("UPDATE personnel SET residence_room_id = NULL, updated_at = NOW() WHERE residence_room_id = %d" % int(room_id))
     sync_rooms(cur)
 
