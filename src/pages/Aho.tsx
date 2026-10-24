@@ -341,11 +341,11 @@ const Aho = () => {
     }
   };
 
-  const refreshHousing = () => {
+  const refreshHousing = (keepBuilding: number | null = selectedBuilding) => {
     loadArrivals();
     loadStats();
     loadBuildings();
-    if (selectedBuilding) openBuilding(selectedBuilding);
+    if (keepBuilding) openBuilding(keepBuilding);
     setHousingVersion((v) => v + 1);
   };
 
@@ -395,7 +395,7 @@ const Aho = () => {
       toast({ title: "Здание добавлено" });
       setNewBuildingName("");
       setNewBuildingNumber("");
-      loadBuildings();
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -420,6 +420,7 @@ const Aho = () => {
       toast({ title: res.message || "Готово" });
       setShowCleanupConfirm(false);
       setCleanupCount(0);
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     } finally {
@@ -431,7 +432,8 @@ const Aho = () => {
     try {
       await ahoApi.updateBuilding({ id, is_active: false });
       toast({ title: "Здание удалено" });
-      loadBuildings();
+      if (selectedBuilding === id) { setSelectedBuilding(null); setBuildingRooms([]); }
+      refreshHousing(selectedBuilding === id ? null : selectedBuilding);
       loadCleanupCount();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
@@ -458,8 +460,7 @@ const Aho = () => {
         floor: parseInt(newRoomFloor) || 1,
       });
       setNewRoomNumber("");
-      openBuilding(selectedBuilding);
-      loadBuildings();
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -482,8 +483,7 @@ const Aho = () => {
       toast({ title: res.message });
       setBatchFrom("");
       setBatchTo("");
-      openBuilding(selectedBuilding);
-      loadBuildings();
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -493,8 +493,7 @@ const Aho = () => {
     if (!selectedBuilding) return;
     try {
       await ahoApi.updateRoom({ id: roomId, is_active: false });
-      openBuilding(selectedBuilding);
-      loadBuildings();
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -521,8 +520,7 @@ const Aho = () => {
     try {
       await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap, floor });
       setEditingRoom(null);
-      openBuilding(selectedBuilding);
-      loadBuildings();
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     } finally {
@@ -536,7 +534,7 @@ const Aho = () => {
       await ahoApi.updateBuilding({ id, name: editBuildingName.trim(), number: editBuildingNumber.trim() || editBuildingName.trim() });
       toast({ title: "Здание обновлено" });
       setEditingBuilding(null);
-      loadBuildings();
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -1273,7 +1271,7 @@ const Aho = () => {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={showBuildingSettings} onOpenChange={(open) => { setShowBuildingSettings(open); setShowCleanupConfirm(false); }}>
+      <Dialog open={showBuildingSettings} onOpenChange={(open) => { setShowBuildingSettings(open); setShowCleanupConfirm(false); if (!open) refreshHousing(); }}>
         <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1384,7 +1382,7 @@ const Aho = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!selectedBuilding} onOpenChange={(open) => { if (!open) { setSelectedBuilding(null); setEditingRoom(null); } }}>
+      <Dialog open={!!selectedBuilding} onOpenChange={(open) => { if (!open) { setSelectedBuilding(null); setEditingRoom(null); refreshHousing(null); } }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
