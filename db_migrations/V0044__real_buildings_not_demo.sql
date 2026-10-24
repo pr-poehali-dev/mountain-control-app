@@ -1,0 +1,2 @@
+UPDATE buildings SET is_demo_data = FALSE, updated_at = NOW() WHERE is_active = TRUE AND is_demo_data = TRUE;
+UPDATE rooms SET is_demo_data = FALSE, updated_at = NOW() WHERE is_demo_data = TRUE AND building_id IN (SELECT id FROM buildings WHERE is_active = TRUE);
