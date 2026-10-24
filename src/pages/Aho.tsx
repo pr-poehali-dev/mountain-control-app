@@ -173,6 +173,8 @@ const Aho = () => {
   const [batchTo, setBatchTo] = useState("");
   const [batchCapacity, setBatchCapacity] = useState("2");
 
+  const [editingRoom, setEditingRoom] = useState<{ id: number; room_number: string; capacity: string } | null>(null);
+  const [savingRoom, setSavingRoom] = useState(false);
   const [editingBuilding, setEditingBuilding] = useState<number | null>(null);
   const [editBuildingName, setEditBuildingName] = useState("");
   const [editBuildingNumber, setEditBuildingNumber] = useState("");
@@ -462,6 +464,31 @@ const Aho = () => {
       loadBuildings();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
+  const handleSaveRoom = async () => {
+    if (!selectedBuilding || !editingRoom) return;
+    const num = editingRoom.room_number.trim();
+    const cap = parseInt(editingRoom.capacity);
+    if (!num) {
+      toast({ title: "Укажите номер комнаты", variant: "destructive" });
+      return;
+    }
+    if (isNaN(cap) || cap < 1) {
+      toast({ title: "Мест должно быть не меньше 1", variant: "destructive" });
+      return;
+    }
+    setSavingRoom(true);
+    try {
+      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap });
+      setEditingRoom(null);
+      openBuilding(selectedBuilding);
+      loadBuildings();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    } finally {
+      setSavingRoom(false);
     }
   };
 
@@ -1288,7 +1315,7 @@ const Aho = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!selectedBuilding} onOpenChange={(open) => { if (!open) setSelectedBuilding(null); }}>
+      <Dialog open={!!selectedBuilding} onOpenChange={(open) => { if (!open) { setSelectedBuilding(null); setEditingRoom(null); } }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1360,16 +1387,67 @@ const Aho = () => {
             ) : buildingRooms.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">Комнат пока нет</p>
             ) : (
+              <>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span>Комнат: <b className="text-foreground">{buildingRooms.length}</b></span>
+                <span>Койко-мест: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.capacity, 0)}</b></span>
+                <span>Занято: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.occupied, 0)}</b></span>
+                <span className="ml-auto flex items-center gap-1"><Icon name="Pencil" size={10} />— изменить номер и количество мест</span>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {buildingRooms.map(r => {
                   const isFull = r.occupied >= r.capacity;
+                  if (editingRoom?.id === r.id) {
+                    return (
+                      <div key={r.id} className="rounded-lg border border-mine-cyan/40 bg-mine-cyan/5 p-2.5 space-y-2">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">№ комнаты</p>
+                          <Input
+                            autoFocus
+                            value={editingRoom.room_number}
+                            onChange={e => setEditingRoom({ ...editingRoom, room_number: e.target.value })}
+                            onKeyDown={e => { if (e.key === "Enter") handleSaveRoom(); if (e.key === "Escape") setEditingRoom(null); }}
+                            className="h-8 bg-secondary/50 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">Койко-мест{r.occupied > 0 ? ` (живёт ${r.occupied})` : ""}</p>
+                          <Input
+                            type="number"
+                            min={Math.max(1, r.occupied)}
+                            value={editingRoom.capacity}
+                            onChange={e => setEditingRoom({ ...editingRoom, capacity: e.target.value })}
+                            onKeyDown={e => { if (e.key === "Enter") handleSaveRoom(); if (e.key === "Escape") setEditingRoom(null); }}
+                            className="h-8 bg-secondary/50 text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-1">
+                          <Button size="sm" onClick={handleSaveRoom} disabled={savingRoom} className="h-7 flex-1 px-2 bg-mine-green text-white hover:bg-mine-green/90">
+                            <Icon name={savingRoom ? "Loader2" : "Check"} size={12} className={savingRoom ? "animate-spin" : ""} />
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingRoom(null)} className="h-7 flex-1 px-2">
+                            <Icon name="X" size={12} />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={r.id} className={`rounded-lg border p-2.5 relative group ${isFull ? "border-mine-red/20 bg-mine-red/5" : r.occupied > 0 ? "border-mine-amber/20 bg-mine-amber/5" : "border-border bg-card"}`}>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-bold">{r.room_number}</span>
-                        <button onClick={() => handleDeleteRoom(r.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-mine-red/60 hover:text-mine-red">
-                          <Icon name="X" size={12} />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setEditingRoom({ id: r.id, room_number: r.room_number, capacity: String(r.capacity) })}
+                            className="text-muted-foreground hover:text-mine-cyan transition-colors"
+                            title="Изменить номер и количество мест"
+                          >
+                            <Icon name="Pencil" size={12} />
+                          </button>
+                          <button onClick={() => handleDeleteRoom(r.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-mine-red/60 hover:text-mine-red" title="Удалить комнату">
+                            <Icon name="X" size={12} />
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center justify-between mt-1">
                         <div className="flex items-center gap-1">
@@ -1404,6 +1482,7 @@ const Aho = () => {
                   );
                 })}
               </div>
+              </>
             )}
           </div>
         </DialogContent>

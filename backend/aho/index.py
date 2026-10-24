@@ -1472,11 +1472,38 @@ def update_room(body):
     conn = get_db()
     cur = conn.cursor()
 
+    cur.execute("SELECT building_id, occupied FROM rooms WHERE id = %d" % int(room_id))
+    cur_room = cur.fetchone()
+    if not cur_room:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Комната не найдена'})
+
     sets = []
     if 'room_number' in body:
-        sets.append("room_number = '%s'" % str(body['room_number']).replace("'", "''"))
+        new_num = str(body['room_number']).strip()
+        if not new_num:
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Укажите номер комнаты'})
+        cur.execute("SELECT id FROM rooms WHERE building_id = %d AND is_active = TRUE AND id <> %d AND room_number = '%s'"
+                    % (int(cur_room[0]), int(room_id), new_num.replace("'", "''")))
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Комната с номером %s уже есть в этом здании' % new_num})
+        sets.append("room_number = '%s'" % new_num.replace("'", "''"))
     if 'capacity' in body:
-        sets.append("capacity = %d" % int(body['capacity']))
+        cap = int(body['capacity'])
+        if cap < 1:
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'Мест должно быть не меньше 1'})
+        if cap < int(cur_room[1] or 0):
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': 'В комнате проживает %d чел. — мест не может быть меньше' % int(cur_room[1] or 0)})
+        sets.append("capacity = %d" % cap)
     if 'floor' in body:
         sets.append("floor = %d" % int(body['floor']))
     if 'notes' in body:
