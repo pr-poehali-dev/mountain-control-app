@@ -28,6 +28,14 @@ import ResidenceSelect, { ResidenceValue } from "@/components/personnel/Residenc
 import PassFields, { PassValue, EMPTY_PASS, inspectionLabels, passPeriodLabel, isPassExpired } from "@/components/personnel/PassFields";
 import AdminMedicalMarkDialog, { type MarkPerson } from "@/components/medical/AdminMedicalMarkDialog";
 import { QRCodeSVG } from "qrcode.react";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type BadgeLayout = "2x5" | "2x4" | "2x3" | "1x4" | "3x5";
 const layoutOptions: { value: BadgeLayout; label: string; cols: number; perPage: number }[] = [
@@ -192,6 +200,7 @@ const Personnel = () => {
 
   const [selectedPerson, setSelectedPerson] = useState<PersonnelItem | null>(null);
   const [showCard, setShowCard] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   const { user: authUser } = useAuth();
   const isAdminUser = authUser?.role === "admin" && localStorage.getItem("mc_demo") !== "true";
   const [markPerson, setMarkPerson] = useState<MarkPerson | null>(null);
@@ -397,8 +406,8 @@ const Personnel = () => {
     }
   };
 
-  const handleSaveEdit = async () => {
-    if (!selectedPerson) return;
+  const handleSaveEdit = async (): Promise<boolean> => {
+    if (!selectedPerson) return false;
     setEditLoading(true);
     setEditError("");
     const finalShift = (editMedical === "failed" || editMedical === "pending") ? "" : editShift;
@@ -440,10 +449,11 @@ const Personnel = () => {
       fillEdit(saved);
       setSavedFlash(true);
       fetchData();
-      const hRes = await personnelApi.getHistory(selectedPerson.id);
-      setHistory(hRes.events || []);
+      personnelApi.getHistory(selectedPerson.id).then((hRes) => setHistory(hRes.events || [])).catch(() => {});
+      return true;
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : "Ошибка сохранения");
+      return false;
     } finally {
       setEditLoading(false);
     }
@@ -473,6 +483,24 @@ const Personnel = () => {
     editPass.pass_valid_to !== (selectedPerson.pass_valid_to || "") ||
     editPass.inspection_mode !== (selectedPerson.inspection_mode || "general")
   );
+
+  const requestCloseCard = (open: boolean) => {
+    if (open) return setShowCard(true);
+    if (isDirty && !cardLocked) return setConfirmClose(true);
+    setShowCard(false);
+  };
+
+  const saveAndClose = async () => {
+    const ok = await handleSaveEdit();
+    setConfirmClose(false);
+    if (ok) setShowCard(false);
+  };
+
+  const discardAndClose = () => {
+    if (selectedPerson) fillEdit(selectedPerson);
+    setConfirmClose(false);
+    setShowCard(false);
+  };
 
   const openQrModal = (p: PersonnelItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -1002,7 +1030,30 @@ const Personnel = () => {
       </div>
 
       {/* === Карточка сотрудника === */}
-      <Dialog open={showCard} onOpenChange={setShowCard}>
+      <AlertDialog open={confirmClose} onOpenChange={(o) => { if (!o && !editLoading) setConfirmClose(false); }}>
+        <AlertDialogContent className="bg-card border-border sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-foreground">Сохранить изменения?</AlertDialogTitle>
+            <AlertDialogDescription>
+              В карточке «{selectedPerson?.full_name}» есть несохранённые изменения.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" onClick={() => setConfirmClose(false)} disabled={editLoading}>
+              Отмена
+            </Button>
+            <Button variant="outline" className="border-mine-red/30 text-mine-red hover:bg-mine-red/10 hover:text-mine-red" onClick={discardAndClose} disabled={editLoading}>
+              Не сохранять
+            </Button>
+            <Button className="gap-2 bg-mine-green text-white hover:bg-mine-green/90" onClick={saveAndClose} disabled={editLoading || !editName.trim() || passInvalid}>
+              {editLoading && <Icon name="Loader2" size={14} className="animate-spin" />}
+              Сохранить
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={showCard} onOpenChange={requestCloseCard}>
         <ResizableDialogContent storageKey="personnel-card-size" className="bg-card border-border sm:max-w-none">
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
@@ -1312,7 +1363,7 @@ const Personnel = () => {
 
       {/* === Добавление сотрудника === */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
-        <DialogContent className="sm:max-w-lg bg-card border-border">
+        <ResizableDialogContent storageKey="personnel-add-size" defaultWidth={720} minWidth={480} className="bg-card border-border sm:max-w-none">
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
               <Icon name="UserPlus" size={20} className="text-primary" />
@@ -1367,25 +1418,22 @@ const Personnel = () => {
                   {addError}
                 </div>
               )}
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">ФИО *</label>
-                <Input placeholder="Иванов Иван Иванович" value={formName} onChange={(e) => setFormName(e.target.value)} className="bg-secondary/50" required />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Должность</label>
-                  <Input placeholder="Горнорабочий" value={formPosition} onChange={(e) => setFormPosition(e.target.value)} className="bg-secondary/50" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Подразделение</label>
-                  <Input placeholder="Участок №1" value={formDept} onChange={(e) => setFormDept(e.target.value)} className="bg-secondary/50" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Категория *</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 grid-flow-row-dense">
+                <CardField label="ФИО *" className="sm:col-span-3">
+                  <AutoGrowInput value={formName} onChange={setFormName} placeholder="Иванов Иван Иванович" className="text-base font-bold" />
+                </CardField>
+                <CardField label="Должность" className={growSpan(formPosition)}>
+                  <AutoGrowInput value={formPosition} onChange={setFormPosition} placeholder="Горнорабочий" />
+                </CardField>
+                <CardField label="Подразделение" className={growSpan(formDept)}>
+                  <AutoGrowInput value={formDept} onChange={setFormDept} placeholder="Участок №1" />
+                </CardField>
+                <CardField label="Табельный №" className={formTabNum.length > 18 ? "sm:col-span-2" : ""}>
+                  <AutoGrowInput value={formTabNum} onChange={setFormTabNum} placeholder="001234" className="font-mono" />
+                </CardField>
+                <CardField label="Категория *">
                   <Select value={formCategory} onValueChange={setFormCategory}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className={inlineInput}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="mine">Рудничный</SelectItem>
                       <SelectItem value="contractor">Подрядчик</SelectItem>
@@ -1393,28 +1441,26 @@ const Personnel = () => {
                       <SelectItem value="guest">Гость</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Смена</label>
+                </CardField>
+                <CardField label="Смена">
                   <Select value={formShift || "none"} onValueChange={(v) => setFormShift(v === "none" ? "" : v)}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectTrigger className={inlineInput}><SelectValue placeholder="—" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">—</SelectItem>
                       <SelectItem value="A">Смена А</SelectItem>
                       <SelectItem value="B">Смена Б</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Наименование предприятия</label>
-                <Input placeholder="Название организации" value={formOrg} onChange={(e) => setFormOrg(e.target.value)} className="bg-secondary/50" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Тип организации</label>
+                </CardField>
+                <CardField label="Телефон" className={growSpan(formPhone)}>
+                  <AutoGrowInput value={formPhone} onChange={setFormPhone} placeholder="+7 900 111-22-33" />
+                </CardField>
+                <CardField label="Организация" className={growSpan(formOrg, 2)}>
+                  <AutoGrowInput value={formOrg} onChange={setFormOrg} placeholder="Название организации" />
+                </CardField>
+                <CardField label="Тип организации">
                   <Select value={formOrgType || "none"} onValueChange={(v) => setFormOrgType(v === "none" ? "" : v)}>
-                    <SelectTrigger className="bg-secondary/50"><SelectValue placeholder="Выберите тип" /></SelectTrigger>
+                    <SelectTrigger className={inlineInput}><SelectValue placeholder="Выберите тип" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">—</SelectItem>
                       <SelectItem value="rudnik">Рудник</SelectItem>
@@ -1423,29 +1469,15 @@ const Personnel = () => {
                       <SelectItem value="gov">Гос.органы</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Телефон</label>
-                  <Input placeholder="+7 900 111-22-33" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} className="bg-secondary/50" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Место проживания</label>
-                <ResidenceSelect value={formResidence} onChange={setFormResidence} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Пропуск</label>
-                <PassFields value={formPass} onChange={setFormPass} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Комната</label>
-                  <Input placeholder="301" value={formRoom} onChange={(e) => setFormRoom(e.target.value)} className="bg-secondary/50" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Табельный номер</label>
-                  <Input placeholder="001234" value={formTabNum} onChange={(e) => setFormTabNum(e.target.value)} className="bg-secondary/50" />
-                </div>
+                </CardField>
+                <CardField label="Место проживания" icon="Home" className="sm:col-span-3">
+                  <ResidenceSelect value={formResidence} onChange={setFormResidence} compact />
+                </CardField>
+                <CardField label="Пропуск" icon="CreditCard" className="sm:col-span-3">
+                  <div className="pt-1 pb-1">
+                    <PassFields value={formPass} onChange={setFormPass} />
+                  </div>
+                </CardField>
               </div>
               <div className="rounded-lg border border-mine-cyan/20 bg-mine-cyan/5 p-3 flex items-start gap-2">
                 <Icon name="Info" size={14} className="text-mine-cyan mt-0.5 flex-shrink-0" />
@@ -1460,7 +1492,7 @@ const Personnel = () => {
               </Button>
             </form>
           )}
-        </DialogContent>
+        </ResizableDialogContent>
       </Dialog>
       {isAdminUser && (
         <AdminMedicalMarkDialog

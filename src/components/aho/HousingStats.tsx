@@ -27,6 +27,7 @@ interface Resident {
   personal_code: string;
   room?: string;
   building?: string;
+  on_site?: boolean;
 }
 
 interface RoomDetail {
@@ -351,6 +352,7 @@ export default function HousingStats() {
                     {roomsData.map(room => {
                       const isExpanded = expandedRoom === room.room_number;
                       const hasResidents = room.residents.length > 0;
+                      const awayCount = room.residents.filter(r => r.on_site === false).length;
                       return (
                         <div key={room.id} className="rounded-lg border border-border bg-card overflow-hidden">
                           <button
@@ -373,6 +375,16 @@ export default function HousingStats() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              {hasResidents && (
+                                <span className="text-[10px] text-muted-foreground bg-secondary/60 px-1.5 py-0.5 rounded" title="Закреплено за комнатой">
+                                  закреплено {room.residents.length}
+                                </span>
+                              )}
+                              {awayCount > 0 && (
+                                <span className="text-[10px] text-mine-amber bg-mine-amber/10 px-1.5 py-0.5 rounded">
+                                  вне предприятия {awayCount}
+                                </span>
+                              )}
                               {room.free > 0 && (
                                 <span className="text-[10px] text-mine-green bg-mine-green/10 px-1.5 py-0.5 rounded">
                                   {room.free} св.
@@ -385,17 +397,23 @@ export default function HousingStats() {
                           </button>
                           {isExpanded && hasResidents && (
                             <div className="border-t border-border/50 bg-secondary/10">
-                              {room.residents.map(r => (
-                                <div key={r.id} className="px-3 py-2 border-b border-border/30 last:border-0 flex items-center gap-2">
-                                  <Icon name="User" size={13} className="text-muted-foreground/50 shrink-0" />
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-medium truncate">{r.full_name}</p>
-                                    <p className="text-[10px] text-muted-foreground truncate">
-                                      {[r.position, r.organization].filter(Boolean).join(" · ") || "—"}
-                                    </p>
+                              {room.residents.map(r => {
+                                const away = r.on_site === false;
+                                return (
+                                  <div key={r.id} className={`px-3 py-2 border-b border-border/30 last:border-0 flex items-center gap-2 ${away ? "opacity-70" : ""}`}>
+                                    <Icon name={away ? "UserMinus" : "UserCheck"} size={13} className={`shrink-0 ${away ? "text-mine-amber" : "text-mine-green"}`} />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium truncate">{r.full_name}</p>
+                                      <p className="text-[10px] text-muted-foreground truncate">
+                                        {[r.position, r.organization].filter(Boolean).join(" · ") || "—"}
+                                      </p>
+                                    </div>
+                                    <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${away ? "text-mine-amber bg-mine-amber/10" : "text-mine-green bg-mine-green/10"}`}>
+                                      {away ? "вне предприятия" : "на предприятии"}
+                                    </span>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>

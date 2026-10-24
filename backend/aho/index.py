@@ -1359,6 +1359,16 @@ def get_rooms(params):
     """ % (ROOM_OCC, int(building_id)))
     rows = cur.fetchall()
 
+    cur.execute("""
+        SELECT p.residence_room_id, p.id, p.full_name, COALESCE(p.position, ''), p.status IN ('arrived', 'on_shift'), p.status
+        FROM personnel p JOIN rooms r ON r.id = p.residence_room_id
+        WHERE r.building_id = %d AND p.status != 'archived' AND COALESCE(p.is_hidden, FALSE) = FALSE
+        ORDER BY (p.status IN ('arrived', 'on_shift')) DESC, p.full_name
+    """ % int(building_id))
+    res_map = {}
+    for x in cur.fetchall():
+        res_map.setdefault(x[0], []).append({'id': x[1], 'full_name': x[2], 'position': x[3], 'on_site': bool(x[4]), 'status': x[5] or ''})
+
     cur.close()
     conn.close()
 
@@ -1370,6 +1380,7 @@ def get_rooms(params):
             'floor': r[3], 'notes': r[4] or '', 'is_active': r[5],
             'building_name': r[6],
             'occupied': r[7],
+            'residents': res_map.get(r[0], []),
         })
     return json_response(200, {'rooms': rooms})
 
@@ -1565,10 +1576,11 @@ def get_housing_stats(params):
         room_rows = cur.fetchall()
 
         cur.execute("""
-            SELECT r.room_number, p.id, p.full_name, p.position, p.organization, p.personal_code
+            SELECT r.room_number, p.id, p.full_name, p.position, p.organization, p.personal_code,
+                   p.status IN ('arrived', 'on_shift'), p.status
             FROM personnel p JOIN rooms r ON r.id = p.residence_room_id
-            WHERE r.building_id = %d AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE
-            ORDER BY r.room_number, p.full_name
+            WHERE r.building_id = %d AND p.status != 'archived' AND COALESCE(p.is_hidden, FALSE) = FALSE
+            ORDER BY r.room_number, (p.status IN ('arrived', 'on_shift')) DESC, p.full_name
         """ % bid)
         residents = cur.fetchall()
 
@@ -1580,6 +1592,7 @@ def get_housing_stats(params):
             res_map[rm].append({
                 'id': res[1], 'full_name': res[2], 'position': res[3] or '',
                 'organization': res[4] or '', 'personal_code': res[5] or '',
+                'on_site': bool(res[6]), 'status': res[7] or '',
             })
 
         rooms_detail = []
@@ -1588,7 +1601,8 @@ def get_housing_stats(params):
             room_residents = res_map.get(rnum, [])
             rooms_detail.append({
                 'id': rr[0], 'room_number': rnum, 'capacity': rr[2], 'floor': rr[3],
-                'occupied': len(room_residents), 'free': rr[2] - len(room_residents),
+                'occupied': sum(1 for x in room_residents if x['on_site']),
+                'free': rr[2] - sum(1 for x in room_residents if x['on_site']),
                 'residents': room_residents,
             })
 

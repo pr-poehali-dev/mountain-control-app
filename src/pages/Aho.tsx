@@ -164,6 +164,7 @@ const Aho = () => {
   const [buildingRooms, setBuildingRooms] = useState<Array<{
     id: number; room_number: string; capacity: number; floor: number;
     notes: string; is_active: boolean; building_name: string; occupied: number;
+    residents?: { id: number; full_name: string; position: string; on_site: boolean }[];
   }>>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [newRoomNumber, setNewRoomNumber] = useState("");
@@ -1386,6 +1387,19 @@ const Aho = () => {
                           </button>
                         )}
                       </div>
+                      {(r.residents?.length ?? 0) > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border/40 space-y-1">
+                          {r.residents!.map((p) => (
+                            <div key={p.id} className="flex items-start gap-1" title={p.on_site ? "На предприятии" : "Вне предприятия — место временно свободно"}>
+                              <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${p.on_site ? "bg-mine-green" : "bg-mine-amber"}`} />
+                              <div className="min-w-0">
+                                <p className={`text-[10px] leading-tight break-words ${p.on_site ? "text-foreground" : "text-muted-foreground"}`}>{p.full_name}</p>
+                                {!p.on_site && <p className="text-[9px] text-mine-amber leading-tight">вне предприятия</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
