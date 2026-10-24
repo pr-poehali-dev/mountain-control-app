@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ahoApi } from "@/lib/api";
+import FloorOccupancy, { type FloorStat } from "@/components/aho/FloorOccupancy";
 
 interface BuildingStat {
   id: number;
@@ -17,6 +18,7 @@ interface BuildingStat {
   total_beds: number;
   occupied_beds: number;
   free_beds: number;
+  floors?: FloorStat[];
 }
 
 interface Resident {
@@ -238,6 +240,14 @@ export default function HousingStats() {
           </button>
         )}
       </div>
+
+      <FloorOccupancy
+        buildings={data.buildings}
+        onBuildingClick={(id) => {
+          const b = data.buildings.find((x) => x.id === id);
+          if (b) openBuildingRooms(b, "all");
+        }}
+      />
 
       <Dialog open={dialogMode !== null} onOpenChange={(open) => { if (!open) closeDialog(); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">

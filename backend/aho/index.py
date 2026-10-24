@@ -1664,6 +1664,22 @@ def get_housing_stats(params):
             'occupied_beds': occ, 'free_beds': beds - occ,
         })
 
+    cur.execute("""
+        SELECT r.building_id, COALESCE(r.floor, 0), COUNT(*), COALESCE(SUM(r.capacity), 0), COALESCE(SUM(%s), 0)::int
+        FROM rooms r JOIN buildings b ON b.id = r.building_id
+        WHERE r.is_active = TRUE AND b.is_active = TRUE
+        GROUP BY r.building_id, COALESCE(r.floor, 0)
+        ORDER BY r.building_id, COALESCE(r.floor, 0)
+    """ % ROOM_OCC)
+    floors_map = {}
+    for fr in cur.fetchall():
+        floors_map.setdefault(fr[0], []).append({
+            'floor': fr[1], 'rooms_count': fr[2], 'total_beds': fr[3],
+            'occupied_beds': fr[4], 'free_beds': max(fr[3] - fr[4], 0),
+        })
+    for bl in buildings_list:
+        bl['floors'] = floors_map.get(bl['id'], [])
+
     result = {
         'total_buildings': total_buildings,
         'total_beds': total_beds,
