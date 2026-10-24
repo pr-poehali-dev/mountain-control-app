@@ -31,6 +31,19 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
+
+def sync_rooms(cur):
+    """Пересчитывает занятость и статус комнат по проживающим на предприятии"""
+    cur.execute("""
+        UPDATE rooms r SET occupied = s.cnt,
+            status = CASE WHEN s.cnt = 0 THEN 'free' WHEN s.cnt >= r.capacity THEN 'full' ELSE 'partial' END
+        FROM (SELECT r2.id, COUNT(p.id) AS cnt FROM rooms r2
+              LEFT JOIN personnel p ON p.residence_room_id = r2.id
+                AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE
+              GROUP BY r2.id) s
+        WHERE s.id = r.id
+    """)
+
 def handler(event, context):
     """КПП — фиксация входа/выхода через сканер, журнал проходов, связь с АХО"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -141,6 +154,7 @@ def register_pass(body):
         INSERT INTO events (event_type, description, personnel_id)
         VALUES ('%s', '%s', %d)
     """ % (event_type, event_desc, person_id))
+    sync_rooms(cur)
 
     conn.commit()
     cur.close()
@@ -399,6 +413,7 @@ def sync_person_status(cur, personnel_id):
         UPDATE personnel SET status = '%s', updated_at = NOW()
         WHERE id = %d AND status IN ('arrived', 'departed', 'on_shift')
     """ % (new_status, int(personnel_id)))
+    sync_rooms(cur)
 
 
 def update_pass(event, body):

@@ -33,6 +33,19 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
+
+def sync_rooms(cur):
+    """Пересчитывает занятость и статус комнат по проживающим на предприятии"""
+    cur.execute("""
+        UPDATE rooms r SET occupied = s.cnt,
+            status = CASE WHEN s.cnt = 0 THEN 'free' WHEN s.cnt >= r.capacity THEN 'full' ELSE 'partial' END
+        FROM (SELECT r2.id, COUNT(p.id) AS cnt FROM rooms r2
+              LEFT JOIN personnel p ON p.residence_room_id = r2.id
+                AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE
+              GROUP BY r2.id) s
+        WHERE s.id = r.id
+    """)
+
 def handler(event, context):
     """Управление персоналом рудника — список, добавление, обновление статусов"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -147,14 +160,14 @@ def get_stats(event):
     cur.execute("SELECT COALESCE(organization, ''), COUNT(*) FROM personnel WHERE status != 'archived' AND is_hidden = FALSE AND organization != '' %s GROUP BY organization ORDER BY COUNT(*) DESC LIMIT 20" % demo_filter)
     by_org = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COUNT(*) FROM rooms")
-    total_rooms = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM rooms WHERE occupied > 0")
-    occupied_rooms = cur.fetchone()[0]
-    cur.execute("SELECT COALESCE(SUM(capacity), 0) FROM rooms")
-    total_beds = cur.fetchone()[0]
-    cur.execute("SELECT COALESCE(SUM(occupied), 0) FROM rooms")
-    occupied_beds = cur.fetchone()[0]
+    cur.execute("""
+        SELECT COUNT(*), COUNT(*) FILTER (WHERE occ > 0), COALESCE(SUM(capacity), 0)::int, COALESCE(SUM(occ), 0)::int
+        FROM (SELECT r.capacity, (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id
+                  AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE) AS occ
+              FROM rooms r JOIN buildings b ON b.id = r.building_id
+              WHERE r.is_active = TRUE AND b.is_active = TRUE) t
+    """)
+    total_rooms, occupied_rooms, total_beds, occupied_beds = cur.fetchone()
 
     cur.close()
     conn.close()
@@ -222,9 +235,18 @@ def add_person(body):
         cur.execute("UPDATE personnel SET %s WHERE id = %d" % (', '.join(pass_sets), row[0]))
 
     res_b, res_r, res_label = resolve_residence(cur, body)
+    if res_r:
+        res_err = check_room_capacity(cur, res_r, row[0])
+        if res_err:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return json_response(400, {'error': res_err})
     if res_label:
-        cur.execute("UPDATE personnel SET residence = '%s', residence_building_id = %s, residence_room_id = %s WHERE id = %d" % (
-            res_label.replace("'", "''"), int(res_b) if res_b else 'NULL', int(res_r) if res_r else 'NULL', row[0]))
+        cur.execute("UPDATE personnel SET residence = '%s', residence_building_id = %s, residence_room_id = %s%s WHERE id = %d" % (
+            res_label.replace("'", "''"), int(res_b) if res_b else 'NULL', int(res_r) if res_r else 'NULL',
+            room_number_set(cur, res_r), row[0]))
+        sync_rooms(cur)
 
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
@@ -264,6 +286,7 @@ def update_status(body, event=None):
         WHERE id = %d RETURNING full_name
     """ % (new_status.replace("'", "''"), int(person_id)))
     row = cur.fetchone()
+    sync_rooms(cur)
 
     if not row:
         cur.close()
@@ -347,7 +370,9 @@ def get_residences(event):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT b.id, b.name, b.number, r.id, r.room_number, r.floor, r.capacity
+        SELECT b.id, b.name, b.number, r.id, r.room_number, r.floor, r.capacity,
+               (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id
+                  AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)
         FROM buildings b
         LEFT JOIN rooms r ON r.building_id = b.id AND r.is_active = TRUE
         WHERE b.is_active = TRUE
@@ -364,8 +389,30 @@ def get_residences(event):
             by_id[r[0]] = {'id': r[0], 'name': r[1], 'number': r[2] or '', 'rooms': []}
             buildings.append(by_id[r[0]])
         if r[3]:
-            by_id[r[0]]['rooms'].append({'id': r[3], 'room_number': r[4], 'floor': r[5], 'capacity': r[6]})
+            by_id[r[0]]['rooms'].append({'id': r[3], 'room_number': r[4], 'floor': r[5], 'capacity': r[6], 'occupied': r[7]})
     return json_response(200, {'buildings': buildings})
+
+
+def room_number_set(cur, room_id):
+    if not room_id:
+        return ''
+    cur.execute("SELECT room_number FROM rooms WHERE id = %d" % int(room_id))
+    rn = cur.fetchone()
+    return ", room = '%s'" % rn[0].replace("'", "''") if rn else ''
+
+
+def check_room_capacity(cur, room_id, person_id):
+    cur.execute("""
+        SELECT r.room_number, r.capacity,
+               (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.id != %d
+                  AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE),
+               (SELECT residence_room_id FROM personnel WHERE id = %d)
+        FROM rooms r WHERE r.id = %d
+    """ % (int(person_id), int(person_id), int(room_id)))
+    row = cur.fetchone()
+    if row and row[3] != int(room_id) and row[2] >= row[1]:
+        return 'Комната %s заполнена (%d/%d)' % (row[0], row[2], row[1])
+    return ''
 
 
 def resolve_residence(cur, body):
@@ -469,6 +516,7 @@ def edit_person(body, event=None):
     person_name = old_row[0]
     old_medical = old_row[1] or 'pending'
 
+    housing_changed = False
     set_parts = []
     for key, val in fields.items():
         set_parts.append("%s = '%s'" % (key, val.replace("'", "''")))
@@ -477,13 +525,32 @@ def edit_person(body, event=None):
         set_parts.append("residence = '%s'" % res_label.replace("'", "''"))
         set_parts.append("residence_building_id = %s" % (int(res_b) if res_b else 'NULL'))
         set_parts.append("residence_room_id = %s" % (int(res_r) if res_r else 'NULL'))
+        if res_r:
+            res_err = check_room_capacity(cur, res_r, int(person_id))
+            if res_err:
+                cur.close()
+                conn.close()
+                return json_response(400, {'error': res_err})
+            cur.execute("SELECT room_number FROM rooms WHERE id = %d" % int(res_r))
+            rn = cur.fetchone()
+            if rn:
+                set_parts = [x for x in set_parts if not x.startswith("room = ")]
+                set_parts.append("room = '%s'" % rn[0].replace("'", "''"))
         fields['residence'] = res_label
+        housing_changed = True
     set_parts.extend(pass_sets)
     set_parts.append("updated_at = NOW()")
 
     cur.execute("""
         UPDATE personnel SET %s WHERE id = %d
     """ % (', '.join(set_parts), int(person_id)))
+    sync_rooms(cur)
+    if housing_changed:
+        cur.execute("""
+            UPDATE aho_arrivals a SET room = COALESCE(r.room_number, ''), building = COALESCE(b.name, ''), updated_at = NOW()
+            FROM personnel p LEFT JOIN rooms r ON r.id = p.residence_room_id LEFT JOIN buildings b ON b.id = r.building_id
+            WHERE p.id = a.personnel_id AND a.personnel_id = %d AND a.is_hidden = FALSE AND a.arrival_status != 'departed'
+        """ % int(person_id))
 
     if new_medical and new_medical != old_medical:
         medical_labels = {'passed': 'пройден', 'failed': 'не пройден', 'pending': 'ожидает'}

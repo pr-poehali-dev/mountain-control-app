@@ -271,6 +271,12 @@ export const ahoApi = {
     request(API.aho, "", { method: "PUT", body: { id }, params: { action: "checkout" } }),
   assignRoom: (id: number, room: string, building: string) =>
     request(API.aho, "", { method: "PUT", body: { id, room, building }, params: { action: "assign-room" } }),
+  assignRoomById: (body: { id?: number; personnel_id?: number; room_id: number }) =>
+    request(API.aho, "", { method: "PUT", body, params: { action: "assign-room" } }),
+  evict: (personnel_id: number) =>
+    request(API.aho, "", { method: "PUT", body: { personnel_id }, params: { action: "evict" } }),
+  getUnhoused: () =>
+    request(API.aho, "", { params: { action: "unhoused" } }),
   getStats: () =>
     request(API.aho, "", { params: { action: "stats" } }),
   getMedicalStatus: (params?: Record<string, string>) =>

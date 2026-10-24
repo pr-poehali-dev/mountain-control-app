@@ -35,6 +35,49 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
+ON_SITE = "('arrived', 'on_shift')"
+ROOM_OCC = "(SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)"
+
+
+def sync_rooms(cur):
+    """Пересчитывает занятость и статус комнат по проживающим на предприятии"""
+    cur.execute("""
+        UPDATE rooms r SET occupied = s.cnt,
+            status = CASE WHEN s.cnt = 0 THEN 'free' WHEN s.cnt >= r.capacity THEN 'full' ELSE 'partial' END
+        FROM (SELECT r2.id, COUNT(p.id) AS cnt FROM rooms r2
+              LEFT JOIN personnel p ON p.residence_room_id = r2.id
+                AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE
+              GROUP BY r2.id) s
+        WHERE s.id = r.id
+    """)
+
+
+def find_or_create_room(cur, room, building, room_id=None):
+    if room_id:
+        cur.execute("""SELECT r.id, r.room_number, b.id, b.name, r.capacity FROM rooms r
+                       JOIN buildings b ON b.id = r.building_id WHERE r.id = %d""" % int(room_id))
+        return cur.fetchone()
+    safe_room = room.strip().replace("'", "''")
+    safe_b = building.strip().replace("'", "''")
+    cond = "AND (b.name = '%s' OR b.number = '%s')" % (safe_b, safe_b) if safe_b else ""
+    cur.execute("""SELECT r.id, r.room_number, b.id, b.name, r.capacity FROM rooms r
+                   JOIN buildings b ON b.id = r.building_id
+                   WHERE r.room_number = '%s' AND r.is_active = TRUE AND b.is_active = TRUE %s
+                   ORDER BY b.sort_order, b.id LIMIT 1""" % (safe_room, cond))
+    row = cur.fetchone()
+    if row or not safe_b:
+        return row
+    cur.execute("SELECT id, name FROM buildings WHERE (name = '%s' OR number = '%s') AND is_active = TRUE ORDER BY id LIMIT 1" % (safe_b, safe_b))
+    b = cur.fetchone()
+    if not b:
+        return None
+    cur.execute("INSERT INTO rooms (building_id, building, room_number, capacity, floor) VALUES (%d, '%s', '%s', 2, 1) RETURNING id"
+                % (b[0], b[1].replace("'", "''"), safe_room))
+    new_id = cur.fetchone()[0]
+    update_building_totals(cur, b[0])
+    return (new_id, room.strip(), b[0], b[1], 2)
+
+
 def handler(event, context):
     """АХО — загрузка списков, контроль въезда/выезда, расселение, статистика"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -55,6 +98,10 @@ def handler(event, context):
         return check_in(body)
     elif method == 'PUT' and action == 'checkout':
         return check_out(body)
+    elif method == 'GET' and action == 'unhoused':
+        return get_unhoused(event)
+    elif method == 'PUT' and action == 'evict':
+        return evict(body)
     elif method == 'PUT' and action == 'assign-room':
         return assign_room(body)
     elif method == 'GET' and action == 'stats':
@@ -296,11 +343,14 @@ def get_arrivals(params, event):
     query = """
         SELECT a.id, a.batch_id, a.personnel_id, a.full_name, a.position, a.department,
                a.organization, a.organization_type, a.phone, a.arrival_date, a.departure_date,
-               a.arrival_status, a.check_in_at, a.check_out_at, a.room, a.building,
+               a.arrival_status, a.check_in_at, a.check_out_at,
+               COALESCE(pr.room_number, NULLIF(a.room, '')), COALESCE(pb.name, NULLIF(a.building, '')),
                a.medical_status, a.personal_code, a.notes, a.created_at,
                p.medical_status as current_medical, p.status as person_status, p.qr_code
         FROM aho_arrivals a
         LEFT JOIN personnel p ON a.personnel_id = p.id
+        LEFT JOIN rooms pr ON pr.id = p.residence_room_id
+        LEFT JOIN buildings pb ON pb.id = pr.building_id
         WHERE a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s)
     """ % ('TRUE' if is_demo_request(event) else 'FALSE')
     if batch_id:
@@ -391,6 +441,7 @@ def check_in(body):
             INSERT INTO events (event_type, description, personnel_id)
             VALUES ('check_in', '%s — въехал на территорию (АХО)', %d)
         """ % (row[1].replace("'", "''"), row[0]))
+        sync_rooms(cur)
 
     conn.commit()
     cur.close()
@@ -426,6 +477,7 @@ def check_out(body):
             INSERT INTO events (event_type, description, personnel_id)
             VALUES ('check_out', '%s — выехал с территории (АХО)', %d)
         """ % (row[1].replace("'", "''"), row[0]))
+        sync_rooms(cur)
 
     conn.commit()
     cur.close()
@@ -436,51 +488,111 @@ def check_out(body):
 
 def assign_room(body):
     arrival_id = body.get('id')
-    room = body.get('room', '')
-    building = body.get('building', '')
+    personnel_id = body.get('personnel_id')
+    room = str(body.get('room', '') or '')
+    building = str(body.get('building', '') or '')
+    room_id = body.get('room_id')
 
-    if not arrival_id or not room:
-        return json_response(400, {'error': 'ID и номер комнаты обязательны'})
+    if not (arrival_id or personnel_id) or not (room or room_id):
+        return json_response(400, {'error': 'Укажите сотрудника и комнату'})
 
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, capacity, occupied FROM rooms WHERE room_number = '%s'" % room.replace("'", "''"))
-    room_row = cur.fetchone()
-    if room_row and room_row[2] >= room_row[1]:
+    room_row = find_or_create_room(cur, room, building, room_id)
+    if not room_row:
         cur.close()
         conn.close()
-        return json_response(400, {'error': 'Комната %s заполнена (%d/%d)' % (room, room_row[2], room_row[1])})
+        return json_response(400, {'error': 'Комната %s не найдена. Сначала добавьте её в разделе «Здания»' % room})
+    r_id, r_num, b_id, b_name, capacity = room_row
 
-    cur.execute("""
-        UPDATE aho_arrivals SET room = '%s', building = '%s', updated_at = NOW()
-        WHERE id = %d RETURNING personnel_id, full_name
-    """ % (room.replace("'", "''"), building.replace("'", "''"), int(arrival_id)))
-    row = cur.fetchone()
-
-    if not row:
+    if arrival_id:
+        cur.execute("SELECT personnel_id, full_name FROM aho_arrivals WHERE id = %d" % int(arrival_id))
+    else:
+        cur.execute("SELECT id, full_name FROM personnel WHERE id = %d" % int(personnel_id))
+    who = cur.fetchone()
+    if not who:
         cur.close()
         conn.close()
         return json_response(404, {'error': 'Запись не найдена'})
+    pid, full_name = who[0], who[1]
 
-    if row[0]:
+    cur.execute("""SELECT COUNT(*) FROM personnel WHERE residence_room_id = %d AND status IN ('arrived', 'on_shift')
+                   AND COALESCE(is_hidden, FALSE) = FALSE AND id != %d""" % (r_id, int(pid or 0)))
+    occ = cur.fetchone()[0]
+    if occ >= capacity:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Комната %s заполнена (%d/%d)' % (r_num, occ, capacity)})
+
+    safe_num = r_num.replace("'", "''")
+    safe_b = b_name.replace("'", "''")
+    if pid:
         cur.execute("""
-            UPDATE personnel SET room = '%s', updated_at = NOW() WHERE id = %d
-        """ % (room.replace("'", "''"), row[0]))
+            UPDATE personnel SET residence_room_id = %d, residence_building_id = %d,
+                residence = '%s, комн. %s', room = '%s', updated_at = NOW()
+            WHERE id = %d
+        """ % (r_id, b_id, safe_b, safe_num, safe_num, int(pid)))
+        cur.execute("""
+            UPDATE aho_arrivals SET room = '%s', building = '%s', updated_at = NOW()
+            WHERE personnel_id = %d AND is_hidden = FALSE AND arrival_status != 'departed'
+        """ % (safe_num, safe_b, int(pid)))
+    if arrival_id:
+        cur.execute("UPDATE aho_arrivals SET room = '%s', building = '%s', updated_at = NOW() WHERE id = %d"
+                    % (safe_num, safe_b, int(arrival_id)))
 
-    if room_row:
-        cur.execute("UPDATE rooms SET occupied = occupied + 1 WHERE id = %d" % room_row[0])
-
+    sync_rooms(cur)
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
-        VALUES ('housing', '%s — заселён в комнату %s', %s)
-    """ % (row[1].replace("'", "''"), room.replace("'", "''"), row[0] if row[0] else 'NULL'))
+        VALUES ('housing', '%s — заселён: %s, комн. %s', %s)
+    """ % (full_name.replace("'", "''"), safe_b, safe_num, int(pid) if pid else 'NULL'))
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return json_response(200, {'message': '%s заселён в комнату %s' % (row[1], room)})
+    return json_response(200, {'message': '%s заселён: %s, комн. %s' % (full_name, b_name, r_num)})
+
+
+def get_unhoused(event):
+    """Сотрудники на предприятии без комнаты — и из АХО, и из раздела «Персонал»"""
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT p.id, p.full_name, p.personal_code, COALESCE(p.organization, ''), COALESCE(p.position, '')
+        FROM personnel p
+        WHERE p.residence_room_id IS NULL AND p.status IN ('arrived', 'on_shift')
+          AND COALESCE(p.is_hidden, FALSE) = FALSE AND p.is_demo_data = %s
+        ORDER BY p.full_name LIMIT 500
+    """ % demo_val)
+    items = [{'personnel_id': r[0], 'full_name': r[1], 'personal_code': r[2], 'organization': r[3], 'position': r[4]} for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return json_response(200, {'items': items})
+
+
+def evict(body):
+    personnel_id = body.get('personnel_id')
+    if not personnel_id:
+        return json_response(400, {'error': 'Не указан сотрудник'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""UPDATE personnel SET residence_room_id = NULL, residence = COALESCE((SELECT name FROM buildings WHERE id = residence_building_id), ''),
+                   room = '', updated_at = NOW() WHERE id = %d RETURNING full_name""" % int(personnel_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник не найден'})
+    cur.execute("UPDATE aho_arrivals SET room = '', building = '', updated_at = NOW() WHERE personnel_id = %d AND is_hidden = FALSE" % int(personnel_id))
+    sync_rooms(cur)
+    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('housing', '%s — выселен из комнаты', %d)"
+                % (row[0].replace("'", "''"), int(personnel_id)))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'message': '%s выселен' % row[0]})
 
 
 def get_stats(event):
@@ -495,10 +607,10 @@ def get_stats(event):
     cur.execute("SELECT a.arrival_status, COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND (p.id IS NULL OR p.is_demo_data = %s) GROUP BY a.arrival_status" % demo_val)
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND a.room IS NOT NULL AND a.room != '' AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND (p.residence_room_id IS NOT NULL OR (p.id IS NULL AND a.room IS NOT NULL AND a.room != '')) AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
     housed = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND (a.room IS NULL OR a.room = '') AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
+    cur.execute("SELECT COUNT(*) FROM aho_arrivals a LEFT JOIN personnel p ON a.personnel_id = p.id WHERE a.is_hidden = FALSE AND p.residence_room_id IS NULL AND (p.id IS NOT NULL OR a.room IS NULL OR a.room = '') AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
     not_housed = cur.fetchone()[0]
 
     cur.execute("""
@@ -525,7 +637,8 @@ def get_stats(event):
     cur.execute("SELECT COUNT(*) FROM aho_batches WHERE is_hidden = FALSE")
     total_batches = cur.fetchone()[0]
 
-    cur.execute("SELECT COALESCE(SUM(capacity), 0), COALESCE(SUM(occupied), 0) FROM rooms")
+    cur.execute("""SELECT COALESCE(SUM(r.capacity), 0), COALESCE(SUM(%s), 0)::int FROM rooms r
+                   JOIN buildings b ON b.id = r.building_id WHERE r.is_active = TRUE AND b.is_active = TRUE""" % ROOM_OCC)
     rooms_row = cur.fetchone()
 
     cur.close()
@@ -730,6 +843,7 @@ def mass_check_in(body):
                     VALUES ('check_in', '%s — массовый въезд (АХО)', %d)
                 """ % (row[1].replace("'", "''"), row[0]))
 
+    sync_rooms(cur)
     conn.commit()
     cur.close()
     conn.close()
@@ -765,6 +879,7 @@ def mass_check_out(body):
                     VALUES ('check_out', '%s — массовый выезд (АХО)', %d)
                 """ % (row[1].replace("'", "''"), row[0]))
 
+    sync_rooms(cur)
     conn.commit()
     cur.close()
     conn.close()
@@ -1149,11 +1264,11 @@ def get_buildings():
         SELECT b.id, b.name, b.number, b.total_rooms, b.total_capacity, b.sort_order, b.is_active,
                (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as actual_rooms,
                (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as actual_capacity,
-               (SELECT COUNT(*) FROM aho_arrivals a WHERE a.building = b.name AND a.arrival_status = 'arrived' AND a.room != '' AND a.room IS NOT NULL) as occupied_people
+               (SELECT COALESCE(SUM(%s), 0)::int FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as occupied_people
         FROM buildings b
         WHERE b.is_active = TRUE
         ORDER BY b.sort_order, b.id
-    """)
+    """ % ROOM_OCC)
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -1236,21 +1351,13 @@ def get_rooms(params):
     cur = conn.cursor()
     cur.execute("""
         SELECT r.id, r.room_number, r.capacity, r.floor, r.notes, r.is_active,
-               b.name as building_name
+               b.name as building_name, %s
         FROM rooms r
         JOIN buildings b ON r.building_id = b.id
         WHERE r.building_id = %d AND r.is_active = TRUE
         ORDER BY r.floor, r.room_number
-    """ % int(building_id))
+    """ % (ROOM_OCC, int(building_id)))
     rows = cur.fetchall()
-
-    cur.execute("""
-        SELECT a.room, COUNT(*) FROM aho_arrivals a
-        JOIN buildings b ON a.building = b.name
-        WHERE b.id = %d AND a.arrival_status = 'arrived' AND a.room IS NOT NULL AND a.room != ''
-        GROUP BY a.room
-    """ % int(building_id))
-    occupied_map = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.close()
     conn.close()
@@ -1262,7 +1369,7 @@ def get_rooms(params):
             'id': r[0], 'room_number': room_num, 'capacity': r[2],
             'floor': r[3], 'notes': r[4] or '', 'is_active': r[5],
             'building_name': r[6],
-            'occupied': occupied_map.get(room_num, 0),
+            'occupied': r[7],
         })
     return json_response(200, {'rooms': rooms})
 
@@ -1295,6 +1402,7 @@ def create_room(body):
     room_id = cur.fetchone()[0]
 
     update_building_totals(cur, int(building_id))
+    sync_rooms(cur)
     conn.commit()
     cur.close()
     conn.close()
@@ -1334,6 +1442,9 @@ def update_room(body):
     row = cur.fetchone()
     if row:
         update_building_totals(cur, row[0])
+    if 'is_active' in body and not body['is_active']:
+        cur.execute("UPDATE personnel SET residence_room_id = NULL, updated_at = NOW() WHERE residence_room_id = %d" % int(room_id))
+    sync_rooms(cur)
 
     conn.commit()
     cur.close()
@@ -1405,11 +1516,11 @@ def get_housing_stats(params):
         SELECT b.id, b.name, b.number,
                (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as rooms_count,
                (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as total_beds,
-               (SELECT COUNT(*) FROM aho_arrivals a WHERE a.building = b.name AND a.arrival_status = 'arrived' AND a.room IS NOT NULL AND a.room != '') as occupied_beds
+               (SELECT COALESCE(SUM(%s), 0)::int FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as occupied_beds
         FROM buildings b
         WHERE b.is_active = TRUE
         ORDER BY b.sort_order, b.id
-    """)
+    """ % ROOM_OCC)
     brows = cur.fetchall()
 
     buildings_list = []
@@ -1453,14 +1564,12 @@ def get_housing_stats(params):
         """ % bid)
         room_rows = cur.fetchall()
 
-        safe_bname = bname.replace("'", "''")
         cur.execute("""
-            SELECT a.room, a.id, a.full_name, a.position, a.organization, a.personal_code
-            FROM aho_arrivals a
-            WHERE a.building = '%s' AND a.arrival_status = 'arrived'
-              AND a.room IS NOT NULL AND a.room != '' AND a.is_hidden = FALSE
-            ORDER BY a.room, a.full_name
-        """ % safe_bname)
+            SELECT r.room_number, p.id, p.full_name, p.position, p.organization, p.personal_code
+            FROM personnel p JOIN rooms r ON r.id = p.residence_room_id
+            WHERE r.building_id = %d AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE
+            ORDER BY r.room_number, p.full_name
+        """ % bid)
         residents = cur.fetchall()
 
         res_map = {}
@@ -1490,12 +1599,13 @@ def get_housing_stats(params):
 
     if detail == 'all-residents':
         cur.execute("""
-            SELECT a.id, a.full_name, a.position, a.organization, a.personal_code,
-                   a.room, a.building
-            FROM aho_arrivals a
-            WHERE a.arrival_status = 'arrived' AND a.is_hidden = FALSE
-              AND a.room IS NOT NULL AND a.room != ''
-            ORDER BY a.building, a.room, a.full_name
+            SELECT p.id, p.full_name, p.position, p.organization, p.personal_code,
+                   r.room_number, b.name
+            FROM personnel p JOIN rooms r ON r.id = p.residence_room_id
+            JOIN buildings b ON b.id = r.building_id
+            WHERE p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE
+              AND r.is_active = TRUE AND b.is_active = TRUE
+            ORDER BY b.sort_order, b.name, r.room_number, p.full_name
         """)
         all_res = cur.fetchall()
         result['all_residents'] = [{

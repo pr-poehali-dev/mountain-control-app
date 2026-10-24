@@ -416,11 +416,15 @@ def get_me(event):
         allowed = perms.get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
     role_label = role_label_map(cur).get(role, role)
+    cur.execute("SELECT COALESCE(residence, '') FROM personnel WHERE personal_code = '%s' AND status != 'archived' LIMIT 1" % str(row[5] or '').replace("'", "''"))
+    res_row = cur.fetchone()
+    residence = res_row[0] if res_row else ''
     cur.close()
     conn.close()
 
     return json_response(200, {
         'user': {
+            'residence': residence,
             'id': row[0], 'email': row[1], 'full_name': row[2],
             'position': row[3], 'department': row[4],
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,

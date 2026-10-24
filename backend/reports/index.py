@@ -305,21 +305,29 @@ def report_housing(params):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT r.id, r.room_number, r.building, r.capacity, r.occupied, r.status
-        FROM rooms r ORDER BY r.building, r.room_number
-    """)
-    rows = cur.fetchall()
+        SELECT r.id, r.room_number, b.name, r.capacity, %s AS occ
+        FROM rooms r JOIN buildings b ON b.id = r.building_id
+        WHERE r.is_active = TRUE AND b.is_active = TRUE
+        ORDER BY b.sort_order, b.name, r.room_number
+    """ % "(SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)")
+    raw = cur.fetchall()
+    rows = []
+    for r in raw:
+        st = 'free' if r[4] == 0 else ('full' if r[4] >= r[3] else 'partial')
+        rows.append((r[0], r[1], r[2], r[3], r[4], st))
 
-    cur.execute("SELECT COALESCE(SUM(capacity), 0), COALESCE(SUM(occupied), 0) FROM rooms")
-    totals = cur.fetchone()
-
-    cur.execute("SELECT status, COUNT(*) FROM rooms GROUP BY status")
-    by_status = {r[0]: r[1] for r in cur.fetchall()}
-
-    cur.execute("SELECT building, COALESCE(SUM(capacity), 0), COALESCE(SUM(occupied), 0) FROM rooms GROUP BY building ORDER BY building")
-    by_building = []
-    for r in cur.fetchall():
-        by_building.append({'building': r[0], 'capacity': r[1], 'occupied': r[2]})
+    totals = (sum(r[3] for r in rows), sum(r[4] for r in rows))
+    by_status = {}
+    agg = {}
+    order = []
+    for r in rows:
+        by_status[r[5]] = by_status.get(r[5], 0) + 1
+        if r[2] not in agg:
+            agg[r[2]] = [0, 0]
+            order.append(r[2])
+        agg[r[2]][0] += r[3]
+        agg[r[2]][1] += r[4]
+    by_building = [{'building': b, 'capacity': agg[b][0], 'occupied': agg[b][1]} for b in order]
 
     cur.close()
     conn.close()

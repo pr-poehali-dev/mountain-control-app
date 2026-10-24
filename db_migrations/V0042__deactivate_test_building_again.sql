@@ -1,0 +1,1 @@
+UPDATE buildings SET is_active = FALSE, updated_at = NOW() WHERE name = 'Тестовое здание' AND number = 'Т-1' AND NOT EXISTS (SELECT 1 FROM rooms r WHERE r.building_id = buildings.id);

@@ -53,16 +53,6 @@
       "expectedStatus": 200
     },
     {
-      "name": "Create building",
-      "method": "POST",
-      "path": "/?action=buildings",
-      "body": {
-        "name": "Тестовое здание",
-        "number": "Т-1"
-      },
-      "expectedStatus": 200
-    },
-    {
       "name": "Create building requires name",
       "method": "POST",
       "path": "/?action=buildings",

@@ -88,6 +88,7 @@ const Profile = () => {
                 { label: "Email", value: user.email },
                 { label: "Должность", value: user.position },
                 { label: "Подразделение", value: user.department },
+                { label: "Проживание", value: (user as { residence?: string }).residence },
               ].map((f) => (
                 <div key={f.label} className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">{f.label}</span>

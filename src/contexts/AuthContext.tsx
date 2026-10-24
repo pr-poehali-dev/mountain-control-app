@@ -17,6 +17,7 @@ interface User {
   qr_code: string;
   role: string;
   organization?: string;
+  residence?: string;
   has_face?: boolean;
   face_photo_url?: string;
   face_can_self_enroll?: boolean;

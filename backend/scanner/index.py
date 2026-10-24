@@ -172,6 +172,15 @@ def checkin(body):
         cur.execute("""
             UPDATE personnel SET status = 'on_shift', updated_at = NOW() WHERE id = %d
         """ % person_id)
+        cur.execute("""
+            UPDATE rooms r SET occupied = s.cnt,
+                status = CASE WHEN s.cnt = 0 THEN 'free' WHEN s.cnt >= r.capacity THEN 'full' ELSE 'partial' END
+            FROM (SELECT r2.id, COUNT(p.id) AS cnt FROM rooms r2
+                  LEFT JOIN personnel p ON p.residence_room_id = r2.id
+                    AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE
+                  GROUP BY r2.id) s
+            WHERE s.id = r.id
+        """)
 
     event_type = 'scan_checkin' if allowed else 'scan_denied'
     event_desc = '%s — %s (QR-скан)' % (

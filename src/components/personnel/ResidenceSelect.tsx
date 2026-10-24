@@ -14,6 +14,8 @@ interface Room {
   id: number;
   room_number: string;
   floor?: number | null;
+  capacity?: number;
+  occupied?: number;
 }
 
 interface Building {
@@ -31,6 +33,7 @@ interface ResidenceSelectProps {
   value: ResidenceValue;
   onChange: (value: ResidenceValue) => void;
   compact?: boolean;
+  roomsOnly?: boolean;
 }
 
 const NONE = "none";
@@ -43,7 +46,7 @@ function toKey(v: ResidenceValue): string {
 
 const compactClass = "h-8 px-2 -mx-2 w-[calc(100%+1rem)] bg-transparent border-transparent shadow-none text-sm font-medium hover:bg-secondary/40 hover:border-border focus:ring-1 focus:ring-mine-cyan/50 focus:ring-offset-0 disabled:opacity-100";
 
-export default function ResidenceSelect({ value, onChange, compact }: ResidenceSelectProps) {
+export default function ResidenceSelect({ value, onChange, compact, roomsOnly }: ResidenceSelectProps) {
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,7 +72,7 @@ export default function ResidenceSelect({ value, onChange, compact }: ResidenceS
         <SelectValue placeholder={loading ? "Загрузка..." : "Не указано"} />
       </SelectTrigger>
       <SelectContent className="max-h-72">
-        <SelectItem value={NONE}>Не указано</SelectItem>
+        {!roomsOnly && <SelectItem value={NONE}>Не указано</SelectItem>}
         {!loading && buildings.length === 0 && (
           <div className="px-2 py-2 text-xs text-muted-foreground">
             Помещения ещё не созданы в разделе АХО
@@ -78,13 +81,24 @@ export default function ResidenceSelect({ value, onChange, compact }: ResidenceS
         {buildings.map((b) => (
           <SelectGroup key={b.id}>
             <SelectLabel className="text-xs text-mine-cyan">{b.name}</SelectLabel>
-            <SelectItem value={`b:${b.id}`}>{b.name} — без комнаты</SelectItem>
-            {b.rooms.map((r) => (
-              <SelectItem key={r.id} value={`r:${r.id}`}>
-                {b.name}, комн. {r.room_number}
-                {r.floor ? ` (${r.floor} эт.)` : ""}
-              </SelectItem>
-            ))}
+            {!roomsOnly && <SelectItem value={`b:${b.id}`}>{b.name} — без комнаты</SelectItem>}
+            {b.rooms.map((r) => {
+              const cap = r.capacity ?? 0;
+              const occ = r.occupied ?? 0;
+              const isCurrent = value.residence_room_id === r.id;
+              const full = cap > 0 && occ >= cap && !isCurrent;
+              return (
+                <SelectItem key={r.id} value={`r:${r.id}`} disabled={full}>
+                  {b.name}, комн. {r.room_number}
+                  {r.floor ? ` (${r.floor} эт.)` : ""}
+                  {cap > 0 && (
+                    <span className={`ml-1.5 text-[10px] ${full ? "text-mine-red" : occ > 0 ? "text-mine-amber" : "text-mine-green"}`}>
+                      {full ? "занято" : `свободно ${cap - occ} из ${cap}`}
+                    </span>
+                  )}
+                </SelectItem>
+              );
+            })}
           </SelectGroup>
         ))}
       </SelectContent>

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import Icon from "@/components/ui/icon";
 import HousingStats from "@/components/aho/HousingStats";
+import ResidenceSelect, { type ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -129,8 +130,9 @@ const Aho = () => {
   const [medFilter, setMedFilter] = useState("all");
 
   const [roomDialog, setRoomDialog] = useState<ArrivalItem | null>(null);
-  const [roomValue, setRoomValue] = useState("");
-  const [buildingValue, setBuildingValue] = useState("");
+  const [roomValue, setRoomValue] = useState<ResidenceValue>({ residence_building_id: null, residence_room_id: null });
+  const [roomSaving, setRoomSaving] = useState(false);
+  const [housingVersion, setHousingVersion] = useState(0);
 
   const [itrStats, setItrStats] = useState<{
     summary: Record<string, number>;
@@ -174,8 +176,8 @@ const Aho = () => {
   const [editBuildingName, setEditBuildingName] = useState("");
   const [editBuildingNumber, setEditBuildingNumber] = useState("");
 
-  const [assignFromRoom, setAssignFromRoom] = useState<{ room_number: string; building_name: string } | null>(null);
-  const [unhoustedList, setUnhoustedList] = useState<ArrivalItem[]>([]);
+  const [assignFromRoom, setAssignFromRoom] = useState<{ room_id: number; room_number: string; building_name: string } | null>(null);
+  const [unhoustedList, setUnhoustedList] = useState<{ personnel_id: number; full_name: string; personal_code: string; organization: string }[]>([]);
   const [unhoustedLoading, setUnhoustedLoading] = useState(false);
 
   useEffect(() => {
@@ -331,17 +333,41 @@ const Aho = () => {
     }
   };
 
+  const refreshHousing = () => {
+    loadArrivals();
+    loadStats();
+    loadBuildings();
+    if (selectedBuilding) openBuilding(selectedBuilding);
+    setHousingVersion((v) => v + 1);
+  };
+
   const handleAssignRoom = async () => {
-    if (!roomDialog || !roomValue) return;
+    if (!roomDialog || !roomValue.residence_room_id) return;
+    setRoomSaving(true);
     try {
-      const res = await ahoApi.assignRoom(roomDialog.id, roomValue, buildingValue);
+      const res = await ahoApi.assignRoomById({ id: roomDialog.id, room_id: roomValue.residence_room_id });
       toast({ title: res.message });
       setRoomDialog(null);
-      setRoomValue("");
-      setBuildingValue("");
-      loadArrivals();
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    } finally {
+      setRoomSaving(false);
+    }
+  };
+
+  const handleEvict = async () => {
+    if (!roomDialog?.personnel_id) return;
+    setRoomSaving(true);
+    try {
+      const res = await ahoApi.evict(roomDialog.personnel_id);
+      toast({ title: res.message });
+      setRoomDialog(null);
+      refreshHousing();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    } finally {
+      setRoomSaving(false);
     }
   };
 
@@ -450,26 +476,27 @@ const Aho = () => {
     }
   };
 
-  const openAssignFromRoom = async (room_number: string, building_name: string) => {
-    setAssignFromRoom({ room_number, building_name });
+  const loadUnhoused = async () => {
     setUnhoustedLoading(true);
     try {
-      const data = await ahoApi.getList({ status: "arrived" });
-      setUnhoustedList((data.items || []).filter((a: ArrivalItem) => !a.room));
+      const data = await ahoApi.getUnhoused();
+      setUnhoustedList(data.items || []);
     } catch { /* */ }
     finally { setUnhoustedLoading(false); }
   };
 
-  const handleAssignFromRoom = async (arrivalId: number) => {
+  const openAssignFromRoom = async (room_id: number, room_number: string, building_name: string) => {
+    setAssignFromRoom({ room_id, room_number, building_name });
+    loadUnhoused();
+  };
+
+  const handleAssignFromRoom = async (personnelId: number) => {
     if (!assignFromRoom) return;
     try {
-      await ahoApi.assignRoom(arrivalId, assignFromRoom.room_number, assignFromRoom.building_name);
+      await ahoApi.assignRoomById({ personnel_id: personnelId, room_id: assignFromRoom.room_id });
       toast({ title: "Заселён в комнату " + assignFromRoom.room_number });
-      const data = await ahoApi.getList({ status: "arrived" });
-      setUnhoustedList((data.items || []).filter((a: ArrivalItem) => !a.room));
-      if (selectedBuilding) openBuilding(selectedBuilding);
-      loadBuildings();
-      loadArrivals();
+      setAssignFromRoom(null);
+      refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -751,7 +778,7 @@ const Aho = () => {
 
         {/* === РАССЕЛЕНИЕ === */}
         <TabsContent value="housing" className="space-y-4">
-          <HousingStats />
+          <HousingStats key={housingVersion} />
 
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">Жилые здания</h3>
@@ -895,10 +922,10 @@ const Aho = () => {
                                 size="sm"
                                 variant="outline"
                                 className="h-7 text-[11px] gap-1"
+                                disabled={!item.personnel_id}
                                 onClick={() => {
                                   setRoomDialog(item);
-                                  setRoomValue(item.room || "");
-                                  setBuildingValue(item.building || "");
+                                  setRoomValue({ residence_building_id: null, residence_room_id: null });
                                 }}
                               >
                                 <Icon name="Home" size={12} />
@@ -1352,7 +1379,7 @@ const Aho = () => {
                         </div>
                         {!isFull && (
                           <button
-                            onClick={() => openAssignFromRoom(r.room_number, r.building_name)}
+                            onClick={() => openAssignFromRoom(r.id, r.room_number, r.building_name)}
                             className="text-[10px] text-mine-cyan hover:underline"
                           >
                             Заселить
@@ -1382,16 +1409,16 @@ const Aho = () => {
                 <Icon name="Loader2" size={20} className="animate-spin text-muted-foreground" />
               </div>
             ) : unhoustedList.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">Все прибывшие уже заселены</p>
+              <p className="text-sm text-muted-foreground text-center py-6">Все сотрудники на предприятии уже заселены</p>
             ) : (
               <div className="space-y-1">
                 {unhoustedList.map(a => (
-                  <div key={a.id} className="rounded-lg border border-border p-2.5 flex items-center justify-between hover:bg-secondary/20">
+                  <div key={a.personnel_id} className="rounded-lg border border-border p-2.5 flex items-center justify-between hover:bg-secondary/20">
                     <div>
                       <p className="text-sm font-medium">{a.full_name}</p>
                       <p className="text-xs text-muted-foreground">{a.personal_code} · {a.organization || "—"}</p>
                     </div>
-                    <Button size="sm" className="h-7 text-[11px] gap-1 bg-mine-green text-white hover:bg-mine-green/90" onClick={() => handleAssignFromRoom(a.id)}>
+                    <Button size="sm" className="h-7 text-[11px] gap-1 bg-mine-green text-white hover:bg-mine-green/90" onClick={() => handleAssignFromRoom(a.personnel_id)}>
                       <Icon name="UserPlus" size={12} />
                       Заселить
                     </Button>
@@ -1410,18 +1437,25 @@ const Aho = () => {
             <DialogTitle>Заселение: {roomDialog?.full_name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {roomDialog?.room && (
+              <p className="text-xs text-muted-foreground">
+                Сейчас: <span className="text-mine-green font-medium">{roomDialog.building ? `${roomDialog.building}, ` : ""}комн. {roomDialog.room}</span>
+              </p>
+            )}
             <div>
-              <label className="text-xs text-muted-foreground block mb-1">Номер комнаты</label>
-              <Input value={roomValue} onChange={e => setRoomValue(e.target.value)} placeholder="Например: 101" className="bg-secondary/50" />
+              <label className="text-xs text-muted-foreground block mb-1">Общежитие и комната</label>
+              <ResidenceSelect value={roomValue} onChange={setRoomValue} roomsOnly key={roomDialog?.id} />
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Корпус (необязательно)</label>
-              <Input value={buildingValue} onChange={e => setBuildingValue(e.target.value)} placeholder="Например: Корпус 1" className="bg-secondary/50" />
-            </div>
-            <Button onClick={handleAssignRoom} disabled={!roomValue} className="w-full gap-2 bg-mine-green text-white hover:bg-mine-green/90">
-              <Icon name="Home" size={16} />
-              Заселить
+            <Button onClick={handleAssignRoom} disabled={!roomValue.residence_room_id || roomSaving} className="w-full gap-2 bg-mine-green text-white hover:bg-mine-green/90">
+              <Icon name={roomSaving ? "Loader2" : "Home"} size={16} className={roomSaving ? "animate-spin" : ""} />
+              {roomDialog?.room ? "Переселить" : "Заселить"}
             </Button>
+            {roomDialog?.room && (
+              <Button variant="outline" onClick={handleEvict} disabled={roomSaving} className="w-full gap-2 border-mine-red/30 text-mine-red hover:bg-mine-red/10">
+                <Icon name="DoorOpen" size={16} />
+                Выселить
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
