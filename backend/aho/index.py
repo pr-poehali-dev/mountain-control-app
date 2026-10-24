@@ -162,6 +162,12 @@ def handler(event, context):
         return create_building(body)
     elif method == 'PUT' and action == 'buildings':
         return update_building(body)
+    elif method == 'GET' and action == 'buildings-cleanup':
+        return buildings_cleanup(False)
+    elif method == 'POST' and action == 'buildings-cleanup':
+        if is_demo_request(event):
+            return json_response(403, {'error': 'В демо-режиме очистка недоступна'})
+        return buildings_cleanup(True)
     elif method == 'GET' and action == 'rooms':
         return get_rooms(params)
     elif method == 'POST' and action == 'rooms':
@@ -1355,6 +1361,36 @@ def create_building(body):
     conn.close()
 
     return json_response(200, {'id': building_id, 'message': 'Здание добавлено'})
+
+
+CLEANUP_WHERE = """b.is_active = FALSE
+      AND NOT EXISTS (SELECT 1 FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE)
+      AND NOT EXISTS (SELECT 1 FROM personnel p WHERE p.residence_building_id = b.id
+                      OR p.residence_room_id IN (SELECT r2.id FROM rooms r2 WHERE r2.building_id = b.id))
+      AND NOT EXISTS (SELECT 1 FROM housing_history h WHERE h.building_id = b.id
+                      OR h.room_id IN (SELECT r3.id FROM rooms r3 WHERE r3.building_id = b.id))"""
+
+
+def buildings_cleanup(apply):
+    """Удалённые здания без жильцов и истории: подсчёт или полное удаление из базы"""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT b.id FROM buildings b WHERE %s" % CLEANUP_WHERE)
+    ids = [r[0] for r in cur.fetchall()]
+    if not apply or not ids:
+        cur.close()
+        conn.close()
+        return json_response(200, {'count': len(ids), 'deleted': 0})
+    id_list = ', '.join(str(int(i)) for i in ids)
+    cur.execute("DELETE FROM rooms WHERE building_id IN (%s)" % id_list)
+    rooms_deleted = cur.rowcount
+    cur.execute("DELETE FROM buildings WHERE id IN (%s)" % id_list)
+    deleted = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'count': 0, 'deleted': deleted, 'rooms_deleted': rooms_deleted,
+                               'message': 'Удалено зданий: %d' % deleted})
 
 
 def update_building(body):

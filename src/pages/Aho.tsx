@@ -157,6 +157,9 @@ const Aho = () => {
   }>>([]);
   const [buildingsLoading, setBuildingsLoading] = useState(false);
   const [showBuildingSettings, setShowBuildingSettings] = useState(false);
+  const [cleanupCount, setCleanupCount] = useState(0);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [newBuildingName, setNewBuildingName] = useState("");
   const [newBuildingNumber, setNewBuildingNumber] = useState("");
 
@@ -398,11 +401,38 @@ const Aho = () => {
     }
   };
 
+  useEffect(() => {
+    if (showBuildingSettings) loadCleanupCount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBuildingSettings]);
+
+  const loadCleanupCount = async () => {
+    try {
+      const res = await ahoApi.getBuildingsCleanup();
+      setCleanupCount(res.count || 0);
+    } catch { /* */ }
+  };
+
+  const handleCleanupBuildings = async () => {
+    setCleaning(true);
+    try {
+      const res = await ahoApi.cleanupBuildings();
+      toast({ title: res.message || "Готово" });
+      setShowCleanupConfirm(false);
+      setCleanupCount(0);
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   const handleDeleteBuilding = async (id: number) => {
     try {
       await ahoApi.updateBuilding({ id, is_active: false });
       toast({ title: "Здание удалено" });
       loadBuildings();
+      loadCleanupCount();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
     }
@@ -1243,7 +1273,7 @@ const Aho = () => {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={showBuildingSettings} onOpenChange={setShowBuildingSettings}>
+      <Dialog open={showBuildingSettings} onOpenChange={(open) => { setShowBuildingSettings(open); setShowCleanupConfirm(false); }}>
         <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1270,6 +1300,37 @@ const Aho = () => {
                 Добавить
               </Button>
             </div>
+
+            {cleanupCount > 0 && (
+              <div className="rounded-lg border border-mine-amber/20 bg-mine-amber/5 p-3 space-y-2">
+                {showCleanupConfirm ? (
+                  <>
+                    <p className="text-xs text-foreground">
+                      Удалить навсегда {cleanupCount} удалённых зданий? В них нет жильцов и истории проживания. Вернуть их будет нельзя.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleCleanupBuildings} disabled={cleaning} className="h-8 gap-1 bg-mine-red text-white hover:bg-mine-red/90">
+                        <Icon name={cleaning ? "Loader2" : "Trash2"} size={14} className={cleaning ? "animate-spin" : ""} />
+                        Удалить навсегда
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => setShowCleanupConfirm(false)} disabled={cleaning}>
+                        Отмена
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      В базе осталось удалённых зданий: <b className="text-foreground">{cleanupCount}</b>
+                    </p>
+                    <Button size="sm" variant="outline" className="h-8 gap-1 shrink-0 border-mine-amber/30 text-mine-amber hover:text-mine-amber" onClick={() => setShowCleanupConfirm(true)}>
+                      <Icon name="Eraser" fallback="Trash2" size={14} />
+                      Очистить удалённые здания
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {buildings.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">Зданий пока нет</p>

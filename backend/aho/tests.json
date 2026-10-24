@@ -76,6 +76,12 @@
       "method": "GET",
       "path": "/?action=medical-itr-stats",
       "expectedStatus": 200
+    },
+    {
+      "name": "Count removed buildings for cleanup",
+      "method": "GET",
+      "path": "/?action=buildings-cleanup",
+      "expectedStatus": 200
     }
   ]
 }

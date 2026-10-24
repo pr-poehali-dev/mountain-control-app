@@ -307,6 +307,10 @@ export const ahoApi = {
     request(API.aho, "", { method: "POST", body, params: { action: "buildings" } }),
   updateBuilding: (body: Record<string, unknown>) =>
     request(API.aho, "", { method: "PUT", body, params: { action: "buildings" } }),
+  getBuildingsCleanup: () =>
+    request(API.aho, "", { params: { action: "buildings-cleanup" } }),
+  cleanupBuildings: () =>
+    request(API.aho, "", { method: "POST", body: {}, params: { action: "buildings-cleanup" } }),
   getRooms: (building_id: number) =>
     request(API.aho, "", { params: { action: "rooms", building_id: String(building_id) } }),
   createRoom: (body: Record<string, unknown>) =>
