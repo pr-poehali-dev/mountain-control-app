@@ -948,7 +948,24 @@ const Personnel = () => {
                           </button>
                         </td>
                         <td className="px-4 py-3 text-sm font-medium text-foreground">
-                          {p.full_name}
+                          <div className="flex items-center gap-2.5">
+                            {p.photo_url ? (
+                              <img
+                                src={p.photo_url}
+                                alt=""
+                                loading="lazy"
+                                className="w-9 h-9 rounded-md object-cover border border-border shrink-0"
+                              />
+                            ) : (
+                              <div
+                                className="w-9 h-9 rounded-md bg-mine-red/10 border border-mine-red/30 flex items-center justify-center shrink-0"
+                                title="Нет фото"
+                              >
+                                <span className="text-mine-red text-2xl font-black leading-none">?</span>
+                              </div>
+                            )}
+                            <span>{p.full_name}</span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
                           {p.tab_number || "—"}
