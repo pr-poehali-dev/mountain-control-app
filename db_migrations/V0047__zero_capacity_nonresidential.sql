@@ -1,0 +1,1 @@
+UPDATE t_p25857058_mountain_control_app.rooms SET capacity = 0, updated_at = NOW() WHERE is_residential = FALSE AND capacity <> 0;

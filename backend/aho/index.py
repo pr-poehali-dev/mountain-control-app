@@ -1525,6 +1525,8 @@ def create_room(body):
     notes = body.get('notes', '').strip()
     room_name = str(body.get('name') or '').strip()[:100]
     is_res = 'FALSE' if body.get('is_residential') is False else 'TRUE'
+    if is_res == 'FALSE':
+        capacity = 0
 
     if not building_id or not room_number:
         return json_response(400, {'error': 'Укажите building_id и room_number'})
@@ -1584,7 +1586,10 @@ def update_room(body):
             conn.close()
             return json_response(400, {'error': 'Комната с номером %s уже есть в этом здании' % new_num})
         sets.append("room_number = '%s'" % new_num.replace("'", "''"))
-    if 'capacity' in body:
+    non_res = 'is_residential' in body and not body['is_residential']
+    if non_res:
+        body['capacity'] = 0
+    if 'capacity' in body and not non_res:
         cap = int(body['capacity'])
         if cap < 1:
             cur.close()
@@ -1595,6 +1600,8 @@ def update_room(body):
             conn.close()
             return json_response(400, {'error': 'В комнате проживает %d чел. — мест не может быть меньше' % int(cur_room[1] or 0)})
         sets.append("capacity = %d" % cap)
+    elif non_res:
+        sets.append("capacity = 0")
     if 'floor' in body:
         sets.append("floor = %d" % int(body['floor']))
     if 'notes' in body:

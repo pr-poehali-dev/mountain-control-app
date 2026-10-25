@@ -460,7 +460,7 @@ const Aho = () => {
       await ahoApi.createRoom({
         building_id: selectedBuilding,
         room_number: newRoomNumber.trim(),
-        capacity: parseInt(newRoomCapacity) || 2,
+        capacity: newRoomResidential ? (parseInt(newRoomCapacity) || 2) : 0,
         floor: parseInt(newRoomFloor) || 1,
         name: newRoomName.trim(),
         is_residential: newRoomResidential,
@@ -520,13 +520,13 @@ const Aho = () => {
       toast({ title: "Укажите номер комнаты", variant: "destructive" });
       return;
     }
-    if (isNaN(cap) || cap < 1) {
+    if (editingRoom.is_residential && (isNaN(cap) || cap < 1)) {
       toast({ title: "Мест должно быть не меньше 1", variant: "destructive" });
       return;
     }
     setSavingRoom(true);
     try {
-      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap, floor, name: editingRoom.name.trim(), is_residential: editingRoom.is_residential });
+      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: editingRoom.is_residential ? cap : 0, floor, name: editingRoom.name.trim(), is_residential: editingRoom.is_residential });
       setEditingRoom(null);
       refreshHousing();
     } catch (err: unknown) {
@@ -1408,13 +1408,16 @@ const Aho = () => {
                   placeholder="Номер комнаты"
                   className="bg-secondary/50 w-32"
                 />
+                {newRoomResidential && (
                 <Input
                   value={newRoomCapacity}
                   onChange={e => setNewRoomCapacity(e.target.value)}
                   placeholder="Мест"
+                  title="Койко-мест"
                   type="number"
                   className="bg-secondary/50 w-20"
                 />
+                )}
                 <Input
                   value={newRoomFloor}
                   onChange={e => setNewRoomFloor(e.target.value)}
@@ -1544,6 +1547,7 @@ const Aho = () => {
                             className="h-8 bg-secondary/50 text-sm"
                           />
                         </div>
+                        {editingRoom.is_residential && (
                         <div>
                           <p className="text-[10px] text-muted-foreground mb-0.5">Койко-мест{r.occupied > 0 ? ` (живёт ${r.occupied})` : ""}</p>
                           <Input
@@ -1555,6 +1559,7 @@ const Aho = () => {
                             className="h-8 bg-secondary/50 text-sm"
                           />
                         </div>
+                        )}
                         <div>
                           <p className="text-[10px] text-muted-foreground mb-0.5">Этаж</p>
                           <Input
@@ -1569,7 +1574,7 @@ const Aho = () => {
                           <input
                             type="checkbox"
                             checked={!editingRoom.is_residential}
-                            onChange={e => setEditingRoom({ ...editingRoom, is_residential: !e.target.checked })}
+                            onChange={e => setEditingRoom({ ...editingRoom, is_residential: !e.target.checked, capacity: e.target.checked ? "0" : (parseInt(editingRoom.capacity) > 0 ? editingRoom.capacity : "2") })}
                             className="accent-mine-amber"
                           />
                           Нежилое помещение
