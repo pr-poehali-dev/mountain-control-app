@@ -1477,7 +1477,7 @@ def get_rooms(params):
     cur = conn.cursor()
     cur.execute("""
         SELECT r.id, r.room_number, r.capacity, r.floor, r.notes, r.is_active,
-               b.name as building_name, %s
+               b.name as building_name, %s, COALESCE(r.name, '')
         FROM rooms r
         JOIN buildings b ON r.building_id = b.id
         WHERE r.building_id = %d AND r.is_active = TRUE
@@ -1505,7 +1505,7 @@ def get_rooms(params):
             'id': r[0], 'room_number': room_num, 'capacity': r[2],
             'floor': r[3], 'notes': r[4] or '', 'is_active': r[5],
             'building_name': r[6],
-            'occupied': r[7],
+            'occupied': r[7], 'name': r[8],
             'residents': res_map.get(r[0], []),
         })
     return json_response(200, {'rooms': rooms})
@@ -1517,6 +1517,7 @@ def create_room(body):
     capacity = int(body.get('capacity', 2))
     floor = int(body.get('floor', 1))
     notes = body.get('notes', '').strip()
+    room_name = str(body.get('name') or '').strip()[:100]
 
     if not building_id or not room_number:
         return json_response(400, {'error': 'Укажите building_id и room_number'})
@@ -1533,9 +1534,9 @@ def create_room(body):
         return json_response(400, {'error': 'Комната %s уже существует в этом здании' % room_number})
 
     cur.execute("""
-        INSERT INTO rooms (building_id, room_number, capacity, floor, notes)
-        VALUES (%d, '%s', %d, %d, '%s') RETURNING id
-    """ % (int(building_id), safe_num, capacity, floor, safe_notes))
+        INSERT INTO rooms (building_id, room_number, capacity, floor, notes, name)
+        VALUES (%d, '%s', %d, %d, '%s', '%s') RETURNING id
+    """ % (int(building_id), safe_num, capacity, floor, safe_notes, room_name.replace("'", "''")))
     room_id = cur.fetchone()[0]
 
     update_building_totals(cur, int(building_id))
@@ -1591,6 +1592,8 @@ def update_room(body):
         sets.append("floor = %d" % int(body['floor']))
     if 'notes' in body:
         sets.append("notes = '%s'" % str(body['notes']).replace("'", "''"))
+    if 'name' in body:
+        sets.append("name = '%s'" % str(body['name'] or '').strip()[:100].replace("'", "''"))
     if 'is_active' in body:
         sets.append("is_active = %s" % ('TRUE' if body['is_active'] else 'FALSE'))
 

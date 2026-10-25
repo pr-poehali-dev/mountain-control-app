@@ -13,6 +13,7 @@ import { personnelApi } from "@/lib/api";
 interface Room {
   id: number;
   room_number: string;
+  name?: string;
   floor?: number | null;
   capacity?: number;
   occupied?: number;
@@ -89,7 +90,7 @@ export default function ResidenceSelect({ value, onChange, compact, roomsOnly }:
               const full = cap > 0 && occ >= cap && !isCurrent;
               return (
                 <SelectItem key={r.id} value={`r:${r.id}`} disabled={full}>
-                  {b.name}, комн. {r.room_number}
+                  {b.name}, комн. {r.room_number}{r.name ? ` — ${r.name}` : ""}
                   {r.floor ? ` (${r.floor} эт.)` : ""}
                   {cap > 0 && (
                     <span className={`ml-1.5 text-[10px] ${full ? "text-mine-red" : occ > 0 ? "text-mine-amber" : "text-mine-green"}`}>

@@ -350,7 +350,7 @@ def report_housing(params):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT r.id, r.room_number, b.name, r.capacity, %s AS occ, COALESCE(r.floor, 0)
+        SELECT r.id, r.room_number, b.name, r.capacity, %s AS occ, COALESCE(r.floor, 0), COALESCE(r.name, '')
         FROM rooms r JOIN buildings b ON b.id = r.building_id
         WHERE r.is_active = TRUE AND b.is_active = TRUE
         ORDER BY b.sort_order, b.name, COALESCE(r.floor, 0), r.room_number
@@ -359,7 +359,7 @@ def report_housing(params):
     rows = []
     for r in raw:
         st = 'free' if r[4] == 0 else ('full' if r[4] >= r[3] else 'partial')
-        rows.append((r[0], r[1], r[2], r[3], r[4], st, r[5]))
+        rows.append((r[0], r[1], r[2], r[3], r[4], st, r[5], r[6]))
 
     totals = (sum(r[3] for r in rows), sum(r[4] for r in rows))
     by_status = {}
@@ -402,7 +402,7 @@ def report_housing(params):
         items.append({
             'id': r[0], 'room_number': r[1], 'building': r[2] or '',
             'capacity': r[3], 'occupied': r[4], 'status': r[5],
-            'free': r[3] - r[4], 'floor': r[6]
+            'free': r[3] - r[4], 'floor': r[6], 'room_name': r[7]
         })
 
     total_cap = totals[0]
@@ -629,8 +629,8 @@ EXPORT_CONFIGS = {
     },
     'housing': {
         'filename': 'housing_report.csv',
-        'headers': ['Комната', 'Корпус', 'Этаж', 'Вместимость', 'Заселено', 'Свободно', 'Статус'],
-        'fields': ['room_number', 'building', 'floor', 'capacity', 'occupied', 'free', 'status']
+        'headers': ['Комната', 'Название', 'Корпус', 'Этаж', 'Вместимость', 'Заселено', 'Свободно', 'Статус'],
+        'fields': ['room_number', 'room_name', 'building', 'floor', 'capacity', 'occupied', 'free', 'status']
     },
     'personnel-summary': {
         'filename': 'personnel_report.csv',

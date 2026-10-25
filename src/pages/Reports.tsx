@@ -360,6 +360,7 @@ ${html}
     ];
     if (active === "housing") return [
       { key: "room_number", label: "Комната" },
+      { key: "room_name", label: "Название", render: v => (v as string) || "—" },
       { key: "building", label: "Корпус" },
       { key: "floor", label: "Этаж", render: v => ((v as number) > 0 ? String(v) : "—") },
       { key: "capacity", label: "Вместимость" },

@@ -167,7 +167,7 @@ const Aho = () => {
 
   const [selectedBuilding, setSelectedBuilding] = useState<number | null>(null);
   const [buildingRooms, setBuildingRooms] = useState<Array<{
-    id: number; room_number: string; capacity: number; floor: number;
+    id: number; room_number: string; capacity: number; floor: number; name?: string;
     notes: string; is_active: boolean; building_name: string; occupied: number;
     residents?: { id: number; full_name: string; position: string; on_site: boolean }[];
   }>>([]);
@@ -175,12 +175,13 @@ const Aho = () => {
   const [newRoomNumber, setNewRoomNumber] = useState("");
   const [newRoomCapacity, setNewRoomCapacity] = useState("2");
   const [newRoomFloor, setNewRoomFloor] = useState("1");
+  const [newRoomName, setNewRoomName] = useState("");
   const [batchFloor, setBatchFloor] = useState("1");
   const [batchFrom, setBatchFrom] = useState("");
   const [batchTo, setBatchTo] = useState("");
   const [batchCapacity, setBatchCapacity] = useState("2");
 
-  const [editingRoom, setEditingRoom] = useState<{ id: number; room_number: string; capacity: string; floor: string } | null>(null);
+  const [editingRoom, setEditingRoom] = useState<{ id: number; room_number: string; capacity: string; floor: string; name: string } | null>(null);
   const [savingRoom, setSavingRoom] = useState(false);
   const [editingBuilding, setEditingBuilding] = useState<number | null>(null);
   const [editBuildingName, setEditBuildingName] = useState("");
@@ -460,8 +461,10 @@ const Aho = () => {
         room_number: newRoomNumber.trim(),
         capacity: parseInt(newRoomCapacity) || 2,
         floor: parseInt(newRoomFloor) || 1,
+        name: newRoomName.trim(),
       });
       setNewRoomNumber("");
+      setNewRoomName("");
       refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
@@ -520,7 +523,7 @@ const Aho = () => {
     }
     setSavingRoom(true);
     try {
-      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap, floor });
+      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap, floor, name: editingRoom.name.trim() });
       setEditingRoom(null);
       refreshHousing();
     } catch (err: unknown) {
@@ -1395,7 +1398,7 @@ const Aho = () => {
           <div className="flex-1 overflow-auto -mx-6 px-6 space-y-4">
             <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
               <p className="text-xs font-semibold text-muted-foreground">Добавить комнату</p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Input
                   value={newRoomNumber}
                   onChange={e => setNewRoomNumber(e.target.value)}
@@ -1416,6 +1419,13 @@ const Aho = () => {
                   title="Этаж"
                   type="number"
                   className="bg-secondary/50 w-20"
+                />
+                <Input
+                  value={newRoomName}
+                  onChange={e => setNewRoomName(e.target.value)}
+                  placeholder="Название (туалет, раздевалка…)"
+                  maxLength={100}
+                  className="bg-secondary/50 flex-1 min-w-0"
                 />
                 <Button onClick={handleAddRoom} disabled={!newRoomNumber.trim()} size="sm" className="gap-1 bg-mine-green text-white hover:bg-mine-green/90">
                   <Icon name="Plus" size={14} />
@@ -1478,7 +1488,7 @@ const Aho = () => {
                 <span>Койко-мест: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.capacity, 0)}</b></span>
                 <span>Занято: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.occupied, 0)}</b></span>
                 <span>Этажей: <b className="text-foreground">{new Set(buildingRooms.map(r => r.floor ?? 1)).size}</b></span>
-                <span className="ml-auto flex items-center gap-1"><Icon name="Pencil" size={10} />— изменить номер, места и этаж</span>
+                <span className="ml-auto flex items-center gap-1"><Icon name="Pencil" size={10} />— изменить номер, название, места и этаж</span>
               </div>
               {Array.from(new Set(buildingRooms.map(r => r.floor ?? 1))).sort((a, b) => a - b).map(fl => (
               <div key={fl} className="space-y-2">
@@ -1505,6 +1515,17 @@ const Aho = () => {
                             autoFocus
                             value={editingRoom.room_number}
                             onChange={e => setEditingRoom({ ...editingRoom, room_number: e.target.value })}
+                            onKeyDown={e => { if (e.key === "Enter") handleSaveRoom(); if (e.key === "Escape") setEditingRoom(null); }}
+                            className="h-8 bg-secondary/50 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">Название</p>
+                          <Input
+                            value={editingRoom.name}
+                            maxLength={100}
+                            placeholder="Туалет, раздевалка…"
+                            onChange={e => setEditingRoom({ ...editingRoom, name: e.target.value })}
                             onKeyDown={e => { if (e.key === "Enter") handleSaveRoom(); if (e.key === "Escape") setEditingRoom(null); }}
                             className="h-8 bg-secondary/50 text-sm"
                           />
@@ -1544,12 +1565,15 @@ const Aho = () => {
                   return (
                     <div key={r.id} className={`rounded-lg border p-2.5 relative group ${isFull ? "border-mine-red/20 bg-mine-red/5" : r.occupied > 0 ? "border-mine-amber/20 bg-mine-amber/5" : "border-border bg-card"}`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold">{r.room_number}</span>
-                        <div className="flex items-center gap-1.5">
+                        <div className="min-w-0">
+                          <span className="text-sm font-bold">{r.room_number}</span>
+                          {r.name && <p className="text-[10px] text-mine-cyan leading-tight truncate" title={r.name}>{r.name}</p>}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <button
-                            onClick={() => setEditingRoom({ id: r.id, room_number: r.room_number, capacity: String(r.capacity), floor: String(r.floor ?? 1) })}
+                            onClick={() => setEditingRoom({ id: r.id, room_number: r.room_number, capacity: String(r.capacity), floor: String(r.floor ?? 1), name: r.name || "" })}
                             className="text-muted-foreground hover:text-mine-cyan transition-colors"
-                            title="Изменить номер, места и этаж"
+                            title="Изменить номер, название, места и этаж"
                           >
                             <Icon name="Pencil" size={12} />
                           </button>

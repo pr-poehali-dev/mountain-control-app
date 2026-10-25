@@ -455,7 +455,7 @@ def get_residences(event):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT b.id, b.name, b.number, r.id, r.room_number, r.floor, r.capacity,
+        SELECT b.id, b.name, b.number, r.id, r.room_number, r.floor, r.capacity, COALESCE(r.name, '') AS room_name,
                (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id
                   AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)
         FROM buildings b
@@ -474,7 +474,7 @@ def get_residences(event):
             by_id[r[0]] = {'id': r[0], 'name': r[1], 'number': r[2] or '', 'rooms': []}
             buildings.append(by_id[r[0]])
         if r[3]:
-            by_id[r[0]]['rooms'].append({'id': r[3], 'room_number': r[4], 'floor': r[5], 'capacity': r[6], 'occupied': r[7]})
+            by_id[r[0]]['rooms'].append({'id': r[3], 'room_number': r[4], 'floor': r[5], 'capacity': r[6], 'name': r[7], 'occupied': r[8]})
     return json_response(200, {'buildings': buildings})
 
 
