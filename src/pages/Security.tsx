@@ -7,6 +7,7 @@ import QrScanner from "@/components/scanner/QrScanner";
 import { securityApi } from "@/lib/api";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
 import { useAuth } from "@/contexts/AuthContext";
+import { ruLabel } from "@/lib/ruLabels";
 import { useCanSeeCode } from "@/hooks/use-can-see-code";
 
 interface PersonData {
@@ -401,9 +402,9 @@ const Security = () => {
                       { label: "Организация", value: verifyResult.person.organization },
                       { label: "Должность", value: verifyResult.person.position },
                       { label: "Подразделение", value: verifyResult.person.department },
-                      { label: "Медосмотр", value: verifyResult.person.medical_status },
-                      { label: "Статус", value: verifyResult.person.status },
-                      { label: "Смена", value: verifyResult.person.shift },
+                      { label: "Медосмотр", value: ruLabel(verifyResult.person.medical_status) },
+                      { label: "Статус", value: ruLabel(verifyResult.person.status) },
+                      { label: "Смена", value: ruLabel(verifyResult.person.shift) },
                       { label: "Комната", value: verifyResult.person.room },
                     ].map((item, i) => (
                       <div key={i} className="bg-background/50 rounded-lg p-2">
@@ -584,11 +585,11 @@ function PersonDetailView({
           {[
             { label: "Должность", value: p.position },
             { label: "Подразделение", value: p.department },
-            { label: "Категория", value: p.category },
-            { label: "Статус", value: p.status },
-            { label: "Тип организации", value: p.organization_type },
-            { label: "Медосмотр", value: p.medical_status },
-            { label: "Смена", value: p.shift },
+            { label: "Категория", value: ruLabel(p.category) },
+            { label: "Статус", value: ruLabel(p.status) },
+            { label: "Тип организации", value: ruLabel(p.organization_type) },
+            { label: "Медосмотр", value: ruLabel(p.medical_status) },
+            { label: "Смена", value: ruLabel(p.shift) },
             { label: "Комната", value: p.room },
             { label: "Телефон", value: p.phone },
             { label: "Табельный номер", value: p.tabular_number },

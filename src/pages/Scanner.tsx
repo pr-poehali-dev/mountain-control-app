@@ -3,6 +3,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
+import { ruLabel } from "@/lib/ruLabels";
 import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import QrScanner from "@/components/scanner/QrScanner";
 import { scannerApi } from "@/lib/api";
@@ -240,11 +241,11 @@ const Scanner = () => {
                   {[
                     ...(canSeeCode ? [{ label: "Код", value: person.personal_code }] : []),
                     { label: "Организация", value: person.organization || "—" },
-                    { label: "Тип", value: person.organization_type || "—" },
+                    { label: "Тип", value: ruLabel(person.organization_type) },
                     { label: "Должность", value: person.position },
                     { label: "Подразделение", value: person.department },
-                    { label: "Категория", value: person.category },
-                    { label: "Медосмотр", value: person.medical_status },
+                    { label: "Категория", value: ruLabel(person.category) },
+                    { label: "Медосмотр", value: ruLabel(person.medical_status) },
                     { label: "Комната", value: person.room },
                   ].map((f) => (
                     <div

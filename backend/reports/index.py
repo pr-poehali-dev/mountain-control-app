@@ -529,11 +529,19 @@ def report_events_log(params, event):
     conn.close()
 
     type_labels = {
-        'checkin': 'Вход', 'checkout': 'Выход', 'medical_pass': 'Медосмотр пройден',
-        'medical_deny': 'Медосмотр не пройден', 'medical_reset': 'Автосброс медосмотров',
-        'medical_change': 'Изменение медстатуса', 'lantern_issued': 'Выдача фонаря',
-        'lantern_returned': 'Возврат фонаря', 'status_change': 'Смена статуса',
-        'person_added': 'Добавлен сотрудник', 'person_edited': 'Редактирование сотрудника'
+        'checkin': 'Вход', 'checkout': 'Выход', 'check_in': 'Вход', 'check_out': 'Выход',
+        'checkpoint_in': 'Вход через КПП', 'checkpoint_out': 'Выход через КПП',
+        'checkpoint_denied': 'Отказ на КПП', 'checkpoint_edit': 'Исправление прохода', 'checkpoint_delete': 'Удаление прохода',
+        'scan_checkin': 'Отметка по QR', 'scan_denied': 'Отказ при сканировании',
+        'medical_pass': 'Медосмотр пройден', 'medical_deny': 'Медосмотр не пройден', 'medical_fail': 'Медосмотр не пройден',
+        'medical_reset': 'Автосброс медосмотров', 'medical_change': 'Изменение медстатуса',
+        'lantern_issued': 'Выдача фонаря', 'lantern_returned': 'Возврат фонаря',
+        'lamp_room_issue': 'Выдача в ламповой', 'lamp_room_return': 'Возврат в ламповую', 'lamp_room_denial': 'Недопуск в ламповой',
+        'equipment_repair': 'Оборудование в ремонт', 'equipment_repair_return': 'Возврат из ремонта', 'equipment_decommission': 'Списание оборудования',
+        'status_change': 'Смена статуса', 'person_added': 'Добавлен сотрудник', 'person_edited': 'Редактирование сотрудника',
+        'edit': 'Редактирование', 'arrival': 'Заезд', 'housing': 'Расселение', 'aho_upload': 'Загрузка списка АХО',
+        'security_check': 'Проверка СБ', 'security_check_failed': 'Проверка СБ не пройдена', 'valid': 'Проверка пройдена',
+        'system_reset': 'Сброс системы'
     }
 
     items = []
@@ -648,7 +656,13 @@ STATUS_LABELS = {
     'issued': 'Выдан', 'available': 'Доступен', 'charging': 'Зарядка', 'missing': 'Утерян',
     'normal': 'Норма', 'damaged': 'Повреждён', 'needs_repair': 'Требует ремонта',
     'active': 'Активна', 'maintenance': 'Обслуживание',
-    'full': 'Заполнена', 'partial': 'Частично', 'free': 'Свободна'
+    'full': 'Заполнена', 'partial': 'Частично', 'free': 'Свободна', 'occupied': 'Занята',
+    'business_trip': 'Командировка', 'mine': 'Рудничный', 'office': 'Офисный', 'contractor': 'Подрядчик',
+    'guest': 'Гость', 'gov': 'Гос.органы', 'rudnik': 'Рудник',
+    'day': 'Дневная', 'night': 'Ночная', 'to_shift': 'На смену', 'from_shift': 'Со смены',
+    'pre_shift': 'Предсменный', 'post_shift': 'Послесменный',
+    'checkin': 'Заселение', 'move': 'Переселение', 'evict': 'Выселение',
+    'lantern': 'Фонарь', 'rescuer': 'Самоспасатель', 'both': 'Фонарь и самоспасатель', 'returned': 'Возвращён'
 }
 
 FLOOR_STATUS_LABELS = {'full': 'Заполнен', 'almost_full': 'Почти занят', 'free': 'Есть места'}
