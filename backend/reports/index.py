@@ -352,7 +352,7 @@ def report_housing(params):
     cur.execute("""
         SELECT r.id, r.room_number, b.name, r.capacity, %s AS occ, COALESCE(r.floor, 0), COALESCE(r.name, '')
         FROM rooms r JOIN buildings b ON b.id = r.building_id
-        WHERE r.is_active = TRUE AND b.is_active = TRUE
+        WHERE r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE
         ORDER BY b.sort_order, b.name, COALESCE(r.floor, 0), r.room_number
     """ % "(SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)")
     raw = cur.fetchall()

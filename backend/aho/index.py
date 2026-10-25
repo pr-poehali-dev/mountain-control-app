@@ -104,7 +104,7 @@ def find_or_create_room(cur, room, building, room_id=None):
     cond = "AND (b.name = '%s' OR b.number = '%s')" % (safe_b, safe_b) if safe_b else ""
     cur.execute("""SELECT r.id, r.room_number, b.id, b.name, r.capacity FROM rooms r
                    JOIN buildings b ON b.id = r.building_id
-                   WHERE r.room_number = '%s' AND r.is_active = TRUE AND b.is_active = TRUE %s
+                   WHERE r.room_number = '%s' AND r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE %s
                    ORDER BY b.sort_order, b.id LIMIT 1""" % (safe_room, cond))
     row = cur.fetchone()
     if row or not safe_b:
@@ -586,6 +586,12 @@ def assign_room(body):
         conn.close()
         return json_response(400, {'error': 'Комната %s не найдена. Сначала добавьте её в разделе «Здания»' % room})
     r_id, r_num, b_id, b_name, capacity = room_row
+    cur.execute("SELECT is_residential FROM rooms WHERE id = %d" % int(r_id))
+    res_flag = cur.fetchone()
+    if res_flag and not res_flag[0]:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Помещение %s нежилое — в него нельзя заселить' % r_num})
 
     if arrival_id:
         cur.execute("SELECT personnel_id, full_name FROM aho_arrivals WHERE id = %d" % int(arrival_id))
@@ -730,7 +736,7 @@ def get_stats(event):
     total_batches = cur.fetchone()[0]
 
     cur.execute("""SELECT COALESCE(SUM(r.capacity), 0), COALESCE(SUM(%s), 0)::int FROM rooms r
-                   JOIN buildings b ON b.id = r.building_id WHERE r.is_active = TRUE AND b.is_active = TRUE""" % ROOM_OCC)
+                   JOIN buildings b ON b.id = r.building_id WHERE r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE""" % ROOM_OCC)
     rooms_row = cur.fetchone()
 
     cur.close()
@@ -1358,9 +1364,9 @@ def get_buildings():
     cur = conn.cursor()
     cur.execute("""
         SELECT b.id, b.name, b.number, b.total_rooms, b.total_capacity, b.sort_order, b.is_active,
-               (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as actual_rooms,
-               (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as actual_capacity,
-               (SELECT COALESCE(SUM(%s), 0)::int FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as occupied_people
+               (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE AND r.is_residential = TRUE) as actual_rooms,
+               (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE AND r.is_residential = TRUE) as actual_capacity,
+               (SELECT COALESCE(SUM(%s), 0)::int FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE AND r.is_residential = TRUE) as occupied_people
         FROM buildings b
         WHERE b.is_active = TRUE
         ORDER BY b.sort_order, b.id
@@ -1477,7 +1483,7 @@ def get_rooms(params):
     cur = conn.cursor()
     cur.execute("""
         SELECT r.id, r.room_number, r.capacity, r.floor, r.notes, r.is_active,
-               b.name as building_name, %s, COALESCE(r.name, '')
+               b.name as building_name, %s, COALESCE(r.name, ''), r.is_residential
         FROM rooms r
         JOIN buildings b ON r.building_id = b.id
         WHERE r.building_id = %d AND r.is_active = TRUE
@@ -1505,7 +1511,7 @@ def get_rooms(params):
             'id': r[0], 'room_number': room_num, 'capacity': r[2],
             'floor': r[3], 'notes': r[4] or '', 'is_active': r[5],
             'building_name': r[6],
-            'occupied': r[7], 'name': r[8],
+            'occupied': r[7], 'name': r[8], 'is_residential': bool(r[9]),
             'residents': res_map.get(r[0], []),
         })
     return json_response(200, {'rooms': rooms})
@@ -1518,6 +1524,7 @@ def create_room(body):
     floor = int(body.get('floor', 1))
     notes = body.get('notes', '').strip()
     room_name = str(body.get('name') or '').strip()[:100]
+    is_res = 'FALSE' if body.get('is_residential') is False else 'TRUE'
 
     if not building_id or not room_number:
         return json_response(400, {'error': 'Укажите building_id и room_number'})
@@ -1534,9 +1541,9 @@ def create_room(body):
         return json_response(400, {'error': 'Комната %s уже существует в этом здании' % room_number})
 
     cur.execute("""
-        INSERT INTO rooms (building_id, room_number, capacity, floor, notes, name)
-        VALUES (%d, '%s', %d, %d, '%s', '%s') RETURNING id
-    """ % (int(building_id), safe_num, capacity, floor, safe_notes, room_name.replace("'", "''")))
+        INSERT INTO rooms (building_id, room_number, capacity, floor, notes, name, is_residential)
+        VALUES (%d, '%s', %d, %d, '%s', '%s', %s) RETURNING id
+    """ % (int(building_id), safe_num, capacity, floor, safe_notes, room_name.replace("'", "''"), is_res))
     room_id = cur.fetchone()[0]
 
     update_building_totals(cur, int(building_id))
@@ -1592,6 +1599,14 @@ def update_room(body):
         sets.append("floor = %d" % int(body['floor']))
     if 'notes' in body:
         sets.append("notes = '%s'" % str(body['notes']).replace("'", "''"))
+    if 'is_residential' in body:
+        if not body['is_residential']:
+            cur.execute("SELECT COUNT(*) FROM personnel WHERE residence_room_id = %d AND status != 'archived'" % int(room_id))
+            if cur.fetchone()[0] > 0:
+                cur.close()
+                conn.close()
+                return json_response(400, {'error': 'В комнате есть проживающие — сначала выселите их'})
+        sets.append("is_residential = %s" % ('TRUE' if body['is_residential'] else 'FALSE'))
     if 'name' in body:
         sets.append("name = '%s'" % str(body['name'] or '').strip()[:100].replace("'", "''"))
     if 'is_active' in body:
@@ -1667,8 +1682,8 @@ def create_rooms_batch(body):
 def update_building_totals(cur, building_id):
     cur.execute("""
         UPDATE buildings SET
-            total_rooms = (SELECT COUNT(*) FROM rooms WHERE building_id = %d AND is_active = TRUE),
-            total_capacity = (SELECT COALESCE(SUM(capacity), 0) FROM rooms WHERE building_id = %d AND is_active = TRUE),
+            total_rooms = (SELECT COUNT(*) FROM rooms WHERE building_id = %d AND is_active = TRUE AND is_residential = TRUE),
+            total_capacity = (SELECT COALESCE(SUM(capacity), 0) FROM rooms WHERE building_id = %d AND is_active = TRUE AND is_residential = TRUE),
             updated_at = NOW()
         WHERE id = %d
     """ % (building_id, building_id, building_id))
@@ -1684,9 +1699,9 @@ def get_housing_stats(params):
 
     cur.execute("""
         SELECT b.id, b.name, b.number,
-               (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as rooms_count,
-               (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as total_beds,
-               (SELECT COALESCE(SUM(%s), 0)::int FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE) as occupied_beds
+               (SELECT COUNT(*) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE AND r.is_residential = TRUE) as rooms_count,
+               (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE AND r.is_residential = TRUE) as total_beds,
+               (SELECT COALESCE(SUM(%s), 0)::int FROM rooms r WHERE r.building_id = b.id AND r.is_active = TRUE AND r.is_residential = TRUE) as occupied_beds
         FROM buildings b
         WHERE b.is_active = TRUE
         ORDER BY b.sort_order, b.id
@@ -1713,7 +1728,7 @@ def get_housing_stats(params):
     cur.execute("""
         SELECT r.building_id, COALESCE(r.floor, 0), COUNT(*), COALESCE(SUM(r.capacity), 0), COALESCE(SUM(%s), 0)::int
         FROM rooms r JOIN buildings b ON b.id = r.building_id
-        WHERE r.is_active = TRUE AND b.is_active = TRUE
+        WHERE r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE
         GROUP BY r.building_id, COALESCE(r.floor, 0)
         ORDER BY r.building_id, COALESCE(r.floor, 0)
     """ % ROOM_OCC)
@@ -1745,7 +1760,7 @@ def get_housing_stats(params):
         cur.execute("""
             SELECT r.id, r.room_number, r.capacity, r.floor
             FROM rooms r
-            WHERE r.building_id = %d AND r.is_active = TRUE
+            WHERE r.building_id = %d AND r.is_active = TRUE AND r.is_residential = TRUE
             ORDER BY r.floor, r.room_number
         """ % bid)
         room_rows = cur.fetchall()

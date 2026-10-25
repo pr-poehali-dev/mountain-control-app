@@ -167,7 +167,7 @@ const Aho = () => {
 
   const [selectedBuilding, setSelectedBuilding] = useState<number | null>(null);
   const [buildingRooms, setBuildingRooms] = useState<Array<{
-    id: number; room_number: string; capacity: number; floor: number; name?: string;
+    id: number; room_number: string; capacity: number; floor: number; name?: string; is_residential?: boolean;
     notes: string; is_active: boolean; building_name: string; occupied: number;
     residents?: { id: number; full_name: string; position: string; on_site: boolean }[];
   }>>([]);
@@ -176,12 +176,13 @@ const Aho = () => {
   const [newRoomCapacity, setNewRoomCapacity] = useState("2");
   const [newRoomFloor, setNewRoomFloor] = useState("1");
   const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomResidential, setNewRoomResidential] = useState(true);
   const [batchFloor, setBatchFloor] = useState("1");
   const [batchFrom, setBatchFrom] = useState("");
   const [batchTo, setBatchTo] = useState("");
   const [batchCapacity, setBatchCapacity] = useState("2");
 
-  const [editingRoom, setEditingRoom] = useState<{ id: number; room_number: string; capacity: string; floor: string; name: string } | null>(null);
+  const [editingRoom, setEditingRoom] = useState<{ id: number; room_number: string; capacity: string; floor: string; name: string; is_residential: boolean } | null>(null);
   const [savingRoom, setSavingRoom] = useState(false);
   const [editingBuilding, setEditingBuilding] = useState<number | null>(null);
   const [editBuildingName, setEditBuildingName] = useState("");
@@ -462,9 +463,11 @@ const Aho = () => {
         capacity: parseInt(newRoomCapacity) || 2,
         floor: parseInt(newRoomFloor) || 1,
         name: newRoomName.trim(),
+        is_residential: newRoomResidential,
       });
       setNewRoomNumber("");
       setNewRoomName("");
+      setNewRoomResidential(true);
       refreshHousing();
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
@@ -523,7 +526,7 @@ const Aho = () => {
     }
     setSavingRoom(true);
     try {
-      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap, floor, name: editingRoom.name.trim() });
+      await ahoApi.updateRoom({ id: editingRoom.id, room_number: num, capacity: cap, floor, name: editingRoom.name.trim(), is_residential: editingRoom.is_residential });
       setEditingRoom(null);
       refreshHousing();
     } catch (err: unknown) {
@@ -1427,6 +1430,15 @@ const Aho = () => {
                   maxLength={100}
                   className="bg-secondary/50 flex-1 min-w-0"
                 />
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={!newRoomResidential}
+                    onChange={e => setNewRoomResidential(!e.target.checked)}
+                    className="accent-mine-amber"
+                  />
+                  Нежилое
+                </label>
                 <Button onClick={handleAddRoom} disabled={!newRoomNumber.trim()} size="sm" className="gap-1 bg-mine-green text-white hover:bg-mine-green/90">
                   <Icon name="Plus" size={14} />
                   Добавить
@@ -1484,8 +1496,9 @@ const Aho = () => {
             ) : (
               <>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span>Комнат: <b className="text-foreground">{buildingRooms.length}</b></span>
-                <span>Койко-мест: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.capacity, 0)}</b></span>
+                <span>Комнат: <b className="text-foreground">{buildingRooms.filter(r => r.is_residential !== false).length}</b></span>
+                {buildingRooms.some(r => r.is_residential === false) && <span>Нежилых: <b className="text-foreground">{buildingRooms.filter(r => r.is_residential === false).length}</b></span>}
+                <span>Койко-мест: <b className="text-foreground">{buildingRooms.filter(r => r.is_residential !== false).reduce((s, r) => s + r.capacity, 0)}</b></span>
                 <span>Занято: <b className="text-foreground">{buildingRooms.reduce((s, r) => s + r.occupied, 0)}</b></span>
                 <span>Этажей: <b className="text-foreground">{new Set(buildingRooms.map(r => r.floor ?? 1)).size}</b></span>
                 <span className="ml-auto flex items-center gap-1"><Icon name="Pencil" size={10} />— изменить номер, название, места и этаж</span>
@@ -1496,7 +1509,7 @@ const Aho = () => {
                   <Icon name="Layers" size={13} className="text-mine-cyan" />
                   <span className="text-xs font-semibold text-foreground">{fl} этаж</span>
                   <span className="text-[11px] text-muted-foreground">
-                    {buildingRooms.filter(r => (r.floor ?? 1) === fl).length} комн. · {buildingRooms.filter(r => (r.floor ?? 1) === fl).reduce((s, r) => s + r.occupied, 0)}/{buildingRooms.filter(r => (r.floor ?? 1) === fl).reduce((s, r) => s + r.capacity, 0)} мест
+                    {buildingRooms.filter(r => (r.floor ?? 1) === fl && r.is_residential !== false).length} комн. · {buildingRooms.filter(r => (r.floor ?? 1) === fl && r.is_residential !== false).reduce((s, r) => s + r.occupied, 0)}/{buildingRooms.filter(r => (r.floor ?? 1) === fl && r.is_residential !== false).reduce((s, r) => s + r.capacity, 0)} мест
                   </span>
                   <div className="flex-1 border-t border-border/50" />
                 </div>
@@ -1505,7 +1518,8 @@ const Aho = () => {
                   .filter(r => (r.floor ?? 1) === fl)
                   .sort((a, b) => a.room_number.localeCompare(b.room_number, "ru", { numeric: true }))
                   .map(r => {
-                  const isFull = r.occupied >= r.capacity;
+                  const nonRes = r.is_residential === false;
+                  const isFull = !nonRes && r.occupied >= r.capacity;
                   if (editingRoom?.id === r.id) {
                     return (
                       <div key={r.id} className="rounded-lg border border-mine-cyan/40 bg-mine-cyan/5 p-2.5 space-y-2">
@@ -1551,6 +1565,15 @@ const Aho = () => {
                             className="h-8 bg-secondary/50 text-sm"
                           />
                         </div>
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={!editingRoom.is_residential}
+                            onChange={e => setEditingRoom({ ...editingRoom, is_residential: !e.target.checked })}
+                            className="accent-mine-amber"
+                          />
+                          Нежилое помещение
+                        </label>
                         <div className="flex gap-1">
                           <Button size="sm" onClick={handleSaveRoom} disabled={savingRoom} className="h-7 flex-1 px-2 bg-mine-green text-white hover:bg-mine-green/90">
                             <Icon name={savingRoom ? "Loader2" : "Check"} size={12} className={savingRoom ? "animate-spin" : ""} />
@@ -1563,7 +1586,7 @@ const Aho = () => {
                     );
                   }
                   return (
-                    <div key={r.id} className={`rounded-lg border p-2.5 relative group ${isFull ? "border-mine-red/20 bg-mine-red/5" : r.occupied > 0 ? "border-mine-amber/20 bg-mine-amber/5" : "border-border bg-card"}`}>
+                    <div key={r.id} className={`rounded-lg border p-2.5 relative group ${nonRes ? "border-dashed border-border bg-secondary/20" : isFull ? "border-mine-red/20 bg-mine-red/5" : r.occupied > 0 ? "border-mine-amber/20 bg-mine-amber/5" : "border-border bg-card"}`}>
                       <div className="flex items-center justify-between">
                         <div className="min-w-0">
                           <span className="text-sm font-bold">{r.room_number}</span>
@@ -1571,7 +1594,7 @@ const Aho = () => {
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
-                            onClick={() => setEditingRoom({ id: r.id, room_number: r.room_number, capacity: String(r.capacity), floor: String(r.floor ?? 1), name: r.name || "" })}
+                            onClick={() => setEditingRoom({ id: r.id, room_number: r.room_number, capacity: String(r.capacity), floor: String(r.floor ?? 1), name: r.name || "", is_residential: r.is_residential !== false })}
                             className="text-muted-foreground hover:text-mine-cyan transition-colors"
                             title="Изменить номер, название, места и этаж"
                           >
@@ -1582,6 +1605,12 @@ const Aho = () => {
                           </button>
                         </div>
                       </div>
+                      {nonRes ? (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Icon name="DoorClosed" size={10} className="text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">Нежилое помещение</span>
+                      </div>
+                      ) : (
                       <div className="flex items-center justify-between mt-1">
                         <div className="flex items-center gap-1">
                           <Icon name="Users" size={10} className="text-muted-foreground" />
@@ -1598,6 +1627,7 @@ const Aho = () => {
                           </button>
                         )}
                       </div>
+                      )}
                       {(r.residents?.length ?? 0) > 0 && (
                         <div className="mt-2 pt-2 border-t border-border/40 space-y-1">
                           {r.residents!.map((p) => (

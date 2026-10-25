@@ -1,0 +1,1 @@
+ALTER TABLE t_p25857058_mountain_control_app.rooms ADD COLUMN IF NOT EXISTS is_residential BOOLEAN NOT NULL DEFAULT TRUE;

@@ -248,7 +248,7 @@ def get_stats(event):
         FROM (SELECT r.capacity, (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id
                   AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE) AS occ
               FROM rooms r JOIN buildings b ON b.id = r.building_id
-              WHERE r.is_active = TRUE AND b.is_active = TRUE) t
+              WHERE r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE) t
     """)
     total_rooms, occupied_rooms, total_beds, occupied_beds = cur.fetchone()
 
@@ -459,7 +459,7 @@ def get_residences(event):
                (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id
                   AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)
         FROM buildings b
-        LEFT JOIN rooms r ON r.building_id = b.id AND r.is_active = TRUE
+        LEFT JOIN rooms r ON r.building_id = b.id AND r.is_active = TRUE AND r.is_residential = TRUE
         WHERE b.is_active = TRUE
         ORDER BY b.sort_order, b.id, r.floor, r.room_number
     """)
@@ -491,10 +491,12 @@ def check_room_capacity(cur, room_id, person_id):
         SELECT r.room_number, r.capacity,
                (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.id != %d
                   AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE),
-               (SELECT residence_room_id FROM personnel WHERE id = %d)
+               (SELECT residence_room_id FROM personnel WHERE id = %d), r.is_residential
         FROM rooms r WHERE r.id = %d
     """ % (int(person_id), int(person_id), int(room_id)))
     row = cur.fetchone()
+    if row and not row[4] and row[3] != int(room_id):
+        return 'Помещение %s нежилое — в него нельзя заселить' % row[0]
     if row and row[3] != int(room_id) and row[2] >= row[1]:
         return 'Комната %s заполнена (%d/%d)' % (row[0], row[2], row[1])
     return ''

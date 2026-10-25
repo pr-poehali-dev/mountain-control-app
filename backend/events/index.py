@@ -287,7 +287,7 @@ def get_dashboard(event):
 
     cur.execute("""SELECT COALESCE(SUM(r.capacity), 0), COALESCE(SUM(%s), 0)::int
                    FROM rooms r JOIN buildings b ON b.id = r.building_id
-                   WHERE r.is_active = TRUE AND b.is_active = TRUE""" % "(SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)")
+                   WHERE r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE""" % "(SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift') AND COALESCE(p.is_hidden, FALSE) = FALSE)")
     room_row = cur.fetchone()
     housing_total = room_row[0]
     housing_occupied = room_row[1]
