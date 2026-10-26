@@ -155,6 +155,9 @@ export const authApi = {
   me: () => request(API.auth, "", { params: { action: "me" } }),
   logout: () => request(API.auth, "", { method: "POST", params: { action: "logout" } }),
   listUsers: () => request(API.auth, "", { params: { action: "users" } }),
+  getPendingAccess: () => request(API.auth, "", { params: { action: "pending-access" } }),
+  accessAlertOff: (ids: number[]) =>
+    request(API.auth, "", { method: "POST", body: { ids }, params: { action: "access-alert-off" } }),
   grantAccess: (user_id: number, grant = true, role?: string) =>
     request(API.auth, "", { method: "POST", body: { user_id, grant, role }, params: { action: "grant-access" } }),
   updateRole: (user_id: number, role: string) =>

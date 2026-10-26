@@ -5,6 +5,7 @@ import Header from "./Header";
 import { useDemo } from "@/contexts/DemoContext";
 import HousingConflictAlert from "@/components/aho/HousingConflictAlert";
 import PendingAccessBanner from "@/components/demo/PendingAccessBanner";
+import PendingAccessAlert from "@/components/admin/PendingAccessAlert";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -34,6 +35,7 @@ export default function AppLayout({ children, title, subtitle }: AppLayoutProps)
         </main>
       </div>
       <HousingConflictAlert />
+      <PendingAccessAlert />
     </div>
   );
 }

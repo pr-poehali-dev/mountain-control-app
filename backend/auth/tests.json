@@ -190,6 +190,23 @@
       "method": "DELETE",
       "path": "/?action=face-delete",
       "expectedStatus": 401
+    },
+    {
+      "name": "Pending access admin only",
+      "method": "GET",
+      "path": "/?action=pending-access",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Alert off admin only",
+      "method": "POST",
+      "path": "/?action=access-alert-off",
+      "body": {
+        "ids": [
+          1
+        ]
+      },
+      "expectedStatus": 403
     }
   ]
 }

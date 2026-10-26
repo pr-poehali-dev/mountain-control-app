@@ -218,6 +218,10 @@ def _handler(event, context):
         return logout(event)
     elif method == 'GET' and action == 'users':
         return list_users(event)
+    elif method == 'GET' and action == 'pending-access':
+        return pending_access(event)
+    elif method == 'POST' and action == 'access-alert-off':
+        return access_alert_off(event, body)
     elif method == 'POST' and action == 'grant-access':
         return grant_access(event, body)
     elif method == 'PUT' and action == 'role':
@@ -548,6 +552,43 @@ def get_current_user(event):
     if not row:
         return None
     return {'id': row[0], 'role': row[1]}
+
+
+def pending_access(event):
+    """Новые пользователи, ожидающие допуска, по которым администратор ещё не выключил уведомление"""
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, full_name, email, COALESCE(position, ''), COALESCE(department, ''), COALESCE(organization, ''), created_at
+        FROM users
+        WHERE COALESCE(access_status, 'active') = 'pending' AND is_active = TRUE AND access_alert_off = FALSE
+        ORDER BY created_at, id LIMIT 50
+    """)
+    items = [{'id': r[0], 'full_name': r[1], 'email': r[2], 'position': r[3], 'department': r[4],
+              'organization': r[5], 'created_at': r[6]} for r in cur.fetchall()]
+    roles = load_roles(cur)
+    cur.close()
+    conn.close()
+    return json_response(200, {'items': items, 'roles': [r for r in roles if r['key'] != 'admin']})
+
+
+def access_alert_off(event, body):
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+    ids = [int(i) for i in (body.get('ids') or []) if str(i).isdigit()]
+    if not ids:
+        return json_response(400, {'error': 'Не указаны пользователи'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET access_alert_off = TRUE WHERE id IN (%s)" % ','.join(str(i) for i in ids))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'success': True})
 
 
 def grant_access(event, body):

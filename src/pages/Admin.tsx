@@ -264,6 +264,7 @@ const Admin = () => {
   const handleGrantAccess = async (u: SystemUser, grant: boolean) => {
     try {
       await authApi.grantAccess(u.id, grant);
+      window.dispatchEvent(new Event("pending-access-check"));
       toast({
         title: grant ? "Полный доступ открыт" : "Доступ ограничен",
         description: grant ? `${u.full_name} может работать с данными согласно своей роли` : `${u.full_name} переведён в режим просмотра`,
@@ -351,6 +352,13 @@ const Admin = () => {
     loadItrPositions();
     loadRoles();
     loadDemoLinks();
+  }, []);
+
+  useEffect(() => {
+    const h = () => loadUsers();
+    window.addEventListener("users-changed", h);
+    return () => window.removeEventListener("users-changed", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sortPositions = (list: string[]) =>

@@ -1,0 +1,1 @@
+ALTER TABLE t_p25857058_mountain_control_app.users ADD COLUMN IF NOT EXISTS access_alert_off BOOLEAN NOT NULL DEFAULT FALSE;
