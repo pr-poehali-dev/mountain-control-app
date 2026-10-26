@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useToast } from "@/hooks/use-toast";
 import PassEditDialog from "@/components/checkpoint/PassEditDialog";
+import VehicleCheck from "@/components/checkpoint/VehicleCheck";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -24,6 +25,8 @@ interface PersonData {
   category: string;
   organization: string;
   organization_type: string;
+  pass_number?: string;
+  pass_period?: string;
 }
 
 interface JournalItem {
@@ -61,7 +64,7 @@ interface Stats {
   currently_on_site: number;
 }
 
-type Tab = "scanner" | "journal" | "on-site";
+type Tab = "scanner" | "vehicles" | "journal" | "on-site";
 
 const Checkpoint = () => {
   const [tab, setTab] = useState<Tab>("scanner");
@@ -74,6 +77,7 @@ const Checkpoint = () => {
   const [passResult, setPassResult] = useState<{
     result: string;
     message: string;
+    reason?: string;
     direction: string;
     person_name: string;
     medical_ok: boolean;
@@ -217,6 +221,7 @@ const Checkpoint = () => {
 
   const tabItems = [
     { id: "scanner" as Tab, label: "Сканер", icon: "ScanLine" },
+    { id: "vehicles" as Tab, label: "Автомобили", icon: "Car" },
     { id: "journal" as Tab, label: "Журнал проходов", icon: "FileText" },
     { id: "on-site" as Tab, label: "На территории", icon: "Users" },
   ];
@@ -282,12 +287,12 @@ const Checkpoint = () => {
           </div>
         </div>
 
-        <div className="flex gap-2 border-b border-border pb-3">
+        <div className="flex gap-2 border-b border-border pb-3 overflow-x-auto">
           {tabItems.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all whitespace-nowrap ${
                 tab === t.id
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -437,6 +442,13 @@ const Checkpoint = () => {
                     </div>
                   </div>
 
+                  {passResult.result !== "allowed" && passResult.reason && (
+                    <div className="mb-3 rounded-lg border border-mine-red/30 bg-mine-red/10 px-3 py-2 flex items-start gap-2">
+                      <Icon name="CircleAlert" size={16} className="text-mine-red mt-0.5 shrink-0" />
+                      <p className="text-sm text-mine-red font-medium">Причина: {passResult.reason}</p>
+                    </div>
+                  )}
+
                   {passResult.person && (
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       {[
@@ -444,6 +456,8 @@ const Checkpoint = () => {
                         { label: "Организация", value: passResult.person.organization },
                         { label: "Должность", value: passResult.person.position },
                         { label: "Подразделение", value: passResult.person.department },
+                        { label: "№ пропуска", value: passResult.person.pass_number || "—" },
+                        { label: "Срок пропуска", value: passResult.person.pass_period || "—" },
                       ].map((item, i) => (
                         <div key={i} className="bg-background/50 rounded-lg p-2">
                           <span className="text-muted-foreground">{item.label}: </span>
@@ -462,6 +476,8 @@ const Checkpoint = () => {
             </div>
           </div>
         )}
+
+        {tab === "vehicles" && <VehicleCheck onChanged={loadStats} />}
 
         {tab === "journal" && (
           <div className="space-y-4">

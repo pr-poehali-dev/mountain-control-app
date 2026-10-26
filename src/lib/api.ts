@@ -401,6 +401,12 @@ export const checkpointApi = {
     request(API.checkpoint, "", { params: { action: "stats" } }),
   getOnSite: () =>
     request(API.checkpoint, "", { params: { action: "on-site" } }),
+  vehicleSearch: (number: string) =>
+    request(API.checkpoint, "", { params: { action: "vehicle-search", number } }),
+  vehiclePass: (number: string, direction: "in" | "out", checkpoint_name?: string) =>
+    request(API.checkpoint, "", { method: "POST", body: { number, direction, checkpoint_name }, params: { action: "vehicle-pass" } }),
+  getVehicleJournal: (params?: Record<string, string>) =>
+    request(API.checkpoint, "", { params: { action: "vehicle-journal", ...params } }),
   updatePass: (data: { id: number; direction?: string; checkpoint_name?: string; created_at?: string; medical_ok?: boolean; notes?: string }) =>
     request(API.checkpoint, "", { method: "PUT", body: data, params: { action: "pass-update" } }),
   deletePass: (id: number) =>

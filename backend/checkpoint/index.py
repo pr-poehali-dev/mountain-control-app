@@ -111,8 +111,194 @@ def handler(event, context):
         return update_pass(event, body)
     elif method == 'DELETE' and action == 'pass-delete':
         return delete_pass(event, body, params)
+    elif method == 'GET' and action == 'vehicle-search':
+        return vehicle_search(params, event)
+    elif method == 'POST' and action == 'vehicle-pass':
+        return vehicle_pass(body, event)
+    elif method == 'GET' and action == 'vehicle-journal':
+        return vehicle_journal(params, event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
+
+def fmt_date(d):
+    return d.strftime('%d.%m.%Y') if d else ''
+
+
+def pass_period(permanent, d_from, d_to):
+    if permanent:
+        return 'Бессрочно'
+    if d_from and d_to:
+        return 'с %s по %s' % (fmt_date(d_from), fmt_date(d_to))
+    if d_from:
+        return 'с %s' % fmt_date(d_from)
+    if d_to:
+        return 'по %s' % fmt_date(d_to)
+    return ''
+
+
+def check_pass(number, permanent, d_from, d_to, title):
+    """Возвращает состояние пропуска и причину отказа"""
+    today = date_type.today()
+    if permanent:
+        return 'active', ''
+    if not (number or '').strip() and not d_from and not d_to:
+        return 'none', '%s не оформлен' % title
+    if d_to and d_to < today:
+        return 'expired', '%s истёк %s' % (title, fmt_date(d_to))
+    if d_from and d_from > today:
+        return 'future', '%s начнёт действовать с %s' % (title, fmt_date(d_from))
+    if not d_from and not d_to:
+        return 'none', 'У пропуска не указан срок действия'
+    return 'active', ''
+
+
+LAT = 'ABEKMHOPCTYX'
+CYR = 'АВЕКМНОРСТУХ'
+
+
+def norm_plate(val):
+    v = ''.join(str(val or '').upper().split()).replace('-', '')
+    return v.translate(str.maketrans(LAT, CYR))
+
+
+PLATE_SQL = "TRANSLATE(REPLACE(REPLACE(UPPER(p.vehicle_number), ' ', ''), '-', ''), '%s', '%s')" % (LAT, CYR)
+
+
+def find_vehicle(cur, plate, event):
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    cur.execute("""
+        SELECT p.id, p.full_name, p.position, p.organization, COALESCE(p.photo_url, ''),
+               p.vehicle_number, p.vehicle_brand, p.vehicle_pass_number,
+               p.vehicle_pass_permanent, p.vehicle_pass_valid_from, p.vehicle_pass_valid_to, p.personal_code
+        FROM personnel p
+        WHERE %s = '%s' AND p.status != 'archived' AND p.is_demo_data = %s
+        ORDER BY p.id DESC LIMIT 1
+    """ % (PLATE_SQL, plate.replace("'", "''"), demo_val))
+    r = cur.fetchone()
+    if not r:
+        return None
+    state, reason = check_pass(r[7], r[8], r[9], r[10], 'Пропуск на автомобиль')
+    return {
+        'personnel_id': r[0], 'owner_name': r[1], 'position': r[2] or '', 'organization': r[3] or '',
+        'photo_url': r[4], 'vehicle_number': r[5], 'vehicle_brand': r[6] or '',
+        'pass_number': r[7] or '', 'pass_period': pass_period(r[8], r[9], r[10]),
+        'state': state, 'reason': reason, 'personal_code': r[11]
+    }
+
+
+def last_vehicle_direction(cur, plate):
+    cur.execute("""
+        SELECT direction FROM vehicle_passes
+        WHERE TRANSLATE(REPLACE(REPLACE(UPPER(vehicle_number), ' ', ''), '-', ''), '%s', '%s') = '%s' AND allowed = TRUE
+        ORDER BY created_at DESC, id DESC LIMIT 1
+    """ % (LAT, CYR, plate.replace("'", "''")))
+    r = cur.fetchone()
+    return r[0] if r else ''
+
+
+def vehicle_search(params, event):
+    plate = norm_plate(params.get('number', ''))
+    if len(plate) < 3:
+        return json_response(400, {'error': 'Введите госномер полностью'})
+    conn = get_db()
+    cur = conn.cursor()
+    v = find_vehicle(cur, plate, event)
+    if v:
+        v['on_site'] = last_vehicle_direction(cur, plate) == 'in'
+    cur.close()
+    conn.close()
+    if not v:
+        return json_response(404, {'error': 'Автомобиль %s не найден в базе пропусков' % plate})
+    return json_response(200, {'vehicle': v})
+
+
+def vehicle_pass(body, event):
+    plate = norm_plate(body.get('number', ''))
+    direction = body.get('direction', 'in')
+    checkpoint_name = str(body.get('checkpoint_name') or 'КПП-1')[:100]
+    if len(plate) < 3:
+        return json_response(400, {'error': 'Введите госномер полностью'})
+    if direction not in ('in', 'out'):
+        return json_response(400, {'error': 'direction должен быть in или out'})
+    conn = get_db()
+    cur = conn.cursor()
+    v = find_vehicle(cur, plate, event)
+    if v:
+        allowed = direction == 'out' or v['state'] == 'active'
+        reason = '' if allowed else v['reason']
+    else:
+        allowed = False
+        reason = 'Автомобиль не найден в базе пропусков'
+    if direction == 'out' and not v:
+        allowed = True
+        reason = ''
+    notes = '' if allowed else 'ОТКАЗ: ' + reason
+    cur.execute("""
+        INSERT INTO vehicle_passes (personnel_id, vehicle_number, vehicle_brand, owner_name, direction, checkpoint_name, allowed, notes)
+        VALUES (%s, '%s', '%s', '%s', '%s', '%s', %s, '%s') RETURNING id, created_at
+    """ % (v['personnel_id'] if v else 'NULL', plate, (v['vehicle_brand'] if v else '').replace("'", "''"),
+           (v['owner_name'] if v else '').replace("'", "''"), direction, checkpoint_name.replace("'", "''"),
+           'TRUE' if allowed else 'FALSE', notes.replace("'", "''")))
+    rec = cur.fetchone()
+    if v:
+        desc = 'КПП: автомобиль %s (%s) — %s' % (plate, v['owner_name'],
+               ('въезд' if direction == 'in' else 'выезд') if allowed else 'отказ во въезде. ' + reason)
+        cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('%s', '%s', %d)" % (
+            'vehicle_' + (direction if allowed else 'denied'), desc.replace("'", "''"), v['personnel_id']))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {
+        'result': 'allowed' if allowed else 'denied',
+        'message': ('Въезд разрешён' if direction == 'in' else 'Выезд зафиксирован') if allowed else 'Въезд запрещён',
+        'reason': reason,
+        'direction': direction,
+        'vehicle': v,
+        'vehicle_number': plate,
+        'pass_id': rec[0]
+    })
+
+
+def vehicle_journal(params, event):
+    date_from = params.get('date_from', '')
+    date_to = params.get('date_to', '')
+    page = max(1, int(params.get('page', '1')))
+    per_page = 50
+    where = "WHERE 1=1"
+    if date_from:
+        where += " AND vp.created_at >= '%s 00:00:00'" % date_from.replace("'", "''")
+    if date_to:
+        where += " AND vp.created_at <= '%s 23:59:59'" % date_to.replace("'", "''")
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    where += " AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM vehicle_passes vp LEFT JOIN personnel p ON p.id = vp.personnel_id %s" % where)
+    total = cur.fetchone()[0]
+    cur.execute("""
+        SELECT vp.id, vp.vehicle_number, vp.vehicle_brand, vp.owner_name, vp.direction,
+               vp.checkpoint_name, vp.allowed, vp.notes, vp.created_at
+        FROM vehicle_passes vp LEFT JOIN personnel p ON p.id = vp.personnel_id
+        %s ORDER BY vp.created_at DESC, vp.id DESC LIMIT %d OFFSET %d
+    """ % (where, per_page, (page - 1) * per_page))
+    rows = cur.fetchall()
+    cur.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT DISTINCT ON (vehicle_number) vehicle_number, direction FROM vehicle_passes
+            WHERE allowed = TRUE ORDER BY vehicle_number, created_at DESC, id DESC
+        ) t WHERE t.direction = 'in'
+    """)
+    on_site = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    items = [{
+        'id': r[0], 'vehicle_number': r[1], 'vehicle_brand': r[2], 'owner_name': r[3],
+        'direction': 'Въезд' if r[4] == 'in' else 'Выезд', 'direction_raw': r[4],
+        'checkpoint_name': r[5], 'allowed': r[6], 'notes': r[7], 'created_at': r[8]
+    } for r in rows]
+    return json_response(200, {'items': items, 'total': total, 'page': page,
+                               'pages': max(1, (total + per_page - 1) // per_page), 'on_site': on_site})
+
 
 def parse_qr_code(raw):
     try:
@@ -140,9 +326,10 @@ def register_pass(body):
 
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
-               p.category, p.status, p.medical_status, p.organization, p.organization_type
+               p.category, p.status, p.medical_status, p.organization, p.organization_type,
+               COALESCE(p.pass_number, ''), p.pass_permanent, p.pass_valid_from, p.pass_valid_to
         FROM personnel p
-        WHERE (p.personal_code = '%s' OR p.qr_code = '%s') AND p.is_hidden = FALSE
+        WHERE (p.personal_code = '%s' OR p.qr_code = '%s') AND p.is_hidden = FALSE AND p.status != 'archived'
         LIMIT 1
     """ % (safe_code, safe_code))
     row = cur.fetchone()
@@ -156,6 +343,52 @@ def register_pass(body):
     person_name = row[2]
     safe_name = person_name.replace("'", "''")
     medical_ok = row[7] in ('passed', 'expiring')
+
+    category_labels = {
+        'mine': 'Рудничный', 'contractor': 'Подрядчик',
+        'business_trip': 'Командированный', 'guest': 'Гость'
+    }
+    org_type_labels = {
+        'rudnik': 'Рудник', 'guest': 'Гость',
+        'contractor': 'Подрядная организация', 'gov': 'Гос.органы'
+    }
+    person_info = {
+        'id': row[0],
+        'personal_code': row[1],
+        'full_name': row[2],
+        'position': row[3] or '—',
+        'department': row[4] or '—',
+        'category': category_labels.get(row[5], row[5]),
+        'organization': row[8] or '—',
+        'organization_type': org_type_labels.get(row[9] or '', row[9] or '—'),
+        'pass_number': row[10] or '',
+        'pass_period': pass_period(row[11], row[12], row[13])
+    }
+
+    if direction == 'in':
+        state, reason = check_pass(row[10], row[11], row[12], row[13], 'Личный пропуск')
+        if state != 'active':
+            cur.execute("""
+                INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes)
+                VALUES (%d, '%s', '%s', 'in', '%s', %s, '%s')
+            """ % (person_id, safe_code, safe_name, checkpoint_name.replace("'", "''"),
+                   'TRUE' if medical_ok else 'FALSE', ('ОТКАЗ: ' + reason).replace("'", "''")))
+            cur.execute("""
+                INSERT INTO events (event_type, description, personnel_id)
+                VALUES ('checkpoint_denied', '%s', %d)
+            """ % (('КПП: %s — отказ во входе. %s' % (person_name, reason)).replace("'", "''"), person_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return json_response(200, {
+                'result': 'denied',
+                'message': 'Проход запрещён',
+                'reason': reason,
+                'direction': direction,
+                'person_name': person_name,
+                'medical_ok': medical_ok,
+                'person': person_info
+            })
 
     cur.execute("""
         INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes)
@@ -203,15 +436,6 @@ def register_pass(body):
     cur.close()
     conn.close()
 
-    category_labels = {
-        'mine': 'Рудничный', 'contractor': 'Подрядчик',
-        'business_trip': 'Командированный', 'guest': 'Гость'
-    }
-    org_type_labels = {
-        'rudnik': 'Рудник', 'guest': 'Гость',
-        'contractor': 'Подрядная организация', 'gov': 'Гос.органы'
-    }
-
     dir_label = 'Вход зафиксирован' if direction == 'in' else 'Выход зафиксирован'
 
     return json_response(200, {
@@ -221,16 +445,7 @@ def register_pass(body):
         'direction': direction,
         'person_name': person_name,
         'medical_ok': medical_ok,
-        'person': {
-            'id': row[0],
-            'personal_code': row[1],
-            'full_name': row[2],
-            'position': row[3] or '—',
-            'department': row[4] or '—',
-            'category': category_labels.get(row[5], row[5]),
-            'organization': row[8] or '—',
-            'organization_type': org_type_labels.get(row[9] or '', row[9] or '—')
-        }
+        'person': person_info
     })
 
 def get_journal(params, event):
