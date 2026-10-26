@@ -19,6 +19,7 @@ import {
 import Icon from "@/components/ui/icon";
 import HousingStats from "@/components/aho/HousingStats";
 import ResidenceSelect, { type ResidenceValue } from "@/components/personnel/ResidenceSelect";
+import HousingQueue from "@/components/aho/HousingQueue";
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -930,88 +931,7 @@ const Aho = () => {
           )}
 
           <div className="border-t border-border pt-4 mt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-foreground">Список расселения</h3>
-              <div className="flex gap-3 flex-wrap">
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="w-[160px] bg-secondary/50 h-9 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Все</SelectItem>
-                    <SelectItem value="arrived">На территории</SelectItem>
-                    <SelectItem value="expected">Ожидается</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={loadArrivals} disabled={loading}>
-                  <Icon name="RefreshCw" size={14} />
-                  Обновить
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
-              {arrivals.length === 0 ? (
-                <div className="p-12 text-center">
-                  <Icon name="Home" size={32} className="text-muted-foreground/20 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Нет записей</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-secondary/30">
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">ФИО</th>
-                        {canSeeCode && <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Код</th>}
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Организация</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Статус</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Комната</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Корпус</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Действия</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {arrivals.map(item => {
-                        const st = STATUS_MAP[item.arrival_status] || STATUS_MAP.expected;
-                        return (
-                          <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/20">
-                            <td className="px-3 py-2 text-xs font-medium">{item.full_name}</td>
-                            {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-red-500">{item.personal_code}</td>}
-                            <td className="px-3 py-2 text-xs text-muted-foreground">{item.organization || "—"}</td>
-                            <td className="px-3 py-2">
-                              <span className={`text-xs ${st.color}`}>{st.label}</span>
-                            </td>
-                            <td className="px-3 py-2 text-xs font-medium">
-                              {item.room ? (
-                                <span className="text-mine-green">{item.room}</span>
-                              ) : (
-                                <span className="text-mine-amber">Не заселён</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-xs text-muted-foreground">{item.building || "—"}</td>
-                            <td className="px-3 py-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-[11px] gap-1"
-                                disabled={!item.personnel_id}
-                                onClick={() => {
-                                  setRoomDialog(item);
-                                  setRoomValue({ residence_building_id: null, residence_room_id: null });
-                                }}
-                              >
-                                <Icon name="Home" size={12} />
-                                {item.room ? "Переселить" : "Заселить"}
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            <HousingQueue canSeeCode={canSeeCode} version={housingVersion} onChanged={() => refreshHousing()} />
           </div>
         </TabsContent>
 

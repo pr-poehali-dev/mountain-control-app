@@ -649,21 +649,32 @@ def assign_room(body):
 
 
 def get_unhoused(event):
-    """Сотрудники на предприятии без комнаты — и из АХО, и из раздела «Персонал»"""
+    """Список расселения: все действующие сотрудники без комнаты (загруженные списком и внесённые вручную).
+    Человек остаётся в списке, пока его не заселят или он не убудет / не будет архивирован."""
     demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT p.id, p.full_name, p.personal_code, COALESCE(p.organization, ''), COALESCE(p.position, '')
+        SELECT p.id, p.full_name, p.personal_code, COALESCE(p.organization, ''), COALESCE(p.position, ''),
+               p.status, p.created_at, COALESCE(p.department, ''), COALESCE(p.phone, ''),
+               (SELECT a.arrival_date FROM aho_arrivals a WHERE a.personnel_id = p.id AND a.is_hidden = FALSE
+                ORDER BY a.id DESC LIMIT 1),
+               EXISTS (SELECT 1 FROM aho_arrivals a WHERE a.personnel_id = p.id AND a.is_hidden = FALSE),
+               COALESCE(p.tab_number, '')
         FROM personnel p
-        WHERE p.residence_room_id IS NULL AND p.status IN ('arrived', 'on_shift')
+        WHERE p.residence_room_id IS NULL AND p.status IN ('expected', 'arrived', 'on_shift')
           AND COALESCE(p.is_hidden, FALSE) = FALSE AND p.is_demo_data = %s
-        ORDER BY p.full_name LIMIT 500
+        ORDER BY CASE WHEN p.status = 'expected' THEN 1 ELSE 0 END, p.created_at DESC NULLS LAST, p.full_name
+        LIMIT 1000
     """ % demo_val)
-    items = [{'personnel_id': r[0], 'full_name': r[1], 'personal_code': r[2], 'organization': r[3], 'position': r[4]} for r in cur.fetchall()]
+    items = [{
+        'personnel_id': r[0], 'full_name': r[1], 'personal_code': r[2], 'organization': r[3], 'position': r[4],
+        'status': r[5], 'created_at': r[6], 'department': r[7], 'phone': r[8],
+        'arrival_date': r[9], 'source': 'list' if r[10] else 'manual', 'tab_number': r[11]
+    } for r in cur.fetchall()]
     cur.close()
     conn.close()
-    return json_response(200, {'items': items})
+    return json_response(200, {'items': items, 'total': len(items)})
 
 
 def evict(body):
