@@ -642,5 +642,9 @@ def get_dashboard(event):
 
 def handler(event, context):
     """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    action = (event.get('queryStringParameters') or {}).get('action', '')
+    if event.get('httpMethod') == 'GET' and action in ('list', '', 'notifications') and privacy.caller_state(event)[0]:
+        empty = {'events': []} if action != 'notifications' else {'notifications': [], 'unread': 0}
+        return json_response(200, empty)
     return privacy.guard(event, context, _handler, write_ok=())
 

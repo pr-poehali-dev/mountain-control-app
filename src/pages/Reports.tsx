@@ -681,7 +681,7 @@ ${html}
                 </div>
                 <div>
                   <label className="text-[11px] text-muted-foreground block mb-1">Сотрудник, общежитие или комната</label>
-                  <Input value={housingQuery} onChange={e => setHousingQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") loadReport(); }} placeholder="Например: Шнюков или 45" className="bg-secondary/50 w-[240px] h-9 text-sm" />
+                  <Input value={housingQuery} onChange={e => setHousingQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") loadReport(); }} placeholder="Например: Иванов или 45" className="bg-secondary/50 w-[240px] h-9 text-sm" />
                 </div>
                 <div className="flex gap-1 flex-wrap">
                   {[
