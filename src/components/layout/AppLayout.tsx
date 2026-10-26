@@ -1,4 +1,5 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
+import { eventsApi } from "@/lib/api";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { useDemo } from "@/contexts/DemoContext";
@@ -10,6 +11,13 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children, title, subtitle }: AppLayoutProps) {
+  useEffect(() => {
+    if (localStorage.getItem("mc_demo") === "true") return;
+    const key = `mc_pass_alert_${new Date().toISOString().slice(0, 13)}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    eventsApi.triggerPassAlert().catch(() => {});
+  }, []);
   const { isDemo } = useDemo();
 
   return (

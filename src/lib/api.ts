@@ -250,6 +250,11 @@ export const eventsApi = {
     request(API.events, "", { params: { action: "list", limit: String(limit) } }),
   getDashboard: () => request(API.events, "", { params: { action: "dashboard" } }),
   getExpiringPasses: (days = 7) => request(API.events, "", { params: { action: "expiring-passes", days: String(days) } }),
+  getPassAlert: () => request(API.events, "", { params: { action: "pass-alert-settings" } }),
+  savePassAlert: (body: { enabled: boolean; emails: string[]; hour: number; tz?: string }) =>
+    request(API.events, "", { method: "PUT", body, params: { action: "pass-alert-settings" } }),
+  sendPassAlertNow: () => request(API.events, "", { method: "POST", body: {}, params: { action: "pass-alert-send" } }),
+  triggerPassAlert: () => request(API.events, "", { params: { action: "pass-alert-auto" } }),
   getNotifications: (limit = 30) =>
     request(API.events, "", { params: { action: "notifications", limit: String(limit) } }),
   markRead: (id: number) =>
@@ -408,6 +413,8 @@ export const checkpointApi = {
     request(API.checkpoint, "", { method: "POST", body: { number, direction, checkpoint_name }, params: { action: "vehicle-pass" } }),
   getVehicleJournal: (params?: Record<string, string>) =>
     request(API.checkpoint, "", { params: { action: "vehicle-journal", ...params } }),
+  vehicleExport: (params?: Record<string, string>) =>
+    request(API.checkpoint, "", { params: { action: "vehicle-export", ...params } }),
   updatePass: (data: { id: number; direction?: string; checkpoint_name?: string; created_at?: string; medical_ok?: boolean; notes?: string }) =>
     request(API.checkpoint, "", { method: "PUT", body: data, params: { action: "pass-update" } }),
   deletePass: (id: number) =>

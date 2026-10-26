@@ -65,6 +65,33 @@ export default function VehicleCheck({ onChanged }: { onChanged?: () => void }) 
   const [loading, setLoading] = useState(false);
   const [journal, setJournal] = useState<JournalRow[]>([]);
   const [onSite, setOnSite] = useState(0);
+  const [expFrom, setExpFrom] = useState("");
+  const [expTo, setExpTo] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const params: Record<string, string> = {};
+      if (expFrom) params.date_from = expFrom;
+      if (expTo) params.date_to = expTo;
+      const d = await checkpointApi.vehicleExport(params);
+      const bin = atob(d.file);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = d.file_name || "Журнал_автомобилей.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось выгрузить журнал");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const loadJournal = useCallback(async () => {
     try {
@@ -279,6 +306,20 @@ export default function VehicleCheck({ onChanged }: { onChanged?: () => void }) 
               <Icon name="RefreshCw" size={14} />
             </button>
           </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-2 px-4 py-3 border-b border-border bg-secondary/20">
+          <div>
+            <label className="text-[10px] text-muted-foreground block">С</label>
+            <Input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} className="h-8 text-xs w-36 bg-background" />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground block">По</label>
+            <Input type="date" value={expTo} min={expFrom || undefined} onChange={(e) => setExpTo(e.target.value)} className="h-8 text-xs w-36 bg-background" />
+          </div>
+          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs border-mine-green/40 text-mine-green hover:bg-mine-green/10 hover:text-mine-green" onClick={exportExcel} disabled={exporting}>
+            <Icon name={exporting ? "Loader2" : "FileSpreadsheet"} size={14} className={exporting ? "animate-spin" : ""} />
+            Выгрузить в Excel
+          </Button>
         </div>
         <div className="divide-y divide-border/50 max-h-[560px] overflow-y-auto">
           {journal.length === 0 ? (

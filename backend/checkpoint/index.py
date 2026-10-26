@@ -117,6 +117,8 @@ def handler(event, context):
         return vehicle_pass(body, event)
     elif method == 'GET' and action == 'vehicle-journal':
         return vehicle_journal(params, event)
+    elif method == 'GET' and action == 'vehicle-export':
+        return vehicle_export(params, event)
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -298,6 +300,91 @@ def vehicle_journal(params, event):
     } for r in rows]
     return json_response(200, {'items': items, 'total': total, 'page': page,
                                'pages': max(1, (total + per_page - 1) // per_page), 'on_site': on_site})
+
+
+def vehicle_export(params, event):
+    """Выгрузка журнала автомобилей в Excel с фильтром по датам"""
+    import base64
+    from io import BytesIO
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    date_from = params.get('date_from', '')
+    date_to = params.get('date_to', '')
+    try:
+        if date_from:
+            datetime.strptime(date_from, '%Y-%m-%d')
+        if date_to:
+            datetime.strptime(date_to, '%Y-%m-%d')
+    except ValueError:
+        return json_response(400, {'error': 'Неверный формат даты'})
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    where = "WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
+    if date_from:
+        where += " AND vp.created_at >= '%s 00:00:00'" % date_from
+    if date_to:
+        where += " AND vp.created_at <= '%s 23:59:59'" % date_to
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT vp.created_at, vp.vehicle_number, vp.vehicle_brand, vp.owner_name,
+               COALESCE(p.position, ''), COALESCE(p.organization, ''),
+               vp.direction, vp.allowed, vp.notes, vp.checkpoint_name
+        FROM vehicle_passes vp LEFT JOIN personnel p ON p.id = vp.personnel_id
+        %s ORDER BY vp.created_at DESC, vp.id DESC LIMIT 20000
+    """ % where)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Журнал автомобилей'
+    thin = Side(style='thin', color='CCCCCC')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    period = 'за всё время'
+    if date_from or date_to:
+        period = 'с %s по %s' % (
+            datetime.strptime(date_from, '%Y-%m-%d').strftime('%d.%m.%Y') if date_from else '…',
+            datetime.strptime(date_to, '%Y-%m-%d').strftime('%d.%m.%Y') if date_to else '…')
+    ws.cell(row=1, column=1, value='Журнал въезда и выезда автомобилей %s' % period).font = Font(name='Arial', bold=True, size=13)
+    allowed_cnt = sum(1 for r in rows if r[7])
+    ws.cell(row=2, column=1, value='Всего записей: %d · въездов: %d · выездов: %d · отказов: %d' % (
+        len(rows), sum(1 for r in rows if r[7] and r[6] == 'in'), sum(1 for r in rows if r[7] and r[6] == 'out'),
+        len(rows) - allowed_cnt)).font = Font(name='Arial', size=10, color='666666')
+
+    headers = ['Дата', 'Время', 'Госномер', 'Марка, модель', 'Владелец', 'Должность', 'Организация', 'Направление', 'Результат', 'Причина отказа', 'КПП']
+    widths = [12, 8, 14, 20, 32, 24, 28, 12, 12, 40, 10]
+    head_fill = PatternFill(start_color='1F2937', end_color='1F2937', fill_type='solid')
+    for i, (h, w) in enumerate(zip(headers, widths), 1):
+        c = ws.cell(row=4, column=i, value=h)
+        c.font = Font(name='Arial', bold=True, color='FFFFFF', size=10)
+        c.fill = head_fill
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        c.border = border
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    denied_fill = PatternFill(start_color='FDE2E2', end_color='FDE2E2', fill_type='solid')
+    for n, r in enumerate(rows, 5):
+        reason = (r[8] or '').replace('ОТКАЗ:', '').strip() if not r[7] else ''
+        vals = [r[0].strftime('%d.%m.%Y'), r[0].strftime('%H:%M'), r[1], r[2] or '', r[3] or 'Не найден в базе',
+                r[4], r[5], 'Въезд' if r[6] == 'in' else 'Выезд', 'Разрешён' if r[7] else 'Отказ', reason, r[9] or '']
+        for i, v in enumerate(vals, 1):
+            c = ws.cell(row=n, column=i, value=v)
+            c.font = Font(name='Arial', size=10, bold=(i == 3), color=('B91C1C' if not r[7] and i in (9, 10) else '000000'))
+            c.border = border
+            c.alignment = Alignment(vertical='center', wrap_text=(i == 10))
+            if not r[7]:
+                c.fill = denied_fill
+    ws.freeze_panes = 'A5'
+    if rows:
+        ws.auto_filter.ref = 'A4:K%d' % (len(rows) + 4)
+
+    buf = BytesIO()
+    wb.save(buf)
+    name = 'Журнал_автомобилей'
+    if date_from or date_to:
+        name += '_%s_%s' % (date_from or 'начало', date_to or 'сегодня')
+    return json_response(200, {'file': base64.b64encode(buf.getvalue()).decode(), 'file_name': name + '.xlsx', 'total': len(rows)})
 
 
 def parse_qr_code(raw):

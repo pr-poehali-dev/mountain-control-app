@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "@/components/ui/icon";
-import { eventsApi } from "@/lib/api";
+import { eventsApi, personnelApi } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useToast } from "@/hooks/use-toast";
 
 interface Item {
   personnel_id: number;
@@ -12,7 +16,122 @@ interface Item {
   pass_number: string;
   vehicle: string;
   valid_to: string;
+  valid_from?: string;
   days_left: number;
+}
+
+function addDays(base: string, days: number) {
+  const d = new Date(base + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function todayIso() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function ExtendButton({ item, onDone }: { item: Item; onDone: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const start = item.days_left < 0 ? todayIso() : item.valid_to;
+  const [date, setDate] = useState(addDays(start, 30));
+
+  const presets = [
+    { label: "+1 мес", days: 30 },
+    { label: "+3 мес", days: 91 },
+    { label: "+6 мес", days: 182 },
+    { label: "+1 год", days: 365 },
+  ];
+
+  const save = async (permanent = false) => {
+    setBusy(true);
+    try {
+      const body: Record<string, unknown> =
+        item.kind === "vehicle"
+          ? {
+              id: item.personnel_id,
+              vehicle_pass_permanent: permanent,
+              vehicle_pass_valid_from: item.valid_from || "",
+              vehicle_pass_valid_to: permanent ? "" : date,
+            }
+          : {
+              id: item.personnel_id,
+              pass_permanent: permanent,
+              pass_valid_from: item.valid_from || "",
+              pass_valid_to: permanent ? "" : date,
+            };
+      await personnelApi.edit(body);
+      toast({
+        title: "Пропуск продлён",
+        description: `${item.full_name}: ${permanent ? "бессрочно" : `до ${fmt(date)}`}`,
+      });
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      toast({ title: "Не удалось продлить", description: e instanceof Error ? e.message : "", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs gap-1 shrink-0 border-mine-green/40 text-mine-green hover:bg-mine-green/10 hover:text-mine-green"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Icon name="CalendarPlus" size={12} />
+          Продлить
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 space-y-3" align="end">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Продлить пропуск</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {item.full_name} · {item.kind === "vehicle" ? "авто" : "личный"}
+          </p>
+        </div>
+        <div className="grid grid-cols-4 gap-1">
+          {presets.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => setDate(addDays(start, p.days))}
+              className={`text-[11px] rounded-md border px-1 py-1.5 transition-colors ${
+                date === addDays(start, p.days)
+                  ? "border-mine-green bg-mine-green/10 text-mine-green"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Новая дата окончания</label>
+          <Input type="date" value={date} min={todayIso()} onChange={(e) => setDate(e.target.value)} className="bg-secondary/50" />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="flex-1 bg-mine-green text-black hover:bg-mine-green/90"
+            disabled={busy || !date || date < todayIso()}
+            onClick={() => save(false)}
+          >
+            {busy ? <Icon name="Loader2" size={14} className="animate-spin" /> : "Сохранить"}
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => save(true)}>
+            Бессрочно
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 const fmt = (d: string) => {
@@ -43,12 +162,15 @@ export default function ExpiringPasses() {
   const [loaded, setLoaded] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  useEffect(() => {
+  const load = () =>
     eventsApi
       .getExpiringPasses(7)
       .then((d) => setItems(d.items || []))
       .catch(() => setItems([]))
       .finally(() => setLoaded(true));
+
+  useEffect(() => {
+    load();
   }, []);
 
   if (!loaded) return null;
@@ -91,11 +213,10 @@ export default function ExpiringPasses() {
         {visible.map((i) => {
           const isExpired = i.days_left < 0;
           return (
-            <Link
+            <div
               key={`${i.kind}-${i.personnel_id}`}
-              to={`/personnel?open=${i.personnel_id}`}
-              className={`rounded-lg border bg-card px-3 py-2 flex items-start gap-2.5 hover:ring-2 transition-all ${
-                isExpired ? "border-mine-red/30 ring-mine-red/30" : "border-border ring-mine-amber/30"
+              className={`rounded-lg border bg-card px-3 py-2 flex items-start gap-2.5 ${
+                isExpired ? "border-mine-red/30" : "border-border"
               }`}
             >
               <Icon
@@ -103,8 +224,8 @@ export default function ExpiringPasses() {
                 size={16}
                 className={`mt-0.5 shrink-0 ${isExpired ? "text-mine-red" : "text-mine-amber"}`}
               />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground truncate">{i.full_name}</p>
+              <Link to={`/personnel?open=${i.personnel_id}`} className="min-w-0 flex-1 group">
+                <p className="text-sm font-medium text-foreground truncate group-hover:underline">{i.full_name}</p>
                 <p className="text-xs text-muted-foreground truncate">
                   {i.kind === "vehicle" ? `Авто ${i.vehicle || ""}`.trim() : "Личный пропуск"}
                   {i.pass_number && ` № ${i.pass_number}`}
@@ -112,8 +233,9 @@ export default function ExpiringPasses() {
                 <p className={`text-xs font-medium ${isExpired ? "text-mine-red" : "text-mine-amber"}`}>
                   до {fmt(i.valid_to)} — {daysText(i.days_left)}
                 </p>
-              </div>
-            </Link>
+              </Link>
+              <ExtendButton item={i} onDone={load} />
+            </div>
           );
         })}
       </div>
