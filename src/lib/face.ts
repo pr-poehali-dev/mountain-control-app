@@ -112,3 +112,21 @@ export function cameraErrorText(err: unknown): string {
   if (!window.isSecureContext) return "Камера доступна только по защищённому адресу (https)";
   return "Не удалось включить камеру";
 }
+
+export async function faceFromImageUrl(url: string): Promise<{ descriptor: number[]; photo: string; faces: number } | null> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.crossOrigin = "anonymous";
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Не удалось загрузить фото профиля"));
+    el.src = url + (url.includes("?") ? "&" : "?") + "cors=1";
+  });
+  const ratio = Math.min(1, 800 / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.naturalWidth * ratio);
+  canvas.height = Math.round(img.naturalHeight * ratio);
+  canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const face = await detectFace(canvas, true);
+  if (!face || face.descriptor.length !== 128) return null;
+  return { descriptor: face.descriptor, photo: canvas.toDataURL("image/jpeg", 0.85), faces: face.faces };
+}

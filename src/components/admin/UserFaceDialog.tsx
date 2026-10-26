@@ -5,12 +5,14 @@ import Icon from "@/components/ui/icon";
 import { authApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import FaceCapture from "@/components/face/FaceCapture";
+import { faceFromImageUrl } from "@/lib/face";
 
 export interface FaceUser {
   id: number;
   full_name: string;
   has_face?: boolean;
   face_photo_url?: string;
+  photo_url?: string;
 }
 
 interface Props {
@@ -40,6 +42,28 @@ export default function UserFaceDialog({ user, onClose, onChanged }: Props) {
     setCurrent({ has: true, url: res.face_photo_url || "" });
     toast({ title: "Фото сохранено", description: `${user.full_name} может входить по лицу` });
     onChanged();
+  };
+
+  const fromProfile = async () => {
+    if (!user?.photo_url) return;
+    setBusy(true);
+    setError("");
+    try {
+      const face = await faceFromImageUrl(user.photo_url);
+      if (!face) {
+        setError("На фото профиля не найдено лицо. Загрузите более чёткое фото анфас или снимите с камеры");
+        return;
+      }
+      if (face.faces > 1) {
+        setError("На фото профиля несколько лиц. Нужно фото, где только один сотрудник");
+        return;
+      }
+      await save([face.descriptor], face.photo);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось включить вход по фото");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const remove = async () => {
@@ -87,6 +111,20 @@ export default function UserFaceDialog({ user, onClose, onChanged }: Props) {
 
         {error && (
           <div className="p-2 rounded-md bg-mine-red/10 border border-mine-red/20 text-mine-red text-xs">{error}</div>
+        )}
+
+        {user?.photo_url && (
+          <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30">
+            <img src={user.photo_url} alt="" className="w-12 h-12 rounded-lg object-cover border border-border" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">Фото из профиля</p>
+              <p className="text-xs text-muted-foreground">Включить вход по уже загруженному фото</p>
+            </div>
+            <Button type="button" size="sm" onClick={fromProfile} disabled={busy} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">
+              <Icon name={busy ? "Loader2" : "ScanFace"} size={14} className={busy ? "animate-spin" : ""} />
+              {has ? "Заменить" : "Включить"}
+            </Button>
+          </div>
         )}
 
         <FaceCapture
