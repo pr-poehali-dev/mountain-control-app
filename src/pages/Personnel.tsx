@@ -136,6 +136,41 @@ interface PersonnelItem {
   pass_valid_from?: string;
   pass_valid_to?: string;
   inspection_mode?: string;
+  vehicle_pass_number?: string;
+  vehicle_number?: string;
+  vehicle_brand?: string;
+  vehicle_pass_permanent?: boolean;
+  vehicle_pass_valid_from?: string;
+  vehicle_pass_valid_to?: string;
+}
+
+interface VehicleValue {
+  vehicle_pass_number: string;
+  vehicle_number: string;
+  vehicle_brand: string;
+  vehicle_pass_permanent: boolean;
+  vehicle_pass_valid_from: string;
+  vehicle_pass_valid_to: string;
+}
+
+const EMPTY_VEHICLE: VehicleValue = {
+  vehicle_pass_number: "",
+  vehicle_number: "",
+  vehicle_brand: "",
+  vehicle_pass_permanent: false,
+  vehicle_pass_valid_from: "",
+  vehicle_pass_valid_to: "",
+};
+
+function vehicleOf(p: PersonnelItem): VehicleValue {
+  return {
+    vehicle_pass_number: p.vehicle_pass_number || "",
+    vehicle_number: p.vehicle_number || "",
+    vehicle_brand: p.vehicle_brand || "",
+    vehicle_pass_permanent: !!p.vehicle_pass_permanent,
+    vehicle_pass_valid_from: p.vehicle_pass_valid_from || "",
+    vehicle_pass_valid_to: p.vehicle_pass_valid_to || "",
+  };
 }
 
 function growSpan(text: string, base: 1 | 2 = 1) {
@@ -251,6 +286,7 @@ const Personnel = () => {
   const [editRoom, setEditRoom] = useState("");
   const [editResidence, setEditResidence] = useState<ResidenceValue>(EMPTY_RESIDENCE);
   const [editPass, setEditPass] = useState<PassValue>(EMPTY_PASS);
+  const [editVehicle, setEditVehicle] = useState<VehicleValue>(EMPTY_VEHICLE);
   const [editShift, setEditShift] = useState("");
   const [editStatus, setEditStatus] = useState("");
   const [editMedical, setEditMedical] = useState("");
@@ -404,6 +440,7 @@ const Personnel = () => {
       pass_valid_to: selectedPerson.pass_valid_to || "",
       inspection_mode: selectedPerson.inspection_mode || "general",
     });
+    setEditVehicle(vehicleOf(selectedPerson));
     setEditShift(selectedPerson.shift || "");
     setEditStatus(selectedPerson.status);
     setEditMedical(selectedPerson.medical_status || "pending");
@@ -443,6 +480,7 @@ const Personnel = () => {
         tab_number: editTabNum.trim(),
         ...editResidence,
         ...editPass,
+        ...editVehicle,
       });
       const updated = {
         ...selectedPerson,
@@ -459,7 +497,7 @@ const Personnel = () => {
         organization_type: editOrgType,
         tab_number: editTabNum.trim(),
       };
-      const saved = { ...updated, ...editResidence, ...editPass, residence: editRes?.residence ?? updated.residence };
+      const saved = { ...updated, ...editResidence, ...editPass, ...editVehicle, residence: editRes?.residence ?? updated.residence };
       setSelectedPerson(saved);
       fillEdit(saved);
       setSavedFlash(true);
@@ -476,7 +514,8 @@ const Personnel = () => {
 
   const shiftBlocked = editMedical === "failed" || editMedical === "pending";
   const cardLocked = !!selectedPerson && (selectedPerson.is_protected || selectedPerson.personal_code === PROTECTED_CODE) && !isAdminUser;
-  const passInvalid = !editPass.pass_permanent && !!editPass.pass_valid_from && !!editPass.pass_valid_to && editPass.pass_valid_from > editPass.pass_valid_to;
+  const vehicleInvalid = !editVehicle.vehicle_pass_permanent && !!editVehicle.vehicle_pass_valid_from && !!editVehicle.vehicle_pass_valid_to && editVehicle.vehicle_pass_valid_from > editVehicle.vehicle_pass_valid_to;
+  const passInvalid = vehicleInvalid || (!editPass.pass_permanent && !!editPass.pass_valid_from && !!editPass.pass_valid_to && editPass.pass_valid_from > editPass.pass_valid_to);
   const isDirty = !!selectedPerson && (
     editName !== selectedPerson.full_name ||
     editPosition !== (selectedPerson.position || "") ||
@@ -496,7 +535,8 @@ const Personnel = () => {
     editPass.pass_permanent !== !!selectedPerson.pass_permanent ||
     editPass.pass_valid_from !== (selectedPerson.pass_valid_from || "") ||
     editPass.pass_valid_to !== (selectedPerson.pass_valid_to || "") ||
-    editPass.inspection_mode !== (selectedPerson.inspection_mode || "general")
+    editPass.inspection_mode !== (selectedPerson.inspection_mode || "general") ||
+    JSON.stringify(editVehicle) !== JSON.stringify(vehicleOf(selectedPerson))
   );
 
   const requestCloseCard = (open: boolean) => {
@@ -1277,6 +1317,51 @@ const Personnel = () => {
                     </SelectContent>
                   </Select>
                 </CardField>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Icon name="Car" size={14} className="text-primary" />
+                  Пропуск на автомобиль
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <CardField label="№ пропуска на авто" icon="CreditCard">
+                    <AutoGrowInput value={editVehicle.vehicle_pass_number} onChange={(v) => setEditVehicle({ ...editVehicle, vehicle_pass_number: v })} className="font-mono" placeholder="—" />
+                  </CardField>
+                  <CardField label="Госномер" icon="RectangleHorizontal">
+                    <AutoGrowInput value={editVehicle.vehicle_number} onChange={(v) => setEditVehicle({ ...editVehicle, vehicle_number: v.toUpperCase() })} className="font-mono" placeholder="А123ВС 124" />
+                  </CardField>
+                  <CardField label="Марка, модель" icon="Car">
+                    <AutoGrowInput value={editVehicle.vehicle_brand} onChange={(v) => setEditVehicle({ ...editVehicle, vehicle_brand: v })} placeholder="—" />
+                  </CardField>
+                  <CardField
+                    label="Действие пропуска на авто"
+                    icon="CalendarRange"
+                    className="sm:col-span-3"
+                    action={
+                      <label className="flex items-center gap-1 text-[10px] text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editVehicle.vehicle_pass_permanent}
+                          onChange={(e) => setEditVehicle({ ...editVehicle, vehicle_pass_permanent: e.target.checked })}
+                          className="w-3 h-3 accent-mine-cyan cursor-pointer"
+                        />
+                        Постоянно
+                      </label>
+                    }
+                  >
+                    {editVehicle.vehicle_pass_permanent ? (
+                      <p className="text-sm text-mine-green leading-8">Постоянно</p>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <Input type="date" value={editVehicle.vehicle_pass_valid_from} onChange={(e) => setEditVehicle({ ...editVehicle, vehicle_pass_valid_from: e.target.value })} className={`${inlineInput} px-1 text-xs`} title="Начало" />
+                        <span className="text-muted-foreground text-xs">—</span>
+                        <Input type="date" value={editVehicle.vehicle_pass_valid_to} min={editVehicle.vehicle_pass_valid_from || undefined} onChange={(e) => setEditVehicle({ ...editVehicle, vehicle_pass_valid_to: e.target.value })} className={`${inlineInput} px-1 text-xs`} title="Окончание" />
+                      </div>
+                    )}
+                    {vehicleInvalid && <p className="text-[10px] text-mine-red">Дата окончания раньше даты начала</p>}
+                  </CardField>
+                </div>
               </div>
               </fieldset>
 

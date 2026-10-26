@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import ProfileSettingsDialog from "@/components/profile/ProfileSettingsDialog";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useDemo } from "@/contexts/DemoContext";
 import { useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
+import EmployeeDetails, { type EmployeeFull } from "@/components/personnel/EmployeeDetails";
+import { scannerApi } from "@/lib/api";
 
 const roleLabels: Record<string, string> = {
   admin: "Администратор",
@@ -38,6 +40,12 @@ const Profile = () => {
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const user = isDemo ? { ...realUser, ...demoUser } : realUser;
+  const [card, setCard] = useState<EmployeeFull | null>(null);
+
+  useEffect(() => {
+    if (isDemo || !realUser?.id) return;
+    scannerApi.myCard().then((d) => setCard(d.person || null)).catch(() => setCard(null));
+  }, [isDemo, realUser?.id]);
 
   const handleLogout = () => {
     logout();
@@ -132,6 +140,16 @@ const Profile = () => {
             </div>
           </div>
         </div>
+
+        {card ? (
+          <EmployeeDetails person={card} />
+        ) : (
+          !isDemo && (
+            <p className="text-xs text-muted-foreground">
+              Сведения о проживании и пропусках появятся, когда отдел кадров добавит вас в реестр персонала.
+            </p>
+          )
+        )}
 
         <div className="rounded-xl border border-mine-cyan/20 bg-mine-cyan/5 p-5">
           <div className="flex items-start gap-3">

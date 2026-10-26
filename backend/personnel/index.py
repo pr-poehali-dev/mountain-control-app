@@ -174,7 +174,9 @@ def get_personnel(params, event):
                organization, organization_type, COALESCE(tab_number, ''),
                COALESCE(residence, ''), residence_building_id, residence_room_id,
                COALESCE(pass_number, ''), pass_permanent, pass_valid_from, pass_valid_to,
-               COALESCE(inspection_mode, 'general'), COALESCE(photo_url, '')
+               COALESCE(inspection_mode, 'general'), COALESCE(photo_url, ''),
+               vehicle_pass_number, vehicle_number, vehicle_brand, vehicle_pass_permanent,
+               vehicle_pass_valid_from, vehicle_pass_valid_to
         FROM personnel WHERE status != 'archived' AND is_hidden = FALSE %s
     """ % demo_filter
     if category:
@@ -211,7 +213,13 @@ def get_personnel(params, event):
             'pass_valid_from': r[21].isoformat() if r[21] else '',
             'pass_valid_to': r[22].isoformat() if r[22] else '',
             'inspection_mode': r[23] or 'general',
-            'photo_url': r[24] or ''
+            'photo_url': r[24] or '',
+            'vehicle_pass_number': r[25] or '',
+            'vehicle_number': r[26] or '',
+            'vehicle_brand': r[27] or '',
+            'vehicle_pass_permanent': bool(r[28]),
+            'vehicle_pass_valid_from': r[29].isoformat() if r[29] else '',
+            'vehicle_pass_valid_to': r[30].isoformat() if r[30] else ''
         })
 
     return json_response(200, {'personnel': personnel, 'total': len(personnel)})
@@ -521,7 +529,9 @@ def resolve_residence(cur, body):
     return None, None, ''
 
 
-PASS_KEYS = ('pass_number', 'pass_permanent', 'pass_valid_from', 'pass_valid_to', 'inspection_mode')
+PASS_KEYS = ('pass_number', 'pass_permanent', 'pass_valid_from', 'pass_valid_to', 'inspection_mode',
+             'vehicle_pass_number', 'vehicle_number', 'vehicle_brand', 'vehicle_pass_permanent',
+             'vehicle_pass_valid_from', 'vehicle_pass_valid_to')
 
 
 def valid_date(val):
@@ -555,6 +565,24 @@ def build_pass_sets(body):
         sets.append("pass_permanent = %s" % ('TRUE' if permanent else 'FALSE'))
         sets.append("pass_valid_from = %s" % ("'%s'" % d_from if d_from else 'NULL'))
         sets.append("pass_valid_to = %s" % ("'%s'" % d_to if d_to else 'NULL'))
+    for key, limit in (('vehicle_pass_number', 50), ('vehicle_number', 20), ('vehicle_brand', 100)):
+        if key in body:
+            val = str(body.get(key) or '').strip()[:limit]
+            if key == 'vehicle_number':
+                val = val.upper()
+            sets.append("%s = '%s'" % (key, val.replace("'", "''")))
+    if 'vehicle_pass_permanent' in body or 'vehicle_pass_valid_from' in body or 'vehicle_pass_valid_to' in body:
+        v_perm = bool(body.get('vehicle_pass_permanent'))
+        try:
+            v_from = None if v_perm else valid_date(body.get('vehicle_pass_valid_from'))
+            v_to = None if v_perm else valid_date(body.get('vehicle_pass_valid_to'))
+        except ValueError:
+            return None, 'Неверный формат даты пропуска на автомобиль'
+        if v_from and v_to and v_from > v_to:
+            return None, 'Дата окончания пропуска на автомобиль раньше даты начала'
+        sets.append("vehicle_pass_permanent = %s" % ('TRUE' if v_perm else 'FALSE'))
+        sets.append("vehicle_pass_valid_from = %s" % ("'%s'" % v_from if v_from else 'NULL'))
+        sets.append("vehicle_pass_valid_to = %s" % ("'%s'" % v_to if v_to else 'NULL'))
     return sets, None
 
 

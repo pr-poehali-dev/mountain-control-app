@@ -3,14 +3,15 @@ import AppLayout from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
-import { ruLabel } from "@/lib/ruLabels";
 import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import QrScanner from "@/components/scanner/QrScanner";
 import { scannerApi } from "@/lib/api";
 import { playSuccess, playDenied, playScan } from "@/lib/sounds";
+import EmployeeDetails, { type EmployeeFull } from "@/components/personnel/EmployeeDetails";
 
-interface PersonResult {
+interface PersonResult extends EmployeeFull {
   id: number;
+  photo_url?: string;
   personal_code: string;
   full_name: string;
   position: string;
@@ -200,8 +201,11 @@ const Scanner = () => {
                 }`}
               >
                 <div className="flex items-center gap-3 mb-4">
+                  {person.photo_url && (
+                    <img src={person.photo_url} alt="" className="w-16 h-16 rounded-xl object-cover border border-border" />
+                  )}
                   <div
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                    className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
                       checkinResult.result === "allowed"
                         ? "bg-mine-green/20"
                         : "bg-mine-red/20"
@@ -237,26 +241,13 @@ const Scanner = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    ...(canSeeCode ? [{ label: "Код", value: person.personal_code }] : []),
-                    { label: "Организация", value: person.organization || "—" },
-                    { label: "Тип", value: ruLabel(person.organization_type) },
-                    { label: "Должность", value: person.position },
-                    { label: "Подразделение", value: person.department },
-                    { label: "Категория", value: ruLabel(person.category) },
-                    { label: "Медосмотр", value: ruLabel(person.medical_status) },
-                    { label: "Комната", value: person.room },
-                  ].map((f) => (
-                    <div
-                      key={f.label}
-                      className="rounded-lg border border-border/50 bg-background/50 px-3 py-2"
-                    >
-                      <p className="text-[10px] text-muted-foreground">{f.label}</p>
-                      <p className={`text-xs font-medium ${f.label === "Код" ? "font-mono text-red-500" : "text-foreground"}`}>{f.value || "—"}</p>
-                    </div>
-                  ))}
-                </div>
+                {canSeeCode && person.personal_code && (
+                  <p className="text-xs mb-3">
+                    <span className="text-muted-foreground">Код: </span>
+                    <span className="font-mono text-red-500">{person.personal_code}</span>
+                  </p>
+                )}
+                <EmployeeDetails person={person} compact />
 
                 <Button
                   variant="outline"

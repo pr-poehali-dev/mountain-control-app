@@ -332,6 +332,7 @@ export const ahoApi = {
 };
 
 export const scannerApi = {
+  myCard: () => request(API.scanner, "", { params: { action: "me" } }),
   identify: (code: string) =>
     request(API.scanner, "", { method: "POST", body: { code }, params: { action: "identify" } }),
   checkin: (code: string, checkinAction = "checkin") =>

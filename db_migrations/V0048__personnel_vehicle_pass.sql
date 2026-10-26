@@ -1,0 +1,7 @@
+ALTER TABLE t_p25857058_mountain_control_app.personnel
+  ADD COLUMN IF NOT EXISTS vehicle_pass_number VARCHAR(50) NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS vehicle_number VARCHAR(20) NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS vehicle_brand VARCHAR(100) NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS vehicle_pass_permanent BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS vehicle_pass_valid_from DATE NULL,
+  ADD COLUMN IF NOT EXISTS vehicle_pass_valid_to DATE NULL;
