@@ -89,6 +89,27 @@
       "method": "GET",
       "path": "/?action=export&report_type=point-passes",
       "expectedStatus": 200
+    },
+    {
+      "name": "Mailings admin only",
+      "method": "GET",
+      "path": "/?action=mailings",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Mailing save admin only",
+      "method": "POST",
+      "path": "/?action=mailing-save",
+      "body": {
+        "name": "x"
+      },
+      "expectedStatus": 403
+    },
+    {
+      "name": "Mailings auto",
+      "method": "GET",
+      "path": "/?action=mailings-auto",
+      "expectedStatus": 200
     }
   ]
 }

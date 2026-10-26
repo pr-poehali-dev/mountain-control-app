@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS t_p25857058_mountain_control_app.report_mailings (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    emails TEXT NOT NULL DEFAULT '',
+    reports JSONB NOT NULL DEFAULT '[]'::jsonb,
+    frequency VARCHAR(10) NOT NULL DEFAULT 'daily',
+    weekday INTEGER NOT NULL DEFAULT 1,
+    month_day INTEGER NOT NULL DEFAULT 1,
+    hour INTEGER NOT NULL DEFAULT 8,
+    tz VARCHAR(50) NOT NULL DEFAULT 'Asia/Chita',
+    period VARCHAR(20) NOT NULL DEFAULT 'yesterday',
+    last_sent VARCHAR(20) NOT NULL DEFAULT '',
+    last_status VARCHAR(20) NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
+    last_sent_at TIMESTAMP NULL,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

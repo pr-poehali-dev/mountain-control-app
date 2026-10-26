@@ -274,6 +274,14 @@ export const reportsApi = {
     const qs = new URLSearchParams({ action: "export", ...authQuery(), report_type: reportType, ...params }).toString();
     return `${API.reports}?${qs}`;
   },
+  getMailings: () => request(API.reports, "", { params: { action: "mailings" } }),
+  saveMailing: (body: Record<string, unknown>) =>
+    request(API.reports, "", { method: "POST", body, params: { action: "mailing-save" } }),
+  removeMailing: (id: number) =>
+    request(API.reports, "", { method: "POST", body: { id }, params: { action: "mailing-remove" } }),
+  sendMailing: (id: number) =>
+    request(API.reports, "", { method: "POST", body: { id }, params: { action: "mailing-send" } }),
+  triggerMailings: () => request(API.reports, "", { params: { action: "mailings-auto" } }),
 };
 
 export const ahoApi = {

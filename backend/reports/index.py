@@ -5,6 +5,7 @@ import io
 from datetime import datetime, date as date_type, timedelta
 import psycopg2
 from decimal import Decimal
+import mailings
 
 
 def caller_is_admin(event):
@@ -119,6 +120,12 @@ def handler(event, context):
         return report_point_passes(params, event)
     elif method == 'GET' and action == 'export':
         return export_report(params, event)
+    elif action in mailings.ACTIONS:
+        body = json.loads(event.get('body') or '{}') if method in ('POST', 'PUT', 'DELETE') else {}
+        return mailings.route(action, method, params, body, event, {
+            'get_db': get_db, 'json_response': json_response, 'is_admin': caller_is_admin,
+            'build_csv': build_csv,
+        })
 
     return json_response(404, {'error': 'Маршрут не найден'})
 
@@ -773,13 +780,9 @@ STATUS_LABELS = {
 
 FLOOR_STATUS_LABELS = {'full': 'Заполнен', 'almost_full': 'Почти занят', 'free': 'Есть места'}
 
-def export_report(params, event):
-    report_type = params.get('report_type', '')
-    if report_type not in EXPORT_CONFIGS:
-        return json_response(400, {'error': 'Неизвестный тип отчёта'})
-
+def build_csv(report_type, params, event, show_code):
+    """Готовит CSV по отчёту. Возвращает (ошибка_ответ, csv_текст, данные_отчёта)"""
     config = EXPORT_CONFIGS[report_type]
-
     handlers = {
         'attendance': lambda p: report_attendance(p, event),
         'medical': lambda p: report_medical(p, event),
@@ -793,13 +796,13 @@ def export_report(params, event):
 
     res = handlers[report_type](params)
     if res['statusCode'] != 200:
-        return res
+        return res, '', None
     raw = json.loads(res['body'])
     items = raw.get('items', [])
 
     headers_out = list(config['headers'])
     fields_out = list(config['fields'])
-    if not caller_is_admin(event):
+    if not show_code:
         for code_field in ('personal_code', 'person_code'):
             if code_field in fields_out:
                 idx = fields_out.index(code_field)
@@ -831,5 +834,14 @@ def export_report(params, event):
         for f in by_floor:
             writer.writerow([f['building'], f['floor'] if f['floor'] > 0 else 'Без этажа', f['rooms_count'],
                              f['capacity'], f['occupied'], f['free'], FLOOR_STATUS_LABELS.get(f['status'], '')])
+    return None, output.getvalue(), raw
 
-    return csv_response(output.getvalue(), config['filename'])
+
+def export_report(params, event):
+    report_type = params.get('report_type', '')
+    if report_type not in EXPORT_CONFIGS:
+        return json_response(400, {'error': 'Неизвестный тип отчёта'})
+    err, text, _ = build_csv(report_type, params, event, caller_is_admin(event))
+    if err:
+        return err
+    return csv_response(text, EXPORT_CONFIGS[report_type]['filename'])

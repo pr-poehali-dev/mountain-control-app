@@ -1,5 +1,5 @@
 import { ReactNode, useEffect } from "react";
-import { eventsApi } from "@/lib/api";
+import { eventsApi, reportsApi } from "@/lib/api";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { useDemo } from "@/contexts/DemoContext";
@@ -18,6 +18,7 @@ export default function AppLayout({ children, title, subtitle }: AppLayoutProps)
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
     eventsApi.triggerPassAlert().catch(() => {});
+    reportsApi.triggerMailings().catch(() => {});
   }, []);
   const { isDemo } = useDemo();
 
