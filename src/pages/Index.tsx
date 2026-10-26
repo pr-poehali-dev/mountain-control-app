@@ -7,6 +7,7 @@ import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import ShiftOverview from "@/components/dashboard/ShiftOverview";
 import LanternStatus from "@/components/dashboard/LanternStatus";
 import ExpiringPasses from "@/components/dashboard/ExpiringPasses";
+import LiveSiteSummary from "@/components/dashboard/LiveSiteSummary";
 import Icon from "@/components/ui/icon";
 import { eventsApi, personnelApi } from "@/lib/api";
 
@@ -146,6 +147,8 @@ const Index = () => {
                 color="red"
               />
             </div>
+
+            <LiveSiteSummary />
 
             <ExpiringPasses />
 

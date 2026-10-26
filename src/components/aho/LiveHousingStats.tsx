@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type React from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -106,7 +107,9 @@ function Bar({ parts }: { parts: { value: number; cls: string; label: string }[]
   );
 }
 
-export default function LiveHousingStats({ live, onChanged, updatedAt }: { live: LiveStats; onChanged: () => void; updatedAt: Date | null }) {
+export default function LiveHousingStats({ live, onChanged, updatedAt, canHouse = true, title = "Сейчас на предприятии", headerAction }: {
+  live: LiveStats; onChanged: () => void; updatedAt: Date | null; canHouse?: boolean; title?: string; headerAction?: React.ReactNode;
+}) {
   const [list, setList] = useState<{ kind: string; org?: string } | null>(null);
   const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,16 +138,19 @@ export default function LiveHousingStats({ live, onChanged, updatedAt }: { live:
             <span className="absolute inline-flex h-full w-full rounded-full bg-mine-green opacity-75 animate-ping" />
             <span className="relative inline-flex w-2 h-2 rounded-full bg-mine-green" />
           </span>
-          Сейчас на предприятии
+          {title}
         </h3>
-        {updatedAt && (
-          <span className="text-[11px] text-muted-foreground">
-            обновлено в {updatedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · автообновление
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {updatedAt && (
+            <span className="text-[11px] text-muted-foreground">
+              обновлено в {updatedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · автообновление
+            </span>
+          )}
+          {headerAction}
+        </div>
       </div>
 
-      {live.conflicts > 0 && (
+      {live.conflicts > 0 && canHouse && (
         <button
           onClick={triggerConflictCheck}
           className="w-full flex items-center gap-3 rounded-xl border-2 border-mine-red bg-mine-red/10 p-3 text-left hover:bg-mine-red/15 transition-colors"
@@ -264,7 +270,7 @@ export default function LiveHousingStats({ live, onChanged, updatedAt }: { live:
                     )}
                   </p>
                 </div>
-                {(!i.room_number || i.temp_owner_name) && i.status !== "departed" && (
+                {canHouse && (!i.room_number || i.temp_owner_name) && i.status !== "departed" && (
                   <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 shrink-0 border-mine-amber/40 text-mine-amber hover:bg-mine-amber/10 hover:text-mine-amber" onClick={() => setSuggest({ personnel_id: i.personnel_id, full_name: i.full_name })}>
                     <Icon name="Sparkles" size={12} />
                     Подобрать
