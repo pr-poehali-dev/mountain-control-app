@@ -65,6 +65,30 @@
       "method": "GET",
       "path": "/?action=export&report_type=housing",
       "expectedStatus": 200
+    },
+    {
+      "name": "Point passes main",
+      "method": "GET",
+      "path": "/?action=point-passes",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Point passes all",
+      "method": "GET",
+      "path": "/?action=point-passes&control_point_id=all",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Point passes deleted",
+      "method": "GET",
+      "path": "/?action=point-passes&control_point_id=999999",
+      "expectedStatus": 404
+    },
+    {
+      "name": "Point passes export",
+      "method": "GET",
+      "path": "/?action=export&report_type=point-passes",
+      "expectedStatus": 200
     }
   ]
 }

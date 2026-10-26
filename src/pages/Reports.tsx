@@ -14,6 +14,7 @@ import HousingFloorSummary, { type HousingFloorRow } from "@/components/reports/
 import { reportsApi, eventsApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useControlPoints } from "@/hooks/use-control-points";
 
 interface ReportConfig {
   key: string;
@@ -23,6 +24,7 @@ interface ReportConfig {
   color: string;
   freq: string;
   action: string;
+  pointId?: number | "all";
 }
 
 const REPORTS: ReportConfig[] = [
@@ -74,6 +76,8 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   edit: "Редактирование", arrival: "Заезд", housing: "Расселение", aho_upload: "Загрузка списка АХО",
   security_check: "Проверка СБ", security_check_failed: "Проверка СБ не пройдена", valid: "Проверка пройдена",
   system_reset: "Сброс системы",
+  point_in: "Вход на объект", point_out: "Выход с объекта", control_point: "Настройка объектов контроля",
+  vehicle_in: "Въезд автомобиля", vehicle_out: "Выезд автомобиля", vehicle_denied: "Отказ во въезде",
 };
 
 function eventLabel(val: string) {
@@ -106,6 +110,28 @@ function today() {
 
 const Reports = () => {
   const [active, setActive] = useState<string | null>(null);
+  const [passDirection, setPassDirection] = useState("all");
+  const [passResult, setPassResult] = useState("all");
+  const [passQuery, setPassQuery] = useState("");
+  const { points, loaded: pointsLoaded } = useControlPoints();
+  const pointReports: ReportConfig[] = [
+    ...points.map((p) => ({
+      key: `point-${p.id}`,
+      title: `Проходы: ${p.name}`,
+      desc: p.description || (p.is_main || p.settings.counts_territory ? "Вход и выход с территории, отказы, кто проходил" : "Вход и выход на объект, отказы, кто проходил"),
+      icon: p.icon || "DoorOpen",
+      color: p.is_main ? "amber" : "cyan",
+      freq: "Ежедневно",
+      action: "point-passes",
+      pointId: p.id,
+    })),
+    ...(points.length > 1 ? [{
+      key: "point-all", title: "Проходы: все объекты", desc: "Сводный журнал по всем пунктам контроля одной таблицей",
+      icon: "MapPinned", color: "green", freq: "По запросу", action: "point-passes", pointId: "all" as const,
+    }] : []),
+  ];
+  const allReports = [...pointReports, ...REPORTS];
+  const isPointReport = !!active?.startsWith("point-");
   const [dateFrom, setDateFrom] = useState(today());
   const [dateTo, setDateTo] = useState(today());
   const [shiftType, setShiftType] = useState("all");
@@ -155,10 +181,19 @@ const Reports = () => {
     }
   };
 
-  const activeReport = REPORTS.find(r => r.key === active);
+  const activeReport = allReports.find(r => r.key === active);
 
   useEffect(() => {
-    if (active) loadReport();
+    if (active && isPointReport && pointsLoaded && !activeReport) {
+      setActive(null);
+      setReportData(null);
+      toast({ title: "Объект контроля удалён", description: "Отчёт по нему больше недоступен" });
+    }
+  }, [active, isPointReport, pointsLoaded, activeReport, toast]);
+
+  useEffect(() => {
+    if (active && activeReport) loadReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   const buildParams = () => {
@@ -177,15 +212,21 @@ const Reports = () => {
       if (housingAction !== "all") p.housing_action = housingAction;
       if (housingQuery.trim()) p.q = housingQuery.trim();
     }
+    if (activeReport?.pointId !== undefined) {
+      p.control_point_id = String(activeReport.pointId);
+      if (passDirection !== "all") p.direction = passDirection;
+      if (passResult !== "all") p.result = passResult;
+      if (passQuery.trim()) p.q = passQuery.trim();
+    }
     return p;
   };
 
   const loadReport = async () => {
-    if (!active) return;
+    if (!active || !activeReport) return;
     setLoading(true);
     setError("");
     try {
-      const data = await reportsApi.getReport(active, buildParams());
+      const data = await reportsApi.getReport(activeReport.action, buildParams());
       setReportData({ items: data.items || [], summary: data.summary || {} });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки отчёта");
@@ -195,8 +236,8 @@ const Reports = () => {
   };
 
   const handleExport = () => {
-    if (!active) return;
-    const url = reportsApi.getExportUrl(active, buildParams());
+    if (!active || !activeReport) return;
+    const url = reportsApi.getExportUrl(activeReport.action, buildParams());
     window.open(url, "_blank");
   };
 
@@ -281,6 +322,15 @@ ${html}
       Object.entries(bySt).forEach(([k, v]) => {
         cards.push({ label: label(k), value: v });
       });
+    } else if (isPointReport) {
+      cards.push(
+        { label: "Всего проходов", value: (s.total as number) || 0 },
+        { label: "Входов", value: (s.entries as number) || 0, color: "text-mine-green" },
+        { label: "Выходов", value: (s.exits as number) || 0, color: "text-mine-amber" },
+        { label: "Отказов", value: (s.denied as number) || 0, color: (s.denied as number) ? "text-mine-red" : undefined },
+        { label: "Человек", value: (s.people as number) || 0, color: "text-mine-cyan" },
+      );
+      ((s.by_point as { name: string; count: number }[]) || []).forEach((b) => cards.push({ label: b.name, value: b.count }));
     } else if (active === "events-log") {
       cards.push({ label: "Всего событий", value: (s.total as number) || 0 });
       const byType = (s.by_type as { type: string; count: number }[]) || [];
@@ -309,6 +359,23 @@ ${html}
   type TableCol = { key: string; label: string; noPrint?: boolean; render?: (v: unknown, row: Record<string, unknown>) => React.ReactNode };
 
   const getColumns = (): TableCol[] => {
+    if (isPointReport) return [
+      { key: "created_at", label: "Дата/Время", render: v => formatDateTime(v as string) },
+      ...(activeReport?.pointId === "all" ? [{ key: "point_name", label: "Объект" }] : []),
+      { key: "full_name", label: "ФИО" },
+      { key: "tab_number", label: "Таб. №", render: v => (v as string) || "—" },
+      { key: "personal_code", label: "Код" },
+      { key: "organization", label: "Организация", render: v => (v as string) || "—" },
+      { key: "position", label: "Должность", render: v => (v as string) || "—" },
+      { key: "direction_label", label: "Направление", render: (v, row) => (
+        <span className={row.direction === "in" ? "text-mine-green" : "text-mine-amber"}>{String(v)}</span>
+      )},
+      { key: "result_label", label: "Результат", render: (v, row) => (
+        <span className={row.result === "denied" ? "text-mine-red font-medium" : "text-mine-green"}>{String(v)}</span>
+      )},
+      { key: "reason", label: "Причина / примечание", render: v => (v as string) || "—" },
+      { key: "medical_label", label: "Медосмотр" },
+    ];
     if (active === "attendance") return [
       { key: "full_name", label: "ФИО" },
       { key: "personal_code", label: "Код" },
@@ -506,10 +573,10 @@ ${html}
       <AppLayout title="Отчёты" subtitle="Формирование и экспорт отчётной документации">
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Доступно {REPORTS.length} типов отчётов. Выберите нужный для просмотра и экспорта.
+            Доступно {allReports.length} типов отчётов. Выберите нужный для просмотра и экспорта.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {REPORTS.map((r, i) => {
+            {allReports.map((r, i) => {
               const c = colorMap[r.color];
               return (
                 <div
@@ -547,7 +614,7 @@ ${html}
     <AppLayout title="Отчёты" subtitle={activeReport?.title || ""}>
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setActive(null); setReportData(null); }}>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setActive(null); setReportData(null); setPassDirection("all"); setPassResult("all"); setPassQuery(""); }}>
             <Icon name="ArrowLeft" size={14} />
             Назад
           </Button>
@@ -632,6 +699,43 @@ ${html}
                       {p.label}
                     </Button>
                   ))}
+                </div>
+              </>
+            )}
+
+            {isPointReport && (
+              <>
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Направление</label>
+                  <Select value={passDirection} onValueChange={setPassDirection}>
+                    <SelectTrigger className="bg-secondary/50 w-[130px] h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все</SelectItem>
+                      <SelectItem value="in">Вход</SelectItem>
+                      <SelectItem value="out">Выход</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Результат</label>
+                  <Select value={passResult} onValueChange={setPassResult}>
+                    <SelectTrigger className="bg-secondary/50 w-[140px] h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все</SelectItem>
+                      <SelectItem value="allowed">Пропущены</SelectItem>
+                      <SelectItem value="denied">Отказы</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Поиск</label>
+                  <Input
+                    value={passQuery}
+                    onChange={e => setPassQuery(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && loadReport()}
+                    placeholder="ФИО, организация, таб. №"
+                    className="bg-secondary/50 w-[220px] h-9 text-sm"
+                  />
                 </div>
               </>
             )}

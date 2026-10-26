@@ -115,6 +115,8 @@ def handler(event, context):
         return report_housing_history(params, event)
     elif method == 'GET' and action == 'events-log':
         return report_events_log(params, event)
+    elif method == 'GET' and action == 'point-passes':
+        return report_point_passes(params, event)
     elif method == 'GET' and action == 'export':
         return export_report(params, event)
 
@@ -541,7 +543,9 @@ def report_events_log(params, event):
         'status_change': 'Смена статуса', 'person_added': 'Добавлен сотрудник', 'person_edited': 'Редактирование сотрудника',
         'edit': 'Редактирование', 'arrival': 'Заезд', 'housing': 'Расселение', 'aho_upload': 'Загрузка списка АХО',
         'security_check': 'Проверка СБ', 'security_check_failed': 'Проверка СБ не пройдена', 'valid': 'Проверка пройдена',
-        'system_reset': 'Сброс системы'
+        'system_reset': 'Сброс системы',
+        'point_in': 'Вход на объект', 'point_out': 'Выход с объекта', 'control_point': 'Настройка объектов контроля',
+        'vehicle_in': 'Въезд автомобиля', 'vehicle_out': 'Выезд автомобиля', 'vehicle_denied': 'Отказ во въезде'
     }
 
     items = []
@@ -561,6 +565,103 @@ def report_events_log(params, event):
             'total': len(items),
             'by_type': by_type
         }
+    })
+
+def report_point_passes(params, event):
+    """Журнал проходов по объекту контроля (КПП, ОФ и др.) или по всем объектам сразу"""
+    df, dt = date_range(params)
+    cp_param = str(params.get('control_point_id', '') or '').strip()
+    direction = params.get('direction', '')
+    result = params.get('result', '')
+    q = (params.get('q', '') or '').strip()
+    conn = get_db()
+    cur = conn.cursor()
+
+    if cp_param == 'all':
+        point = None
+        point_flt = 'TRUE'
+    else:
+        if cp_param.isdigit():
+            cur.execute("SELECT id, name, is_main FROM control_points WHERE id = %d AND is_active = TRUE" % int(cp_param))
+        else:
+            cur.execute("SELECT id, name, is_main FROM control_points WHERE is_main = TRUE ORDER BY id LIMIT 1")
+        r = cur.fetchone()
+        if not r:
+            cur.close()
+            conn.close()
+            return json_response(404, {'error': 'Объект контроля не найден или удалён'})
+        point = {'id': r[0], 'name': r[1], 'is_main': r[2]}
+        point_flt = ("(cp.control_point_id IS NULL OR cp.control_point_id = %d)" % r[0]) if r[2] else ("cp.control_point_id = %d" % r[0])
+
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    where = [point_flt, "cp.created_at::date >= '%s'" % df, "cp.created_at::date <= '%s'" % dt,
+             "(p.id IS NULL OR p.is_demo_data = %s)" % demo_val]
+    if direction in ('in', 'out'):
+        where.append("cp.direction = '%s'" % direction)
+    if result == 'denied':
+        where.append("COALESCE(cp.notes, '') LIKE 'ОТКАЗ%%'")
+    elif result == 'allowed':
+        where.append("COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%'")
+    if q:
+        sq = q.replace("'", "''").replace('%', '')
+        where.append("(cp.full_name ILIKE '%%%s%%' OR COALESCE(p.organization, '') ILIKE '%%%s%%' OR COALESCE(p.tab_number, '') ILIKE '%%%s%%')" % (sq, sq, sq))
+    where_sql = ' AND '.join(where)
+
+    cur.execute("""
+        SELECT cp.id, cp.created_at, cp.full_name, cp.personal_code, COALESCE(p.tab_number, ''),
+               COALESCE(p.organization, ''), COALESCE(p.position, ''), cp.direction,
+               COALESCE(cp.notes, ''), cp.medical_ok,
+               COALESCE(c.name, mp.name, cp.checkpoint_name, '')
+        FROM checkpoint_passes cp
+        LEFT JOIN personnel p ON p.id = cp.personnel_id
+        LEFT JOIN control_points c ON c.id = cp.control_point_id
+        LEFT JOIN control_points mp ON cp.control_point_id IS NULL AND mp.is_main = TRUE
+        WHERE %s
+        ORDER BY cp.created_at DESC, cp.id DESC
+        LIMIT 5000
+    """ % where_sql)
+    rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT COUNT(*) FILTER (WHERE cp.direction = 'in' AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%'),
+               COUNT(*) FILTER (WHERE cp.direction = 'out' AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%'),
+               COUNT(*) FILTER (WHERE COALESCE(cp.notes, '') LIKE 'ОТКАЗ%%'),
+               COUNT(DISTINCT cp.personnel_id), COUNT(*)
+        FROM checkpoint_passes cp LEFT JOIN personnel p ON p.id = cp.personnel_id
+        WHERE %s
+    """ % where_sql)
+    t = cur.fetchone()
+
+    by_point = []
+    if point is None:
+        cur.execute("""
+            SELECT COALESCE(c.name, mp.name, cp.checkpoint_name, '—'), COUNT(*)
+            FROM checkpoint_passes cp
+            LEFT JOIN personnel p ON p.id = cp.personnel_id
+            LEFT JOIN control_points c ON c.id = cp.control_point_id
+            LEFT JOIN control_points mp ON cp.control_point_id IS NULL AND mp.is_main = TRUE
+            WHERE %s GROUP BY 1 ORDER BY 2 DESC
+        """ % where_sql)
+        by_point = [{'name': r[0], 'count': r[1]} for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+
+    items = []
+    for r in rows:
+        denied = r[8].startswith('ОТКАЗ')
+        items.append({
+            'id': r[0], 'created_at': r[1], 'full_name': r[2], 'personal_code': r[3], 'tab_number': r[4],
+            'organization': r[5], 'position': r[6],
+            'direction': r[7], 'direction_label': 'Вход' if r[7] == 'in' else 'Выход',
+            'result': 'denied' if denied else 'allowed', 'result_label': 'Отказ' if denied else 'Пропущен',
+            'reason': r[8][6:].strip() if denied else r[8],
+            'medical_label': 'Да' if r[9] else 'Нет', 'point_name': r[10],
+        })
+
+    return json_response(200, {
+        'report': 'point-passes', 'date_from': df, 'date_to': dt,
+        'point': point, 'items': items,
+        'summary': {'total': t[4], 'entries': t[0], 'exits': t[1], 'denied': t[2], 'people': t[3], 'by_point': by_point}
     })
 
 def report_housing_history(params, event):
@@ -642,6 +743,11 @@ EXPORT_CONFIGS = {
         'headers': ['Дата/Время', 'Действие', 'ФИО', 'Код', 'Таб. №', 'Организация', 'Общежитие', 'Комната', 'Откуда переселён', 'Где оформлено'],
         'fields': ['created_at', 'action_label', 'full_name', 'personal_code', 'tab_number', 'organization', 'building', 'room', 'prev_place', 'source']
     },
+    'point-passes': {
+        'filename': 'point_passes_report.csv',
+        'headers': ['Дата/Время', 'Объект', 'ФИО', 'Таб. №', 'Код', 'Организация', 'Должность', 'Направление', 'Результат', 'Причина / примечание', 'Медосмотр'],
+        'fields': ['created_at', 'point_name', 'full_name', 'tab_number', 'personal_code', 'organization', 'position', 'direction_label', 'result_label', 'reason', 'medical_label']
+    },
     'events-log': {
         'filename': 'events_report.csv',
         'headers': ['Дата/Время', 'Тип', 'Описание', 'Сотрудник', 'Код'],
@@ -681,10 +787,14 @@ def export_report(params, event):
         'housing': report_housing,
         'personnel-summary': lambda p: report_personnel_summary(p, event),
         'events-log': lambda p: report_events_log(p, event),
-        'housing-history': lambda p: report_housing_history(p, event)
+        'housing-history': lambda p: report_housing_history(p, event),
+        'point-passes': lambda p: report_point_passes(p, event)
     }
 
-    raw = json.loads(handlers[report_type](params)['body'])
+    res = handlers[report_type](params)
+    if res['statusCode'] != 200:
+        return res
+    raw = json.loads(res['body'])
     items = raw.get('items', [])
 
     headers_out = list(config['headers'])
