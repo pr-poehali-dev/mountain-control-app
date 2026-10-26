@@ -90,6 +90,8 @@ def handler(event, context):
         return get_dashboard(event)
     elif method == 'GET' and action == 'notifications':
         return get_notifications(params)
+    elif method == 'GET' and action == 'expiring-passes':
+        return get_expiring_passes(params, event)
     elif method == 'PUT' and action == 'edit':
         return edit_event(body, event)
     elif method in ('PUT', 'DELETE') and action == 'hide':
@@ -100,6 +102,46 @@ def handler(event, context):
         return mark_all_read()
 
     return json_response(404, {'error': 'Маршрут не найден'})
+
+def get_expiring_passes(params, event):
+    """Пропуска (личные и на автомобиль), истекающие в ближайшие дни или уже истёкшие"""
+    days = max(1, min(90, int(params.get('days', '7') or 7)))
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, full_name, COALESCE(position, ''), COALESCE(organization, ''), 'personal' AS kind,
+               COALESCE(pass_number, ''), '' AS vehicle, pass_valid_to
+        FROM personnel
+        WHERE status != 'archived' AND COALESCE(is_hidden, FALSE) = FALSE AND is_demo_data = %s
+          AND pass_permanent = FALSE AND pass_valid_to IS NOT NULL
+          AND pass_valid_to <= CURRENT_DATE + %d AND pass_valid_to >= CURRENT_DATE - 30
+        UNION ALL
+        SELECT id, full_name, COALESCE(position, ''), COALESCE(organization, ''), 'vehicle',
+               COALESCE(vehicle_pass_number, ''), TRIM(COALESCE(vehicle_number, '') || ' ' || COALESCE(vehicle_brand, '')), vehicle_pass_valid_to
+        FROM personnel
+        WHERE status != 'archived' AND COALESCE(is_hidden, FALSE) = FALSE AND is_demo_data = %s
+          AND vehicle_pass_permanent = FALSE AND vehicle_pass_valid_to IS NOT NULL
+          AND vehicle_pass_valid_to <= CURRENT_DATE + %d AND vehicle_pass_valid_to >= CURRENT_DATE - 30
+        ORDER BY 8, 2
+        LIMIT 200
+    """ % (demo_val, days, demo_val, days))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    today = date_type.today()
+    items = [{
+        'personnel_id': r[0], 'full_name': r[1], 'position': r[2], 'organization': r[3],
+        'kind': r[4], 'pass_number': r[5], 'vehicle': r[6],
+        'valid_to': r[7].isoformat(), 'days_left': (r[7] - today).days
+    } for r in rows]
+    return json_response(200, {
+        'items': items,
+        'days': days,
+        'expired': sum(1 for i in items if i['days_left'] < 0),
+        'expiring': sum(1 for i in items if i['days_left'] >= 0)
+    })
+
 
 def get_notifications(params):
     limit = int(params.get('limit', '30'))

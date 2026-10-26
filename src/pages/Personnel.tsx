@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -405,6 +406,17 @@ const Personnel = () => {
       setAddLoading(false);
     }
   };
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openParam = searchParams.get("open");
+
+  useEffect(() => {
+    if (!openParam || personnel.length === 0) return;
+    const target = personnel.find((x) => String(x.id) === openParam);
+    setSearchParams({}, { replace: true });
+    if (target) openCard(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openParam, personnel]);
 
   const openCard = async (p: PersonnelItem) => {
     setSelectedPerson(p);

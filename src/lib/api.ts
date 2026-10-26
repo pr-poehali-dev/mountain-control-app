@@ -249,6 +249,7 @@ export const eventsApi = {
   getEvents: (limit = 20) =>
     request(API.events, "", { params: { action: "list", limit: String(limit) } }),
   getDashboard: () => request(API.events, "", { params: { action: "dashboard" } }),
+  getExpiringPasses: (days = 7) => request(API.events, "", { params: { action: "expiring-passes", days: String(days) } }),
   getNotifications: (limit = 30) =>
     request(API.events, "", { params: { action: "notifications", limit: String(limit) } }),
   markRead: (id: number) =>

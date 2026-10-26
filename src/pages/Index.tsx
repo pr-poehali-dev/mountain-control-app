@@ -6,6 +6,7 @@ import PersonnelTable from "@/components/dashboard/PersonnelTable";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import ShiftOverview from "@/components/dashboard/ShiftOverview";
 import LanternStatus from "@/components/dashboard/LanternStatus";
+import ExpiringPasses from "@/components/dashboard/ExpiringPasses";
 import Icon from "@/components/ui/icon";
 import { eventsApi, personnelApi } from "@/lib/api";
 
@@ -145,6 +146,8 @@ const Index = () => {
                 color="red"
               />
             </div>
+
+            <ExpiringPasses />
 
             {dashboard?.by_org_type && Object.keys(dashboard.by_org_type).length > 0 && (
               <div className="rounded-xl border border-border bg-card p-4">
