@@ -301,6 +301,8 @@ export const ahoApi = {
     request(API.aho, "", { method: "PUT", body: { personnel_id, gender }, params: { action: "set-gender" } }),
   getHousingConflicts: () =>
     request(API.aho, "", { params: { action: "housing-conflicts" } }),
+  makePermanent: (personnel_id: number) =>
+    request(API.aho, "", { method: "PUT", body: { personnel_id }, params: { action: "make-permanent" } }),
   resolveConflict: (id: number) =>
     request(API.aho, "", { method: "PUT", body: { id }, params: { action: "conflict-resolve" } }),
   getStats: () =>

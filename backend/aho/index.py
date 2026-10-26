@@ -209,6 +209,8 @@ def handler(event, context):
         return suggest_rooms(params, event)
     elif method == 'PUT' and action == 'set-gender':
         return set_gender(body)
+    elif method == 'PUT' and action == 'make-permanent':
+        return make_permanent(body)
     elif method == 'GET' and action == 'housing-conflicts':
         return get_conflicts(event)
     elif method == 'PUT' and action == 'conflict-resolve':
@@ -841,6 +843,47 @@ def suggest_rooms(params, event):
         })
     result.sort(key=lambda x: (-x['score'], x['building_name'], x['room_number']))
     return json_response(200, {'items': result[:10], 'gender': gender, 'organization': me[1], 'total_found': len(result)})
+
+
+def make_permanent(body):
+    """Временный жилец становится постоянным: хозяин места выписывается из комнаты и попадает в список расселения"""
+    pid = body.get('personnel_id')
+    if not pid:
+        return json_response(400, {'error': 'Не указан сотрудник'})
+    pid = int(pid)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""SELECT p.full_name, p.temp_owner_id, p.residence_room_id, o.full_name, o.residence_room_id, o.status
+                   FROM personnel p LEFT JOIN personnel o ON o.id = p.temp_owner_id WHERE p.id = %d""" % pid)
+    row = cur.fetchone()
+    if not row or not row[1]:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Сотрудник не живёт временно'})
+    name, owner_id, rid, owner_name, owner_rid, owner_status = row
+    cur.execute("UPDATE personnel SET temp_owner_id = NULL, temp_housed_at = NULL, updated_at = NOW() WHERE id = %d" % pid)
+    owner_moved = False
+    if owner_rid and owner_rid == rid:
+        log_housing(cur, owner_id, owner_rid, None, 'АХО')
+        cur.execute("""UPDATE personnel SET residence_room_id = NULL,
+                       residence = COALESCE((SELECT name FROM buildings WHERE id = residence_building_id), ''),
+                       room = '', updated_at = NOW() WHERE id = %d""" % owner_id)
+        cur.execute("UPDATE aho_arrivals SET room = '', building = '', updated_at = NOW() WHERE personnel_id = %d AND is_hidden = FALSE" % owner_id)
+        cur.execute("UPDATE personnel SET temp_owner_id = %d WHERE temp_owner_id = %d AND id != %d" % (pid, owner_id, pid))
+        owner_moved = True
+    cur.execute("UPDATE housing_conflicts SET resolved_at = NOW() WHERE resolved_at IS NULL AND (owner_id = %d OR temp_id = %d)" % (owner_id, pid))
+    sync_rooms(cur)
+    desc = '%s — заселение стало постоянным (место %s)' % (name, owner_name or '—')
+    if owner_moved:
+        desc += '; %s выписан из комнаты и ожидает расселения' % owner_name
+    cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('housing', '%s', %d)" % (desc.replace("'", "''"), pid))
+    conn.commit()
+    cur.close()
+    conn.close()
+    msg = '%s теперь живёт постоянно' % name
+    if owner_moved:
+        msg += '. %s перенесён в список расселения' % owner_name
+    return json_response(200, {'message': msg, 'owner_moved': owner_moved})
 
 
 def get_conflicts(event):
@@ -1750,14 +1793,22 @@ def get_rooms(params):
     rows = cur.fetchall()
 
     cur.execute("""
-        SELECT p.residence_room_id, p.id, p.full_name, COALESCE(p.position, ''), p.status IN ('arrived', 'on_shift'), p.status
+        SELECT p.residence_room_id, p.id, p.full_name, COALESCE(p.position, ''), p.status IN ('arrived', 'on_shift'), p.status,
+               p.temp_owner_id, o.full_name, o.status IN ('arrived', 'on_shift'),
+               COALESCE(p.temp_housed_at,
+                        (SELECT MAX(h.created_at) FROM housing_history h WHERE h.personnel_id = p.id AND h.room_id = p.residence_room_id))
         FROM personnel p JOIN rooms r ON r.id = p.residence_room_id
+        LEFT JOIN personnel o ON o.id = p.temp_owner_id
         WHERE r.building_id = %d AND p.status != 'archived' AND COALESCE(p.is_hidden, FALSE) = FALSE
-        ORDER BY (p.status IN ('arrived', 'on_shift')) DESC, p.full_name
+        ORDER BY (p.temp_owner_id IS NOT NULL), (p.status IN ('arrived', 'on_shift')) DESC, p.full_name
     """ % int(building_id))
     res_map = {}
     for x in cur.fetchall():
-        res_map.setdefault(x[0], []).append({'id': x[1], 'full_name': x[2], 'position': x[3], 'on_site': bool(x[4]), 'status': x[5] or ''})
+        res_map.setdefault(x[0], []).append({
+            'id': x[1], 'full_name': x[2], 'position': x[3], 'on_site': bool(x[4]), 'status': x[5] or '',
+            'temporary': x[6] is not None, 'owner_id': x[6], 'owner_name': x[7] or '', 'owner_on_site': bool(x[8]),
+            'housed_at': x[9]
+        })
 
     cur.close()
     conn.close()
