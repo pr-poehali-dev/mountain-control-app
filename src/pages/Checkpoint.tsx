@@ -11,6 +11,7 @@ import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useToast } from "@/hooks/use-toast";
 import PassEditDialog from "@/components/checkpoint/PassEditDialog";
 import VehicleCheck from "@/components/checkpoint/VehicleCheck";
+import { triggerConflictCheck } from "@/components/aho/HousingConflictAlert";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -169,6 +170,7 @@ const Checkpoint = () => {
       setPassResult(data);
       if (data.result === "allowed") {
         playSuccess();
+        if (data.housing_conflicts?.length) setTimeout(triggerConflictCheck, 600);
       } else {
         playDenied();
       }

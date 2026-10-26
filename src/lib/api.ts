@@ -295,6 +295,14 @@ export const ahoApi = {
     request(API.aho, "", { method: "PUT", body: { personnel_id }, params: { action: "evict" } }),
   getUnhoused: () =>
     request(API.aho, "", { params: { action: "unhoused" } }),
+  suggestRooms: (personnel_id: number) =>
+    request(API.aho, "", { params: { action: "suggest-rooms", personnel_id: String(personnel_id) } }),
+  setGender: (personnel_id: number, gender: "M" | "F" | "") =>
+    request(API.aho, "", { method: "PUT", body: { personnel_id, gender }, params: { action: "set-gender" } }),
+  getHousingConflicts: () =>
+    request(API.aho, "", { params: { action: "housing-conflicts" } }),
+  resolveConflict: (id: number) =>
+    request(API.aho, "", { method: "PUT", body: { id }, params: { action: "conflict-resolve" } }),
   getStats: () =>
     request(API.aho, "", { params: { action: "stats" } }),
   getMedicalStatus: (params?: Record<string, string>) =>

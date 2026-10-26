@@ -121,6 +121,38 @@ def find_or_create_room(cur, room, building, room_id=None):
 
 
 
+def detect_housing_conflict(cur, pid):
+    """Вернулся хозяин места, на котором временно живёт другой — фиксирует конфликт расселения"""
+    cur.execute("SELECT residence_room_id, full_name FROM personnel WHERE id = %d" % int(pid))
+    me = cur.fetchone()
+    if not me or not me[0]:
+        return 0
+    rid = me[0]
+    cur.execute("""SELECT id, full_name FROM personnel WHERE temp_owner_id = %d AND residence_room_id = %d
+                   AND status IN ('arrived', 'on_shift') AND COALESCE(is_hidden, FALSE) = FALSE""" % (int(pid), rid))
+    temps = cur.fetchall()
+    if not temps:
+        return 0
+    cur.execute("""SELECT r.capacity, r.room_number, COALESCE(b.name, ''),
+                   (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift')
+                    AND COALESCE(p.is_hidden, FALSE) = FALSE)
+                   FROM rooms r LEFT JOIN buildings b ON b.id = r.building_id WHERE r.id = %d""" % rid)
+    room = cur.fetchone()
+    if not room or room[3] <= room[0]:
+        return 0
+    created = 0
+    for t in temps:
+        cur.execute("SELECT 1 FROM housing_conflicts WHERE owner_id = %d AND temp_id = %d AND resolved_at IS NULL" % (int(pid), t[0]))
+        if cur.fetchone():
+            continue
+        cur.execute("INSERT INTO housing_conflicts (room_id, owner_id, temp_id) VALUES (%d, %d, %d)" % (rid, int(pid), t[0]))
+        desc = 'Конфликт расселения: вернулся %s (%s, комн. %s), на его месте временно живёт %s' % (me[1], room[2], room[1], t[1])
+        cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('housing_conflict', '%s', %d)"
+                    % (desc.replace("'", "''"), int(pid)))
+        created += 1
+    return created
+
+
 def log_housing(cur, pid, old_rid, new_rid, source):
     """Записывает заселение / переселение / выселение в историю проживания"""
     old_rid = int(old_rid) if old_rid else None
@@ -173,6 +205,14 @@ def handler(event, context):
         return check_in(body)
     elif method == 'PUT' and action == 'checkout':
         return check_out(body)
+    elif method == 'GET' and action == 'suggest-rooms':
+        return suggest_rooms(params, event)
+    elif method == 'PUT' and action == 'set-gender':
+        return set_gender(body)
+    elif method == 'GET' and action == 'housing-conflicts':
+        return get_conflicts(event)
+    elif method == 'PUT' and action == 'conflict-resolve':
+        return resolve_conflict(body)
     elif method == 'GET' and action == 'unhoused':
         return get_unhoused(event)
     elif method == 'PUT' and action == 'evict':
@@ -523,6 +563,7 @@ def check_in(body):
             VALUES ('check_in', '%s — въехал на территорию (АХО)', %d)
         """ % (row[1].replace("'", "''"), row[0]))
         sync_rooms(cur)
+        detect_housing_conflict(cur, row[0])
 
     conn.commit()
     cur.close()
@@ -617,9 +658,16 @@ def assign_room(body):
         conn.close()
         return json_response(400, {'error': 'Комната %s заполнена (%d/%d)' % (r_num, occ, capacity)})
 
+    temp_owner = None
+    if pid:
+        temp_owner = pick_temp_owner(cur, r_id, capacity, int(pid))
+        if old_rid and int(old_rid) != int(r_id):
+            release_temp_links(cur, int(pid))
     safe_num = r_num.replace("'", "''")
     safe_b = b_name.replace("'", "''")
     if pid:
+        cur.execute("UPDATE personnel SET temp_owner_id = %s, temp_housed_at = %s WHERE id = %d"
+                    % (int(temp_owner[0]) if temp_owner else 'NULL', 'NOW()' if temp_owner else 'NULL', int(pid)))
         cur.execute("""
             UPDATE personnel SET residence_room_id = %d, residence_building_id = %d,
                 residence = '%s, комн. %s', room = '%s', updated_at = NOW()
@@ -645,7 +693,203 @@ def assign_room(body):
     cur.close()
     conn.close()
 
-    return json_response(200, {'message': '%s заселён: %s, комн. %s' % (full_name, b_name, r_num)})
+    msg = '%s заселён: %s, комн. %s' % (full_name, b_name, r_num)
+    if temp_owner:
+        msg += ' — временно, на место %s (в отъезде)' % temp_owner[1]
+    return json_response(200, {'message': msg, 'temporary': bool(temp_owner), 'owner_name': temp_owner[1] if temp_owner else ''})
+
+
+def release_temp_links(cur, pid):
+    """Человек покидает своё место навсегда — временные жильцы на его месте становятся постоянными"""
+    cur.execute("UPDATE personnel SET temp_owner_id = NULL, temp_housed_at = NULL WHERE temp_owner_id = %d" % pid)
+    cur.execute("UPDATE housing_conflicts SET resolved_at = NOW() WHERE resolved_at IS NULL AND (owner_id = %d OR temp_id = %d)" % (pid, pid))
+
+
+def pick_temp_owner(cur, rid, capacity, pid):
+    """Если постоянные места в комнате заняты, новый жилец занимает место отсутствующего — возвращает (id, ФИО) хозяина"""
+    cur.execute("""SELECT COUNT(*) FROM personnel WHERE residence_room_id = %d AND id != %d AND temp_owner_id IS NULL
+                   AND status NOT IN ('archived') AND COALESCE(is_hidden, FALSE) = FALSE""" % (rid, pid))
+    permanent = cur.fetchone()[0]
+    if permanent < capacity:
+        return None
+    cur.execute("""SELECT o.id, o.full_name FROM personnel o
+                   WHERE o.residence_room_id = %d AND o.id != %d AND o.temp_owner_id IS NULL
+                     AND o.status NOT IN ('arrived', 'on_shift', 'archived') AND COALESCE(o.is_hidden, FALSE) = FALSE
+                     AND NOT EXISTS (SELECT 1 FROM personnel t WHERE t.temp_owner_id = o.id AND t.residence_room_id = %d AND t.id != %d)
+                   ORDER BY o.updated_at ASC LIMIT 1""" % (rid, pid, rid, pid))
+    return cur.fetchone()
+
+
+def guess_gender(name):
+    parts = (name or '').lower().split()
+    for w in parts[1:]:
+        if w.endswith(('вич', 'ич', 'оглы', 'улы', 'уулу')):
+            return 'M'
+        if w.endswith(('вна', 'чна', 'кызы', 'гызы')):
+            return 'F'
+    return ''
+
+
+def set_gender(body):
+    pid = body.get('personnel_id')
+    g = body.get('gender', '')
+    if not pid or g not in ('M', 'F', ''):
+        return json_response(400, {'error': 'Неверные данные'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE personnel SET gender = '%s', updated_at = NOW() WHERE id = %d" % (g, int(pid)))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'ok': True})
+
+
+def suggest_rooms(params, event):
+    """Подбор свободных мест с учётом пола и организации работника"""
+    pid = params.get('personnel_id', '')
+    if not pid.isdigit():
+        return json_response(400, {'error': 'Не указан сотрудник'})
+    pid = int(pid)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT full_name, COALESCE(organization, ''), COALESCE(gender, ''), residence_room_id FROM personnel WHERE id = %d" % pid)
+    me = cur.fetchone()
+    if not me:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Сотрудник не найден'})
+    gender = me[2]
+    if not gender:
+        gender = guess_gender(me[0])
+        if gender:
+            cur.execute("UPDATE personnel SET gender = '%s' WHERE id = %d" % (gender, pid))
+            conn.commit()
+    org = me[1].strip().lower()
+
+    cur.execute("""
+        SELECT r.id, r.room_number, r.capacity, COALESCE(r.floor, 0), b.id, b.name
+        FROM rooms r JOIN buildings b ON b.id = r.building_id
+        WHERE r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE AND r.capacity > 0
+          AND r.id != %d
+    """ % (me[3] or 0))
+    rooms = {r[0]: {'room_id': r[0], 'room_number': r[1], 'capacity': r[2], 'floor': r[3],
+                    'building_id': r[4], 'building_name': r[5], 'residents': []} for r in cur.fetchall()}
+    if not rooms:
+        cur.close()
+        conn.close()
+        return json_response(200, {'items': [], 'gender': gender, 'organization': me[1]})
+
+    cur.execute("""
+        SELECT p.residence_room_id, p.id, p.full_name, COALESCE(p.organization, ''), COALESCE(NULLIF(p.gender, ''), ''),
+               p.status, p.temp_owner_id
+        FROM personnel p
+        WHERE p.residence_room_id IS NOT NULL AND p.status NOT IN ('archived') AND COALESCE(p.is_hidden, FALSE) = FALSE
+          AND p.id != %d
+    """ % pid)
+    for r in cur.fetchall():
+        if r[0] in rooms:
+            g = r[4] or guess_gender(r[2])
+            rooms[r[0]]['residents'].append({'id': r[1], 'name': r[2], 'org': r[3], 'gender': g,
+                                             'on_site': r[5] in ('arrived', 'on_shift'), 'temp': r[6] is not None})
+    cur.close()
+    conn.close()
+
+    result = []
+    for rm in rooms.values():
+        res = rm['residents']
+        on_site = [x for x in res if x['on_site']]
+        free_now = rm['capacity'] - len(on_site)
+        if free_now <= 0:
+            continue
+        permanent = [x for x in res if not x['temp']]
+        free_perm = rm['capacity'] - len(permanent)
+        genders = set(x['gender'] for x in res if x['gender'])
+        if gender and genders and genders != {gender}:
+            continue
+        same_org = sum(1 for x in res if org and x['org'].strip().lower() == org)
+        other_org = sum(1 for x in res if x['org'] and x['org'].strip().lower() != org)
+        score = 0
+        reasons = []
+        if free_perm > 0:
+            score += 40
+            reasons.append('Постоянное место')
+        else:
+            away = [x['name'] for x in permanent if not x['on_site']]
+            reasons.append('Временно — хозяин в отъезде: %s' % (away[0] if away else '—'))
+        if same_org:
+            score += 25 + same_org * 5
+            reasons.append('Соседи из той же организации: %d' % same_org)
+        elif other_org:
+            score -= 5
+        if not res:
+            score += 8
+            reasons.append('Пустая комната')
+        elif gender and genders == {gender}:
+            score += 10
+            reasons.append('Живут только мужчины' if gender == 'M' else 'Живут только женщины')
+        elif not gender and genders:
+            reasons.append('Пол соседей: %s' % ('мужской' if genders == {'M'} else 'женский' if genders == {'F'} else 'смешанный'))
+        if res and not gender:
+            score -= 3
+        score += min(free_now, 3)
+        result.append({
+            'room_id': rm['room_id'], 'room_number': rm['room_number'], 'building_name': rm['building_name'],
+            'building_id': rm['building_id'], 'floor': rm['floor'], 'capacity': rm['capacity'],
+            'occupied': len(on_site), 'free_now': free_now, 'permanent': free_perm > 0,
+            'same_org': same_org, 'score': score, 'reasons': reasons,
+            'neighbors': [{'name': x['name'], 'org': x['org'], 'on_site': x['on_site']} for x in res][:6]
+        })
+    result.sort(key=lambda x: (-x['score'], x['building_name'], x['room_number']))
+    return json_response(200, {'items': result[:10], 'gender': gender, 'organization': me[1], 'total_found': len(result)})
+
+
+def get_conflicts(event):
+    """Открытые конфликты расселения: вернулся хозяин места, на котором временно живёт другой"""
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE housing_conflicts c SET resolved_at = NOW()
+        WHERE c.resolved_at IS NULL AND NOT (
+            EXISTS (SELECT 1 FROM personnel o WHERE o.id = c.owner_id AND o.residence_room_id = c.room_id AND o.status IN ('arrived', 'on_shift'))
+            AND EXISTS (SELECT 1 FROM personnel t WHERE t.id = c.temp_id AND t.residence_room_id = c.room_id AND t.status IN ('arrived', 'on_shift'))
+            AND (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = c.room_id AND p.status IN ('arrived', 'on_shift')
+                 AND COALESCE(p.is_hidden, FALSE) = FALSE) > (SELECT capacity FROM rooms WHERE id = c.room_id)
+        )
+    """)
+    conn.commit()
+    cur.execute("""
+        SELECT c.id, c.created_at, c.room_id, r.room_number, COALESCE(b.name, ''),
+               o.id, o.full_name, COALESCE(o.organization, ''), t.id, t.full_name, COALESCE(t.organization, ''), t.temp_housed_at
+        FROM housing_conflicts c
+        JOIN personnel o ON o.id = c.owner_id AND o.is_demo_data = %s
+        JOIN personnel t ON t.id = c.temp_id
+        JOIN rooms r ON r.id = c.room_id
+        LEFT JOIN buildings b ON b.id = r.building_id
+        WHERE c.resolved_at IS NULL
+        ORDER BY c.created_at DESC LIMIT 50
+    """ % demo_val)
+    items = [{
+        'id': r[0], 'created_at': r[1], 'room_id': r[2], 'room_number': r[3], 'building_name': r[4],
+        'owner': {'personnel_id': r[5], 'full_name': r[6], 'organization': r[7]},
+        'temp': {'personnel_id': r[8], 'full_name': r[9], 'organization': r[10], 'housed_at': r[11]}
+    } for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return json_response(200, {'items': items})
+
+
+def resolve_conflict(body):
+    cid = body.get('id')
+    if not cid:
+        return json_response(400, {'error': 'Не указан конфликт'})
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE housing_conflicts SET resolved_at = NOW() WHERE id = %d" % int(cid))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'ok': True})
 
 
 def get_unhoused(event):
@@ -660,7 +904,7 @@ def get_unhoused(event):
                (SELECT a.arrival_date FROM aho_arrivals a WHERE a.personnel_id = p.id AND a.is_hidden = FALSE
                 ORDER BY a.id DESC LIMIT 1),
                EXISTS (SELECT 1 FROM aho_arrivals a WHERE a.personnel_id = p.id AND a.is_hidden = FALSE),
-               COALESCE(p.tab_number, '')
+               COALESCE(p.tab_number, ''), COALESCE(p.gender, '')
         FROM personnel p
         WHERE p.residence_room_id IS NULL AND p.status IN ('expected', 'arrived', 'on_shift')
           AND COALESCE(p.is_hidden, FALSE) = FALSE AND p.is_demo_data = %s
@@ -670,7 +914,8 @@ def get_unhoused(event):
     items = [{
         'personnel_id': r[0], 'full_name': r[1], 'personal_code': r[2], 'organization': r[3], 'position': r[4],
         'status': r[5], 'created_at': r[6], 'department': r[7], 'phone': r[8],
-        'arrival_date': r[9], 'source': 'list' if r[10] else 'manual', 'tab_number': r[11]
+        'arrival_date': r[9], 'source': 'list' if r[10] else 'manual', 'tab_number': r[11],
+        'gender': r[12] or guess_gender(r[1])
     } for r in cur.fetchall()]
     cur.close()
     conn.close()
@@ -687,8 +932,9 @@ def evict(body):
     orow = cur.fetchone()
     if orow and orow[0]:
         log_housing(cur, int(personnel_id), orow[0], None, 'АХО')
+    release_temp_links(cur, int(personnel_id))
     cur.execute("""UPDATE personnel SET residence_room_id = NULL, residence = COALESCE((SELECT name FROM buildings WHERE id = residence_building_id), ''),
-                   room = '', updated_at = NOW() WHERE id = %d RETURNING full_name""" % int(personnel_id))
+                   room = '', temp_owner_id = NULL, temp_housed_at = NULL, updated_at = NOW() WHERE id = %d RETURNING full_name""" % int(personnel_id))
     row = cur.fetchone()
     if not row:
         cur.close()
@@ -947,6 +1193,7 @@ def mass_check_in(body):
             count += 1
             if row[0]:
                 cur.execute("UPDATE personnel SET status = 'arrived', updated_at = NOW() WHERE id = %d" % row[0])
+                detect_housing_conflict(cur, row[0])
                 cur.execute("""
                     INSERT INTO events (event_type, description, personnel_id)
                     VALUES ('check_in', '%s — массовый въезд (АХО)', %d)

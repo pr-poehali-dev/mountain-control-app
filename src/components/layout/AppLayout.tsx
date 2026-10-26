@@ -3,6 +3,7 @@ import { eventsApi } from "@/lib/api";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { useDemo } from "@/contexts/DemoContext";
+import HousingConflictAlert from "@/components/aho/HousingConflictAlert";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -27,6 +28,7 @@ export default function AppLayout({ children, title, subtitle }: AppLayoutProps)
         <Header title={title} subtitle={subtitle} />
         <main className="p-6">{children}</main>
       </div>
+      <HousingConflictAlert />
     </div>
   );
 }

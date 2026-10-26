@@ -69,3 +69,27 @@ export function playWarning() {
 export function playScan() {
   playTone(1200, 0.08, "sine", 0.15);
 }
+export function playAlarm(repeats = 3) {
+  try {
+    const ctx = getAudioContext();
+    const start = ctx.currentTime;
+    for (let r = 0; r < repeats; r++) {
+      for (let i = 0; i < 4; i++) {
+        const t = start + r * 1.2 + i * 0.22;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(i % 2 === 0 ? 1320 : 990, t);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.21);
+      }
+    }
+  } catch {
+    // ignore
+  }
+}

@@ -387,6 +387,41 @@ def vehicle_export(params, event):
     return json_response(200, {'file': base64.b64encode(buf.getvalue()).decode(), 'file_name': name + '.xlsx', 'total': len(rows)})
 
 
+def detect_housing_conflict(cur, pid):
+    """Вернулся хозяин места, где временно живёт другой — фиксирует конфликт расселения"""
+    cur.execute("SELECT residence_room_id, full_name FROM personnel WHERE id = %d" % int(pid))
+    me = cur.fetchone()
+    if not me or not me[0]:
+        return []
+    rid = me[0]
+    cur.execute("""SELECT id, full_name FROM personnel WHERE temp_owner_id = %d AND residence_room_id = %d
+                   AND status IN ('arrived', 'on_shift') AND COALESCE(is_hidden, FALSE) = FALSE""" % (int(pid), rid))
+    temps = cur.fetchall()
+    if not temps:
+        return []
+    cur.execute("""SELECT r.capacity, r.room_number, COALESCE(b.name, ''),
+                   (SELECT COUNT(*) FROM personnel p WHERE p.residence_room_id = r.id AND p.status IN ('arrived', 'on_shift')
+                    AND COALESCE(p.is_hidden, FALSE) = FALSE)
+                   FROM rooms r LEFT JOIN buildings b ON b.id = r.building_id WHERE r.id = %d""" % rid)
+    room = cur.fetchone()
+    if not room or room[3] <= room[0]:
+        return []
+    out = []
+    for t in temps:
+        cur.execute("SELECT id FROM housing_conflicts WHERE owner_id = %d AND temp_id = %d AND resolved_at IS NULL" % (int(pid), t[0]))
+        ex = cur.fetchone()
+        if ex:
+            cid = ex[0]
+        else:
+            cur.execute("INSERT INTO housing_conflicts (room_id, owner_id, temp_id) VALUES (%d, %d, %d) RETURNING id" % (rid, int(pid), t[0]))
+            cid = cur.fetchone()[0]
+            desc = 'Конфликт расселения: вернулся %s (%s, комн. %s), на его месте временно живёт %s' % (me[1], room[2], room[1], t[1])
+            cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('housing_conflict', '%s', %d)"
+                        % (desc.replace("'", "''"), int(pid)))
+        out.append({'id': cid, 'owner_name': me[1], 'temp_name': t[1], 'room_number': room[1], 'building_name': room[2]})
+    return out
+
+
 def parse_qr_code(raw):
     try:
         data = json.loads(raw)
@@ -485,6 +520,7 @@ def register_pass(body):
            'TRUE' if medical_ok else 'FALSE', notes.replace("'", "''")))
     pass_id = cur.fetchone()[0]
 
+    housing_conflicts = []
     if direction == 'in':
         new_status = 'arrived'
         event_type = 'checkpoint_in'
@@ -498,6 +534,8 @@ def register_pass(body):
             UPDATE aho_arrivals SET arrival_status = 'arrived', check_in_at = NOW(), updated_at = NOW()
             WHERE personnel_id = %d AND arrival_status = 'expected' AND is_hidden = FALSE
         """ % person_id)
+        sync_rooms(cur)
+        housing_conflicts = detect_housing_conflict(cur, person_id)
 
     else:
         new_status = 'departed'
@@ -532,7 +570,8 @@ def register_pass(body):
         'direction': direction,
         'person_name': person_name,
         'medical_ok': medical_ok,
-        'person': person_info
+        'person': person_info,
+        'housing_conflicts': housing_conflicts
     })
 
 def get_journal(params, event):

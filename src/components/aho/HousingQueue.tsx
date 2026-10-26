@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import ResidenceSelect, { type ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import RoomSuggestDialog from "./RoomSuggestDialog";
 
 interface QueueItem {
   personnel_id: number;
@@ -20,6 +21,7 @@ interface QueueItem {
   arrival_date: string | null;
   source: "list" | "manual";
   tab_number: string;
+  gender?: string;
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -53,6 +55,7 @@ export default function HousingQueue({ canSeeCode, version = 0, onChanged }: Pro
   const [targets, setTargets] = useState<QueueItem[]>([]);
   const [room, setRoom] = useState<ResidenceValue>({ residence_building_id: null, residence_room_id: null });
   const [saving, setSaving] = useState(false);
+  const [suggestFor, setSuggestFor] = useState<QueueItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,9 +109,11 @@ export default function HousingQueue({ canSeeCode, version = 0, onChanged }: Pro
     setSaving(true);
     let ok = 0;
     let lastError = "";
+    let tempNote = "";
     for (const t of targets) {
       try {
-        await ahoApi.assignRoomById({ personnel_id: t.personnel_id, room_id: room.residence_room_id });
+        const r = await ahoApi.assignRoomById({ personnel_id: t.personnel_id, room_id: room.residence_room_id });
+        if (r.temporary) tempNote = r.message;
         ok++;
       } catch (e) {
         lastError = e instanceof Error ? e.message : "Ошибка";
@@ -117,7 +122,7 @@ export default function HousingQueue({ canSeeCode, version = 0, onChanged }: Pro
     }
     setSaving(false);
     if (ok > 0) {
-      toast({ title: ok === 1 ? `${targets[0].full_name} заселён` : `Заселено: ${ok} из ${targets.length}` });
+      toast({ title: ok === 1 ? `${targets[0].full_name} заселён` : `Заселено: ${ok} из ${targets.length}`, description: tempNote });
     }
     if (lastError) {
       toast({ title: ok > 0 ? "Не все заселены" : "Не удалось заселить", description: lastError, variant: "destructive" });
@@ -226,7 +231,10 @@ export default function HousingQueue({ canSeeCode, version = 0, onChanged }: Pro
                           }
                         />
                       </td>
-                      <td className="px-3 py-2 text-xs font-medium text-foreground">{i.full_name}</td>
+                      <td className="px-3 py-2 text-xs font-medium text-foreground">
+                        {i.full_name}
+                        {i.gender && <span className="ml-1.5 text-[10px] text-muted-foreground">{i.gender === "M" ? "муж." : "жен."}</span>}
+                      </td>
                       {canSeeCode && <td className="px-3 py-2 text-xs font-mono text-red-500">{i.personal_code}</td>}
                       <td className="px-3 py-2 text-xs text-muted-foreground">
                         {i.organization || "—"}
@@ -242,7 +250,11 @@ export default function HousingQueue({ canSeeCode, version = 0, onChanged }: Pro
                         </span>
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(i.created_at)}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap space-x-1.5">
+                        <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-mine-amber/40 text-mine-amber hover:bg-mine-amber/10 hover:text-mine-amber" onClick={() => setSuggestFor(i)}>
+                          <Icon name="Sparkles" size={12} />
+                          Подобрать комнату
+                        </Button>
                         <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-mine-green/40 text-mine-green hover:bg-mine-green/10 hover:text-mine-green" onClick={() => openDialog([i])}>
                           <Icon name="Home" size={12} />
                           Заселить
@@ -256,6 +268,15 @@ export default function HousingQueue({ canSeeCode, version = 0, onChanged }: Pro
           </div>
         )}
       </div>
+
+      <RoomSuggestDialog
+        person={suggestFor}
+        onClose={() => setSuggestFor(null)}
+        onAssigned={() => {
+          load();
+          onChanged();
+        }}
+      />
 
       <Dialog open={targets.length > 0} onOpenChange={(o) => !o && setTargets([])}>
         <DialogContent className="sm:max-w-md">
