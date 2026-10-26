@@ -311,9 +311,24 @@ def register(body):
         VALUES (%d, '%s', '%s')
     """ % (user_id, token, expires.isoformat()))
 
+    cur.execute("""SELECT DISTINCT lower(email) FROM users
+                   WHERE role = 'admin' AND is_active = TRUE AND COALESCE(access_status, 'active') = 'active'
+                   AND email LIKE '%@%'""")
+    admin_emails = [r[0] for r in cur.fetchall()]
+    cur.execute("INSERT INTO events (event_type, description) VALUES ('user_access', '%s')"
+                % ('Новая регистрация, ждёт допуска: %s' % full_name).replace("'", "''"))
     conn.commit()
     cur.close()
     conn.close()
+
+    if admin_emails:
+        try:
+            send_pending_email(admin_emails, {
+                'full_name': full_name, 'email': email, 'position': position,
+                'department': department, 'organization': organization,
+            })
+        except Exception as e:
+            print('pending access email failed: %s' % str(e)[:200])
 
     return json_response(200, {
         'token': token,
@@ -1304,6 +1319,52 @@ def demo_default():
         return json_response(404, {'error': 'Нет активных демо-ссылок'})
 
     return json_response(200, {'token': row[0]})
+
+def send_pending_email(to_list, u):
+    """Письмо администраторам: новый пользователь зарегистрировался и ждёт допуска"""
+    host = os.environ.get('SMTP_HOST', '')
+    user = os.environ.get('SMTP_USER', '')
+    password = os.environ.get('SMTP_PASSWORD', '')
+    if not (host and user and password):
+        return
+    port = int(os.environ.get('SMTP_PORT', '465') or 465)
+    esc = lambda v: html_lib.escape(v or '—')
+    rows = ''.join(
+        '<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;width:140px;">%s</td>'
+        '<td style="padding:6px 0;color:#111827;font-size:14px;">%s</td></tr>' % (k, esc(v))
+        for k, v in [('ФИО', u['full_name']), ('Почта', u['email']), ('Должность', u['position']),
+                     ('Подразделение', u['department']), ('Организация', u['organization'])])
+    when = (datetime.utcnow() + timedelta(hours=9)).strftime('%d.%m.%Y %H:%M')
+    html_body = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%%" cellpadding="0" cellspacing="0" style="padding:24px 12px;"><tr><td align="center">
+<table width="100%%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:16px;overflow:hidden;">
+<tr><td style="background:#0e1218;padding:20px 24px;color:#f59e0b;font-size:20px;font-weight:bold;">Горный контроль
+<div style="color:#9ca3af;font-size:13px;font-weight:normal;margin-top:4px;">Новый пользователь ждёт допуска</div></td></tr>
+<tr><td style="padding:20px 24px;">
+<p style="margin:0 0 12px;color:#111827;font-size:15px;">В системе зарегистрировался новый пользователь. Сейчас он может только просматривать разделы, реальные фамилии и данные ему не видны.</p>
+<table cellpadding="0" cellspacing="0" width="100%%">%s</table>
+<p style="margin:16px 0 0;color:#111827;font-size:14px;">Чтобы открыть полный доступ, войдите в систему и нажмите <b>«Дать допуск»</b> в уведомлении или в разделе «Админ» → пользователи.</p>
+</td></tr>
+<tr><td align="center" style="background:#f9fafb;padding:12px;color:#9ca3af;font-size:12px;">Регистрация: %s (Чита) · письмо отправлено автоматически</td></tr>
+</table></td></tr></table></body></html>""" % (rows, when)
+    text = 'Новый пользователь ждёт допуска: %s (%s). Откройте систему -> Админ, чтобы дать допуск.' % (u['full_name'], u['email'])
+    msg = MIMEMultipart('alternative')
+    msg.attach(MIMEText(text, 'plain', 'utf-8'))
+    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+    msg['Subject'] = Header('Ждёт допуска: %s' % u['full_name'], 'utf-8')
+    msg['From'] = '%s <%s>' % (Header('Горный контроль', 'utf-8').encode(), user)
+    msg['To'] = ', '.join(to_list)
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=6) as srv:
+            srv.login(user, password)
+            srv.sendmail(user, to_list, msg.as_string())
+    else:
+        with smtplib.SMTP(host, port, timeout=6) as srv:
+            srv.starttls(context=ssl.create_default_context())
+            srv.login(user, password)
+            srv.sendmail(user, to_list, msg.as_string())
+
 
 def send_code_email(to_email, code, full_name):
     host = os.environ.get('SMTP_HOST', '')

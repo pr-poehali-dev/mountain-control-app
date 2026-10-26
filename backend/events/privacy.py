@@ -8,6 +8,14 @@ NAME_KEYS = {
     'checked_by', 'denied_by', 'performed_by', 'created_by', 'updated_by', 'temp_owner_name', 'owner_full_name',
     'temp_name', 'resident_name', 'name_owner', 'employee_name', 'author', 'author_name', 'user_name', 'fio',
 }
+ORG_KEYS = {'organization', 'company', 'company_name', 'org_name', 'organization_name', 'contractor', 'employer', 'owner_org'}
+LEGAL_RX = re.compile(r'^(?:ООО|ОАО|ЗАО|ПАО|АО|НАО|ИП|ФГУП|МУП|ГУП|ТОО|LLC|ООО\s*УК)\s+', re.IGNORECASE)
+QUOTES = '"«»„“”\''
+GENERIC_WORDS = {
+    'горно', 'горный', 'горная', 'рудник', 'рудника', 'компания', 'группа', 'холдинг', 'сервис', 'строй', 'проект',
+    'управление', 'монтаж', 'ремонт', 'техника', 'транспорт', 'охрана', 'безопасность', 'подрядчик', 'гости',
+    'добыча', 'золото', 'металл', 'энерго', 'регион', 'сибирь', 'восток', 'забайкалье', 'россия', 'русский',
+}
 BLANK_KEYS = {
     'email', 'login_email', 'phone', 'passport', 'birth_date', 'photo_url', 'face_photo_url', 'snils', 'inn',
     'personal_code', 'person_code', 'qr_code', 'tab_number', 'login_code', 'phone_number', 'mobile',
@@ -64,6 +72,36 @@ def caller_state(event):
     return demo or restricted, row[0]
 
 
+def _load_orgs():
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute("""SELECT DISTINCT n FROM (
+        SELECT organization FROM personnel UNION ALL SELECT organization FROM users
+        UNION ALL SELECT organization FROM aho_arrivals) t(n)
+        WHERE COALESCE(n, '') <> '' LIMIT 5000""")
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
+def org_variants(name):
+    """Полное название, название без формы собственности и кавычек, характерные слова для поиска внутри текста"""
+    full = ' '.join(str(name).split())
+    bare = LEGAL_RX.sub('', full)
+    plain = ' '.join(bare.translate({ord(c): ' ' for c in QUOTES}).split())
+    exact = {v for v in (full, bare, plain) if len(v) >= 3}
+    stems = set()
+    abbr = set()
+    for w in re.findall(r'[A-Za-zА-Яа-яЁё0-9\-]+', plain):
+        lw = w.lower()
+        if w.isupper() and 2 <= len(w) <= 6 and not w.isdigit():
+            abbr.add(w)
+        elif len(w) >= 6 and lw not in GENERIC_WORDS and not any(lw.startswith(g) for g in GENERIC_WORDS):
+            stems.add(lw[:max(5, len(lw) - 2)])
+    return exact, stems, abbr
+
+
 def _load_names(self_id):
     conn = psycopg2.connect(os.environ['DATABASE_URL'])
     cur = conn.cursor()
@@ -89,6 +127,7 @@ def _load_names(self_id):
 
 PHONE_RX = re.compile(r'(?<!\d)(?:\+7|8)[\s\-(]*\d{3}[\s\-)]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}(?!\d)')
 CSV_BLANK_COLS = ('код', 'таб', 'телефон', 'email', 'почт', 'паспорт', 'снилс', 'инн', 'фото', 'qr', 'дата рожд')
+CSV_ORG_COLS = ('организац', 'компани', 'подрядчик', 'работодател')
 CSV_NAME_COLS = ('фио', 'сотрудник', 'владелец', 'выдал', 'принял', 'врач', 'проверил', 'отправитель')
 
 
@@ -103,6 +142,7 @@ def mask_csv(masker, body):
     head = [h.strip().lower() for h in rows[0]]
     blank = {i for i, h in enumerate(head) if any(k in h for k in CSV_BLANK_COLS)}
     names = {i for i, h in enumerate(head) if any(k in h for k in CSV_NAME_COLS)}
+    orgs = {i for i, h in enumerate(head) if any(k in h for k in CSV_ORG_COLS)}
     out = io.StringIO()
     w = csv.writer(out, delimiter=';')
     w.writerow(rows[0])
@@ -113,6 +153,8 @@ def mask_csv(masker, body):
                 nr.append('***')
             elif i in names and v:
                 nr.append(masker.name(v))
+            elif i in orgs and v:
+                nr.append(masker.org(v))
             else:
                 nr.append(PHONE_RX.sub('***', masker.text(v)))
         w.writerow(nr)
@@ -137,18 +179,41 @@ class Masker:
                     initials = ' '.join(w[0] + '.' for w in words[1:3])
                     self.parts.setdefault(('%s %s' % (words[0], initials)).lower(), alias)
                     self.parts.setdefault(('%s %s' % (words[0], initials.replace(' ', ''))).lower(), alias)
-        keys = sorted(list(self.full.keys()) + list(self.parts.keys()), key=len, reverse=True)
+        self.orgs = {}
+        org_exact = {}
+        org_stems = set()
+        org_abbr = set()
+        for org in _load_orgs():
+            key = ' '.join(str(org).split()).lower()
+            if key in self.orgs:
+                continue
+            alias = 'Организация %d' % (len(self.orgs) + 1)
+            exact, stems, abbr = org_variants(org)
+            for v in exact:
+                org_exact.setdefault(v.lower(), alias)
+            self.orgs[key] = alias
+            org_stems |= stems
+            org_abbr |= abbr
+        keys = sorted(list(self.full.keys()) + list(self.parts.keys()) + list(org_exact.keys()), key=len, reverse=True)
         self.lookup = dict(self.parts)
         self.lookup.update(self.full)
+        self.lookup.update(org_exact)
         self.rx = re.compile('|'.join(re.escape(k) for k in keys), re.IGNORECASE) if keys else None
+        self.org_rx = None
+        pats = [r'(?<![A-Za-zА-Яа-яЁё])%s[A-Za-zА-Яа-яЁё]*' % re.escape(st) for st in sorted(org_stems, key=len, reverse=True)]
+        pats += [r'(?<![A-Za-zА-Яа-яЁё])%s(?![A-Za-zА-Яа-яЁё])' % re.escape(a) for a in sorted(org_abbr, key=len, reverse=True)]
+        if pats:
+            self.org_rx = re.compile('|'.join(pats), re.IGNORECASE)
 
     def _alias(self):
         self.counter += 1
         return 'Сотрудник %03d' % self.counter
 
     def text(self, s):
-        if not self.rx or not s:
+        if (not self.rx and not getattr(self, 'org_rx', None)) or not s:
             return s
+        if not self.rx:
+            return self.org_rx.sub('Компания', s)
         def repl(m):
             start, end = m.start(), m.end()
             if start > 0 and s[start - 1].isalpha():
@@ -156,7 +221,16 @@ class Masker:
             if end < len(s) and s[end].isalpha():
                 return m.group(0)
             return self.lookup.get(m.group(0).lower(), 'Сотрудник')
-        return self.rx.sub(repl, s)
+        out = self.rx.sub(repl, s)
+        if self.org_rx:
+            out = self.org_rx.sub('Компания', out)
+        return out
+
+    def org(self, s):
+        if not isinstance(s, str) or not s.strip() or s.strip() in ('—', '-'):
+            return s
+        key = ' '.join(s.split()).lower()
+        return self.orgs.get(key) or self.text(s)
 
     def name(self, s):
         if not isinstance(s, str) or not s.strip() or s.strip() in ('—', '-'):
@@ -175,8 +249,10 @@ class Masker:
                     out[k] = ''
                 elif k in NAME_KEYS and isinstance(v, str):
                     out[k] = self.name(v)
+                elif k in ORG_KEYS and isinstance(v, str):
+                    out[k] = self.org(v)
                 else:
-                    out[k] = self.walk(v)
+                    out[self.text(k) if isinstance(k, str) else k] = self.walk(v)
             return out
         if isinstance(obj, list):
             return [self.walk(v) for v in obj]
@@ -215,7 +291,7 @@ def _deny_files():
 
 
 def guard(event, context, handler, write_ok=()):
-    """Режим просмотра для демо и новых пользователей: запрет записи и скрытие реальных ФИО"""
+    """Режим просмотра для демо и новых пользователей: запрет записи, скрытие реальных ФИО и названий компаний"""
     method = event.get('httpMethod', 'GET')
     if method == 'OPTIONS':
         return handler(event, context)
