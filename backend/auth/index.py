@@ -1501,10 +1501,18 @@ def face_login(body):
         v = d if isinstance(d, list) else json.loads(d)
         scored.append((face_distance(desc, v), uid))
     scored.sort()
-    if not scored or scored[0][0] > FACE_MATCH_THRESHOLD or (len(scored) > 1 and scored[1][0] - scored[0][0] < FACE_MARGIN):
+    if not scored:
         cur.close()
         conn.close()
-        return json_response(401, {'error': 'Лицо не опознано', 'not_found': True})
+        return json_response(401, {'error': 'В системе ещё нет сохранённых лиц. Войдите по email или коду и добавьте лицо в профиле', 'not_found': True, 'reason': 'no_faces'})
+    if scored[0][0] > FACE_MATCH_THRESHOLD:
+        cur.close()
+        conn.close()
+        return json_response(401, {'error': 'Лицо не опознано. Возможно, ваше лицо не добавлено в профиль или плохое освещение', 'not_found': True, 'reason': 'no_match'})
+    if len(scored) > 1 and scored[1][0] - scored[0][0] < FACE_MARGIN:
+        cur.close()
+        conn.close()
+        return json_response(401, {'error': 'Не удалось однозначно опознать лицо. Встаньте ближе к камере при хорошем освещении', 'not_found': True, 'reason': 'ambiguous'})
 
     user_id = scored[0][1]
     cur.execute("""

@@ -15,6 +15,7 @@ const TURN_DELTA = 0.13;
 const CHALLENGE_TIMEOUT = 8000;
 const FACE_LOST_LIMIT = 1200;
 const SAME_PERSON_DISTANCE = 0.5;
+const ERROR_PAUSE = 3000;
 
 const challengeText: Record<Challenge, string> = {
   left: "Теперь поверните голову влево",
@@ -40,6 +41,8 @@ export default function FaceLogin() {
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [step, setStep] = useState(0);
   const [failures, setFailures] = useState(0);
+  const [error, setError] = useState("");
+  const pauseUntilRef = useRef(0);
 
   const phaseRef = useRef<Phase>("position");
   const stableRef = useRef(0);
@@ -62,11 +65,19 @@ export default function FaceLogin() {
     setChallenges([]);
     setPhaseBoth("position");
     setTone(isError ? "error" : "idle");
-    setHint(message || "Посмотрите прямо в камеру");
+    if (isError && message) {
+      setError(message);
+      pauseUntilRef.current = Date.now() + ERROR_PAUSE;
+      setHint("Повторная попытка через несколько секунд...");
+    } else {
+      setHint(message || "Посмотрите прямо в камеру");
+    }
   };
 
   const start = () => {
     setFailures(0);
+    setError("");
+    pauseUntilRef.current = 0;
     reset();
     setActive(true);
   };
@@ -93,6 +104,7 @@ export default function FaceLogin() {
     try {
       await loginByFace(descriptor);
       setPhaseBoth("done");
+      setError("");
       setTone("ok");
       setHint("Лицо опознано, входим...");
       setTimeout(() => {
@@ -100,14 +112,9 @@ export default function FaceLogin() {
         navigate("/");
       }, 400);
     } catch (err) {
-      const e = err as Error & { data?: { not_found?: boolean } };
+      const e = err as Error;
       setFailures((f) => f + 1);
-      reset(
-        e.data?.not_found
-          ? "Лицо не опознано. Убедитесь, что фото добавлено в настройках профиля"
-          : e.message || "Ошибка входа",
-        true
-      );
+      reset(e.message || "Ошибка входа. Попробуйте ещё раз", true);
     }
   };
 
@@ -115,6 +122,7 @@ export default function FaceLogin() {
     const p = phaseRef.current;
     if (p === "sending" || p === "done") return;
     const now = Date.now();
+    if (now < pauseUntilRef.current) return;
 
     if (!face || face.faces > 1) {
       if (p === "position") {
@@ -251,6 +259,13 @@ export default function FaceLogin() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-mine-red/30 bg-mine-red/10 px-3 py-2 text-sm text-mine-red">
+          <Icon name="CircleAlert" size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
