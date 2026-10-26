@@ -295,6 +295,8 @@ export const ahoApi = {
     request(API.aho, "", { method: "PUT", body: { personnel_id }, params: { action: "evict" } }),
   getUnhoused: () =>
     request(API.aho, "", { params: { action: "unhoused" } }),
+  getLiveList: (kind: string, organization?: string) =>
+    request(API.aho, "", { params: { action: "live-list", kind, ...(organization ? { organization } : {}) } }),
   suggestRooms: (personnel_id: number) =>
     request(API.aho, "", { params: { action: "suggest-rooms", personnel_id: String(personnel_id) } }),
   setGender: (personnel_id: number, gender: "M" | "F" | "") =>

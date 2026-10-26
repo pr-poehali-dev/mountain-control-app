@@ -26,6 +26,8 @@ const getSeen = (): number[] => {
   }
 };
 
+export const notifyHousingChanged = () => window.dispatchEvent(new Event("housing-changed"));
+
 export const triggerConflictCheck = () => window.dispatchEvent(new Event("housing-conflict-check"));
 
 export default function HousingConflictAlert() {
@@ -94,6 +96,7 @@ export default function HousingConflictAlert() {
   const resolve = async (id: number) => {
     await ahoApi.resolveConflict(id).catch(() => {});
     acknowledge(id);
+    notifyHousingChanged();
   };
 
   if (!current) return null;
@@ -172,6 +175,7 @@ export default function HousingConflictAlert() {
         onAssigned={() => {
           acknowledge(current.id);
           check();
+          notifyHousingChanged();
         }}
       />
     </>

@@ -20,6 +20,7 @@ import Icon from "@/components/ui/icon";
 import HousingStats from "@/components/aho/HousingStats";
 import ResidenceSelect, { type ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import HousingQueue from "@/components/aho/HousingQueue";
+import LiveHousingStats, { type LiveStats } from "@/components/aho/LiveHousingStats";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -76,6 +77,7 @@ interface Stats {
   total_batches: number;
   rooms_capacity: number;
   rooms_occupied: number;
+  live?: LiveStats;
 }
 
 interface MedicalItem {
@@ -129,6 +131,7 @@ const Aho = () => {
   const [arrivals, setArrivals] = useState<ArrivalItem[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [statsAt, setStatsAt] = useState<Date | null>(null);
   const [medicals, setMedicals] = useState<MedicalItem[]>([]);
 
   const [filterStatus, setFilterStatus] = useState("all");
@@ -215,6 +218,20 @@ const Aho = () => {
     if (tab === "stats") loadStats();
   }, [tab]);
 
+  useEffect(() => {
+    const h = () => refreshHousing();
+    window.addEventListener("housing-changed", h);
+    return () => window.removeEventListener("housing-changed", h);
+  });
+
+  useEffect(() => {
+    if (tab !== "stats" && tab !== "housing") return;
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadStats();
+    }, 15000);
+    return () => window.clearInterval(t);
+  }, [tab]);
+
   const downloadTemplate = async () => {
     try {
       const data = await ahoApi.getTemplate();
@@ -257,6 +274,7 @@ const Aho = () => {
     try {
       const data = await ahoApi.getStats();
       setStats(data);
+      setStatsAt(new Date());
     } catch { /* ignore */ }
   };
 
@@ -860,6 +878,7 @@ const Aho = () => {
 
         {/* === РАССЕЛЕНИЕ === */}
         <TabsContent value="housing" className="space-y-4">
+          {stats?.live && <LiveHousingStats live={stats.live} updatedAt={statsAt} onChanged={() => refreshHousing()} />}
           <HousingStats key={housingVersion} />
 
           <div className="flex items-center justify-between">
@@ -1135,6 +1154,8 @@ const Aho = () => {
         <TabsContent value="stats" className="space-y-4">
           {stats ? (
             <>
+              {stats.live && <LiveHousingStats live={stats.live} updatedAt={statsAt} onChanged={() => refreshHousing()} />}
+              <h3 className="text-sm font-semibold text-foreground pt-2">По загруженным спискам заезда</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <StatCard icon="Users" label="Всего в списках" value={stats.total} color="amber" />
                 <StatCard icon="LogIn" label="На территории" value={stats.by_status.arrived || 0} color="green" />

@@ -205,6 +205,8 @@ def handler(event, context):
         return check_in(body)
     elif method == 'PUT' and action == 'checkout':
         return check_out(body)
+    elif method == 'GET' and action == 'live-list':
+        return get_live_list(params, event)
     elif method == 'GET' and action == 'suggest-rooms':
         return suggest_rooms(params, event)
     elif method == 'PUT' and action == 'set-gender':
@@ -993,6 +995,101 @@ def evict(body):
     return json_response(200, {'message': '%s выселен' % row[0]})
 
 
+def collect_live_stats(cur, demo_val):
+    """Живая сводка по всем работникам: территория, выезды, расселение, конфликты"""
+    base = "FROM personnel p WHERE COALESCE(p.is_hidden, FALSE) = FALSE AND p.status != 'archived' AND p.is_demo_data = %s" % demo_val
+    cur.execute("""SELECT
+        COUNT(*),
+        COUNT(*) FILTER (WHERE p.status IN ('arrived', 'on_shift')),
+        COUNT(*) FILTER (WHERE p.status = 'on_shift'),
+        COUNT(*) FILTER (WHERE p.status = 'departed'),
+        COUNT(*) FILTER (WHERE p.status = 'expected'),
+        COUNT(*) FILTER (WHERE p.status IN ('arrived', 'on_shift') AND p.residence_room_id IS NOT NULL),
+        COUNT(*) FILTER (WHERE p.status IN ('arrived', 'on_shift') AND p.residence_room_id IS NULL),
+        COUNT(*) FILTER (WHERE p.status = 'expected' AND p.residence_room_id IS NULL),
+        COUNT(*) FILTER (WHERE p.status NOT IN ('arrived', 'on_shift') AND p.residence_room_id IS NOT NULL),
+        COUNT(*) FILTER (WHERE p.temp_owner_id IS NOT NULL AND p.residence_room_id IS NOT NULL),
+        COUNT(*) FILTER (WHERE p.residence_room_id IS NOT NULL)
+        %s""" % base)
+    r = cur.fetchone()
+    cur.execute("""SELECT
+        COUNT(*) FILTER (WHERE e.event_type IN ('checkpoint_in', 'check_in')),
+        COUNT(*) FILTER (WHERE e.event_type IN ('checkpoint_out', 'check_out'))
+        FROM events e WHERE e.created_at >= CURRENT_DATE AND COALESCE(e.is_hidden, FALSE) = FALSE AND COALESCE(e.is_demo_data, FALSE) = %s""" % demo_val)
+    ev = cur.fetchone()
+    cur.execute("""SELECT COUNT(*) FROM housing_conflicts c JOIN personnel o ON o.id = c.owner_id
+                   WHERE c.resolved_at IS NULL AND o.is_demo_data = %s""" % demo_val)
+    conflicts = cur.fetchone()[0]
+    cur.execute("""SELECT COALESCE(NULLIF(TRIM(p.organization), ''), 'Без организации') AS org,
+        COUNT(*) FILTER (WHERE p.status IN ('arrived', 'on_shift')),
+        COUNT(*) FILTER (WHERE p.status IN ('arrived', 'on_shift') AND p.residence_room_id IS NOT NULL),
+        COUNT(*) FILTER (WHERE p.status IN ('arrived', 'on_shift') AND p.residence_room_id IS NULL),
+        COUNT(*) FILTER (WHERE p.status = 'departed')
+        %s GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 15""" % base)
+    orgs = [{'organization': o[0], 'on_site': o[1], 'housed': o[2], 'unhoused': o[3], 'departed': o[4]} for o in cur.fetchall()]
+    cur.execute("""SELECT
+        COUNT(*) FILTER (WHERE p.gender = 'M' AND p.status IN ('arrived', 'on_shift')),
+        COUNT(*) FILTER (WHERE p.gender = 'F' AND p.status IN ('arrived', 'on_shift')),
+        COUNT(*) FILTER (WHERE COALESCE(p.gender, '') = '' AND p.status IN ('arrived', 'on_shift'))
+        %s""" % base)
+    g = cur.fetchone()
+    return {
+        'total': r[0], 'on_site': r[1], 'on_shift': r[2], 'departed': r[3], 'expected': r[4],
+        'on_site_housed': r[5], 'on_site_unhoused': r[6], 'expected_unhoused': r[7],
+        'away_keep_place': r[8], 'temporary': r[9], 'housed_total': r[10],
+        'entered_today': ev[0], 'left_today': ev[1], 'conflicts': conflicts,
+        'by_org': orgs, 'gender': {'M': g[0], 'F': g[1], 'unknown': g[2]},
+    }
+
+
+LIVE_KINDS = {
+    'on_site': "p.status IN ('arrived', 'on_shift')",
+    'on_shift': "p.status = 'on_shift'",
+    'departed': "p.status = 'departed'",
+    'expected': "p.status = 'expected'",
+    'on_site_housed': "p.status IN ('arrived', 'on_shift') AND p.residence_room_id IS NOT NULL",
+    'on_site_unhoused': "p.status IN ('arrived', 'on_shift') AND p.residence_room_id IS NULL",
+    'expected_unhoused': "p.status = 'expected' AND p.residence_room_id IS NULL",
+    'away_keep_place': "p.status NOT IN ('arrived', 'on_shift') AND p.residence_room_id IS NOT NULL",
+    'temporary': "p.temp_owner_id IS NOT NULL AND p.residence_room_id IS NOT NULL",
+    'housed_total': "p.residence_room_id IS NOT NULL",
+}
+
+
+def get_live_list(params, event):
+    """Список работников по выбранному показателю сводки"""
+    kind = params.get('kind', '')
+    cond = LIVE_KINDS.get(kind)
+    if not cond:
+        return json_response(400, {'error': 'Неизвестный показатель'})
+    org = params.get('organization', '').strip()
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    extra = ''
+    if org == 'Без организации':
+        extra = " AND COALESCE(TRIM(p.organization), '') = ''"
+    elif org:
+        extra = " AND TRIM(p.organization) = '%s'" % org.replace("'", "''")
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT p.id, p.full_name, COALESCE(p.organization, ''), COALESCE(p.position, ''), p.status,
+               r.room_number, COALESCE(b.name, ''), o.full_name, p.updated_at
+        FROM personnel p
+        LEFT JOIN rooms r ON r.id = p.residence_room_id
+        LEFT JOIN buildings b ON b.id = r.building_id
+        LEFT JOIN personnel o ON o.id = p.temp_owner_id
+        WHERE COALESCE(p.is_hidden, FALSE) = FALSE AND p.status != 'archived' AND p.is_demo_data = %s AND %s %s
+        ORDER BY p.full_name LIMIT 300
+    """ % (demo_val, cond, extra))
+    items = [{
+        'personnel_id': x[0], 'full_name': x[1], 'organization': x[2], 'position': x[3], 'status': x[4],
+        'room_number': x[5] or '', 'building_name': x[6], 'temp_owner_name': x[7] or '', 'updated_at': x[8]
+    } for x in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return json_response(200, {'items': items})
+
+
 def get_stats(event):
     conn = get_db()
     cur = conn.cursor()
@@ -1038,6 +1135,7 @@ def get_stats(event):
     cur.execute("""SELECT COALESCE(SUM(r.capacity), 0), COALESCE(SUM(%s), 0)::int FROM rooms r
                    JOIN buildings b ON b.id = r.building_id WHERE r.is_active = TRUE AND r.is_residential = TRUE AND b.is_active = TRUE""" % ROOM_OCC)
     rooms_row = cur.fetchone()
+    live = collect_live_stats(cur, demo_val)
 
     cur.close()
     conn.close()
@@ -1053,6 +1151,7 @@ def get_stats(event):
         'total_batches': total_batches,
         'rooms_capacity': rooms_row[0],
         'rooms_occupied': rooms_row[1],
+        'live': live,
     })
 
 
