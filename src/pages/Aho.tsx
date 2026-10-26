@@ -20,6 +20,10 @@ import Icon from "@/components/ui/icon";
 import HousingStats from "@/components/aho/HousingStats";
 import ResidenceSelect, { type ResidenceValue } from "@/components/personnel/ResidenceSelect";
 import HousingQueue from "@/components/aho/HousingQueue";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ahoApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -170,8 +174,13 @@ const Aho = () => {
   const [buildingRooms, setBuildingRooms] = useState<Array<{
     id: number; room_number: string; capacity: number; floor: number; name?: string; is_residential?: boolean;
     notes: string; is_active: boolean; building_name: string; occupied: number;
-    residents?: { id: number; full_name: string; position: string; on_site: boolean }[];
+    residents?: {
+      id: number; full_name: string; position: string; on_site: boolean;
+      temporary?: boolean; owner_id?: number | null; owner_name?: string; owner_on_site?: boolean; housed_at?: string | null;
+    }[];
   }>>([]);
+  const [permanentTarget, setPermanentTarget] = useState<{ id: number; full_name: string; owner_name: string; room: string } | null>(null);
+  const [permanentSaving, setPermanentSaving] = useState(false);
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [newRoomNumber, setNewRoomNumber] = useState("");
   const [newRoomCapacity, setNewRoomCapacity] = useState("2");
@@ -1555,7 +1564,30 @@ const Aho = () => {
                       )}
                       {(r.residents?.length ?? 0) > 0 && (
                         <div className="mt-2 pt-2 border-t border-border/40 space-y-1">
-                          {r.residents!.map((p) => (
+                          {r.residents!.map((p) => p.temporary ? (
+                            <div key={p.id} className="rounded-md border border-dashed border-mine-cyan/50 bg-mine-cyan/5 p-1.5 space-y-0.5">
+                              <div className="flex items-center gap-1">
+                                <Icon name="Clock" size={10} className="text-mine-cyan shrink-0" />
+                                <span className="text-[9px] font-semibold uppercase tracking-wide text-mine-cyan">Временно</span>
+                              </div>
+                              <p className={`text-[10px] leading-tight break-words font-medium ${p.on_site ? "text-foreground" : "text-muted-foreground"}`}>{p.full_name}</p>
+                              <p className="text-[9px] text-muted-foreground leading-tight">
+                                на месте: <span className="text-foreground">{p.owner_name || "—"}</span>
+                                {p.owner_name && (
+                                  <span className={p.owner_on_site ? "text-mine-red" : "text-mine-amber"}>
+                                    {p.owner_on_site ? " (вернулся)" : " (в отъезде)"}
+                                  </span>
+                                )}
+                              </p>
+                              {p.housed_at && <p className="text-[9px] text-muted-foreground leading-tight">с {formatDate(p.housed_at)}</p>}
+                              <button
+                                onClick={() => setPermanentTarget({ id: p.id, full_name: p.full_name, owner_name: p.owner_name || "", room: r.room_number })}
+                                className="mt-0.5 w-full text-[9px] font-medium rounded bg-mine-cyan/15 text-mine-cyan hover:bg-mine-cyan/25 py-0.5 transition-colors"
+                              >
+                                Сделать постоянным
+                              </button>
+                            </div>
+                          ) : (
                             <div key={p.id} className="flex items-start gap-1" title={p.on_site ? "На предприятии" : "Вне предприятия — место временно свободно"}>
                               <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${p.on_site ? "bg-mine-green" : "bg-mine-amber"}`} />
                               <div className="min-w-0">
@@ -1577,6 +1609,41 @@ const Aho = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!permanentTarget} onOpenChange={(o) => { if (!o) setPermanentTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Сделать заселение постоянным?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {permanentTarget?.full_name} будет постоянно закреплён за комнатой {permanentTarget?.room}.
+              {permanentTarget?.owner_name && ` ${permanentTarget.owner_name} будет выписан из этой комнаты и появится в «Списке расселения».`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={permanentSaving}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={permanentSaving}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!permanentTarget) return;
+                setPermanentSaving(true);
+                try {
+                  const res = await ahoApi.makePermanent(permanentTarget.id);
+                  toast({ title: "Готово", description: res.message });
+                  setPermanentTarget(null);
+                  refreshHousing();
+                } catch (err: unknown) {
+                  toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+                } finally {
+                  setPermanentSaving(false);
+                }
+              }}
+            >
+              {permanentSaving ? "Сохраняю..." : "Сделать постоянным"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!assignFromRoom} onOpenChange={(open) => { if (!open) setAssignFromRoom(null); }}>
         <DialogContent className="sm:max-w-md max-h-[70vh] flex flex-col">
