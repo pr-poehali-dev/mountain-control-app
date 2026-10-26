@@ -14,6 +14,7 @@ import { dispatcherApi, lampRoomApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useNavigate } from "react-router-dom";
+import ControlPointsSummary from "@/components/dashboard/ControlPointsSummary";
 
 interface ChatMessage {
   id: number;
@@ -210,6 +211,8 @@ const Dispatcher = () => {
             ))}
           </div>
         )}
+
+        <ControlPointsSummary title="Объекты контроля — проходы" />
 
         <div className="flex items-center gap-3">
           <Button size="sm" className="gap-2 bg-mine-amber hover:bg-mine-amber/90 text-black h-9" onClick={() => navigate("/lampa")}>

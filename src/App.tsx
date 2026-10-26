@@ -17,7 +17,7 @@ const Medical = lazy(() => import("./pages/Medical"));
 const Lampa = lazy(() => import("./pages/Lampa"));
 const Scanner = lazy(() => import("./pages/Scanner"));
 const Security = lazy(() => import("./pages/Security"));
-const Checkpoint = lazy(() => import("./pages/Checkpoint"));
+const ControlPointPage = lazy(() => import("./pages/ControlPointPage"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Aho = lazy(() => import("./pages/Aho"));
 const Ohs = lazy(() => import("./pages/Ohs"));
@@ -79,7 +79,7 @@ const pageLoaders = [
   () => import("./pages/Lampa"),
   () => import("./pages/Scanner"),
   () => import("./pages/Security"),
-  () => import("./pages/Checkpoint"),
+  () => import("./pages/ControlPointPage"),
   () => import("./pages/Reports"),
   () => import("./pages/Aho"),
   () => import("./pages/Ohs"),
@@ -123,7 +123,8 @@ const AppRoutes = () => {
       <Route path="/lampa" element={<PageRoute page="lampa"><Lampa /></PageRoute>} />
       <Route path="/scanner" element={<PageRoute page="scanner"><Scanner /></PageRoute>} />
       <Route path="/security" element={<PageRoute page="security"><Security /></PageRoute>} />
-      <Route path="/checkpoint" element={<PageRoute page="checkpoint"><Checkpoint /></PageRoute>} />
+      <Route path="/checkpoint" element={<PageRoute page="checkpoint"><ControlPointPage main /></PageRoute>} />
+      <Route path="/point/:id" element={<ProtectedRoute><ControlPointPage /></ProtectedRoute>} />
       <Route path="/aho" element={<PageRoute page="aho"><Aho /></PageRoute>} />
       <Route path="/ohs" element={<PageRoute page="ohs"><Ohs /></PageRoute>} />
       <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />

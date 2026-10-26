@@ -98,6 +98,19 @@ DEFAULT_PERMISSIONS = {
 }
 
 
+def point_pages(cur):
+    cur.execute("SELECT id FROM control_points WHERE is_active = TRUE AND is_main = FALSE ORDER BY sort_order, id")
+    return ['cp_%d' % r[0] for r in cur.fetchall()]
+
+
+def full_pages(cur):
+    return ALL_PAGES[:] + point_pages(cur)
+
+
+def valid_page(p):
+    return p in ALL_PAGES or (isinstance(p, str) and p.startswith('cp_') and p[3:].isdigit())
+
+
 def get_auth_token(event):
     headers = event.get('headers') or {}
     for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
@@ -343,7 +356,7 @@ def login(body):
     """ % (row[0], token, expires.isoformat()))
 
     if role == 'admin':
-        allowed = ALL_PAGES[:]
+        allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
@@ -410,7 +423,7 @@ def login_by_code(body):
     """ % (row[0], token, expires.isoformat()))
 
     if role == 'admin':
-        allowed = ALL_PAGES[:]
+        allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
 
@@ -453,7 +466,7 @@ def get_me(event):
 
     role = row[7]
     if role == 'admin':
-        allowed = ALL_PAGES[:]
+        allowed = full_pages(cur)
     else:
         perms = load_permissions(cur)
         allowed = perms.get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
@@ -612,14 +625,15 @@ def get_roles(event):
     cur = conn.cursor()
     roles = load_roles(cur)
     perms = load_permissions(cur)
+    all_p = full_pages(cur)
     cur.execute("SELECT role, COUNT(*) FROM users WHERE is_active = TRUE GROUP BY role")
     counts = {r[0]: r[1] for r in cur.fetchall()}
     cur.close()
     conn.close()
     for r in roles:
         r['users_count'] = counts.get(r['key'], 0)
-        r['pages'] = ALL_PAGES[:] if r['key'] == 'admin' else perms.get(r['key'], [])
-    return json_response(200, {'roles': roles, 'all_pages': ALL_PAGES})
+        r['pages'] = all_p if r['key'] == 'admin' else perms.get(r['key'], [])
+    return json_response(200, {'roles': roles, 'all_pages': all_p})
 
 
 def role_save(event, body):
@@ -663,7 +677,7 @@ def role_save(event, body):
     if isinstance(pages, list):
         perms = load_permissions(cur)
         perms = dict(perms)
-        perms[key] = [p for p in pages if p in ALL_PAGES and p != 'admin']
+        perms[key] = [p for p in pages if valid_page(p) and p != 'admin']
         save_perms_raw(cur, perms)
 
     conn.commit()
@@ -1119,6 +1133,7 @@ def demo_enter(body):
         )
     """ % (session_token, expires.isoformat()))
 
+    demo_pages = full_pages(cur)
     conn.commit()
     cur.close()
     conn.close()
@@ -1139,7 +1154,7 @@ def demo_enter(body):
             'organization': '',
             'organization_type': ''
         },
-        'allowed_pages': ALL_PAGES[:]
+        'allowed_pages': demo_pages
     })
 
 
@@ -1359,7 +1374,7 @@ def email_verify_code(body):
     expires = datetime.now() + timedelta(days=7)
     cur.execute("INSERT INTO sessions (user_id, token, expires_at) VALUES (%d, '%s', '%s')" % (row[0], token, expires.isoformat()))
     if role == 'admin':
-        allowed = ALL_PAGES[:]
+        allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
     conn.commit()
@@ -1525,7 +1540,7 @@ def face_login(body):
     expires = datetime.now() + timedelta(days=7)
     cur.execute("INSERT INTO sessions (user_id, token, expires_at) VALUES (%d, '%s', '%s')" % (row[0], token, expires.isoformat()))
     if role == 'admin':
-        allowed = ALL_PAGES[:]
+        allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
     conn.commit()

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Icon from "@/components/ui/icon";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemo } from "@/contexts/DemoContext";
+import { useControlPoints, pointPath } from "@/hooks/use-control-points";
 
 const navItems = [
   { path: "/", page: "dashboard", icon: "LayoutDashboard", label: "Дашборд" },
@@ -24,7 +25,9 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, allowedPages } = useAuth();
+  const { user, logout, allowedPages } = useAuth();
+  const { points, extra } = useControlPoints(!!user);
+  const mainPoint = points.find((p) => p.is_main);
   const { isDemo, exitDemo } = useDemo();
 
   const handleLogout = () => {
@@ -36,7 +39,13 @@ export default function Sidebar() {
     navigate("/login");
   };
 
-  const visibleItems = navItems.filter((item) => {
+  const pointItems = extra.map((p) => ({ path: pointPath(p), page: p.page_key, icon: p.icon || "DoorOpen", label: p.name, sub: true }));
+  const allItems = navItems.flatMap((item) => {
+    const base = item.page === "checkpoint" && mainPoint ? { ...item, label: mainPoint.name, icon: mainPoint.icon || item.icon } : item;
+    return item.page === "checkpoint" ? [base, ...pointItems] : [base];
+  });
+
+  const visibleItems = allItems.filter((item) => {
     if (!allowedPages.includes(item.page)) return false;
     if (isDemo && (item.page === "admin" || item.page === "profile")) return false;
     return true;
@@ -69,6 +78,7 @@ export default function Sidebar() {
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
+              title={collapsed ? item.label : undefined}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm ${
                 isActive
                   ? "bg-primary/10 text-primary font-medium"
@@ -80,7 +90,7 @@ export default function Sidebar() {
                 size={20}
                 className={isActive ? "text-primary" : ""}
               />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && <span className="truncate text-left">{item.label}</span>}
             </button>
           );
         })}

@@ -57,7 +57,7 @@ const fmt = (d: string) => {
   }
 };
 
-export default function VehicleCheck({ onChanged }: { onChanged?: () => void }) {
+export default function VehicleCheck({ onChanged, pointId }: { onChanged?: () => void; pointId?: number | null }) {
   const [number, setNumber] = useState("");
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [result, setResult] = useState<PassResult | null>(null);
@@ -75,7 +75,7 @@ export default function VehicleCheck({ onChanged }: { onChanged?: () => void }) 
       const params: Record<string, string> = {};
       if (expFrom) params.date_from = expFrom;
       if (expTo) params.date_to = expTo;
-      const d = await checkpointApi.vehicleExport(params);
+      const d = await checkpointApi.vehicleExport(params, pointId);
       const bin = atob(d.file);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -95,13 +95,13 @@ export default function VehicleCheck({ onChanged }: { onChanged?: () => void }) 
 
   const loadJournal = useCallback(async () => {
     try {
-      const d = await checkpointApi.getVehicleJournal();
+      const d = await checkpointApi.getVehicleJournal(undefined, pointId);
       setJournal(d.items || []);
       setOnSite(d.on_site || 0);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [pointId]);
 
   useEffect(() => {
     loadJournal();
@@ -133,7 +133,7 @@ export default function VehicleCheck({ onChanged }: { onChanged?: () => void }) 
     setLoading(true);
     setError("");
     try {
-      const d: PassResult = await checkpointApi.vehiclePass(plate, direction);
+      const d: PassResult = await checkpointApi.vehiclePass(plate, direction, undefined, pointId);
       setResult(d);
       if (d.result === "allowed") playSuccess();
       else playDenied();

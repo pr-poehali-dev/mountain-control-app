@@ -11,6 +11,7 @@ import RolesManager, { RoleItem } from "@/components/admin/RolesManager";
 import UserAccessDialog, { AccessUser } from "@/components/admin/UserAccessDialog";
 import UserFaceDialog, { FaceUser } from "@/components/admin/UserFaceDialog";
 import PassAlertSettings from "@/components/admin/PassAlertSettings";
+import ControlPointsManager from "@/components/admin/ControlPointsManager";
 import { useToast } from "@/hooks/use-toast";
 import {
   Select,
@@ -640,6 +641,7 @@ const Admin = () => {
           </div>
 
           <div className="space-y-6">
+            <ControlPointsManager />
             <PassAlertSettings />
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <div className="p-4 border-b border-border">

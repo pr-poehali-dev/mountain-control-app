@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import PassEditDialog from "@/components/checkpoint/PassEditDialog";
 import VehicleCheck from "@/components/checkpoint/VehicleCheck";
 import { triggerConflictCheck } from "@/components/aho/HousingConflictAlert";
+import type { ControlPoint } from "@/hooks/use-control-points";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -67,7 +68,11 @@ interface Stats {
 
 type Tab = "scanner" | "vehicles" | "journal" | "on-site";
 
-const Checkpoint = () => {
+const Checkpoint = ({ point }: { point?: ControlPoint | null }) => {
+  const pointId = point && !point.is_main ? point.id : null;
+  const territory = !point || point.is_main || point.settings.counts_territory;
+  const showVehicles = !point || point.settings.vehicles;
+  const title = point?.name || "КПП";
   const [tab, setTab] = useState<Tab>("scanner");
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState("");
@@ -105,7 +110,11 @@ const Checkpoint = () => {
 
   useEffect(() => {
     loadStats();
-  }, []);
+    setPassResult(null);
+    setError("");
+    setTab("scanner");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointId]);
 
   const loadJournal = useCallback(async () => {
     try {
@@ -113,12 +122,12 @@ const Checkpoint = () => {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       if (dirFilter) params.direction = dirFilter;
-      const data = await checkpointApi.getJournal(params);
+      const data = await checkpointApi.getJournal(params, pointId);
       setJournal(data.items || []);
       setJournalTotal(data.total || 0);
       setJournalPages(data.pages || 1);
     } catch { /* ignore */ }
-  }, [journalPage, dateFrom, dateTo, dirFilter]);
+  }, [journalPage, dateFrom, dateTo, dirFilter, pointId]);
 
   useEffect(() => {
     if (tab === "journal") loadJournal();
@@ -142,10 +151,10 @@ const Checkpoint = () => {
 
   const loadOnSite = useCallback(async () => {
     try {
-      const data = await checkpointApi.getOnSite();
+      const data = await checkpointApi.getOnSite(pointId);
       setOnSite(data.items || []);
     } catch { /* ignore */ }
-  }, []);
+  }, [pointId]);
 
   useEffect(() => {
     if (tab === "on-site") loadOnSite();
@@ -153,7 +162,7 @@ const Checkpoint = () => {
 
   const loadStats = async () => {
     try {
-      const data = await checkpointApi.getStats();
+      const data = await checkpointApi.getStats(pointId);
       setStats(data);
     } catch { /* ignore */ }
   };
@@ -166,7 +175,7 @@ const Checkpoint = () => {
     setPassResult(null);
 
     try {
-      const data = await checkpointApi.pass(code, direction);
+      const data = await checkpointApi.pass(code, direction, undefined, pointId);
       setPassResult(data);
       if (data.result === "allowed") {
         playSuccess();
@@ -181,7 +190,7 @@ const Checkpoint = () => {
     } finally {
       setLoading(false);
     }
-  }, [loading, direction]);
+  }, [loading, direction, pointId]);
 
   const handleManualSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,7 +202,7 @@ const Checkpoint = () => {
     const params: Record<string, string> = {};
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
-    window.open(checkpointApi.getExportUrl(params), "_blank");
+    window.open(checkpointApi.getExportUrl(params, pointId), "_blank");
   };
 
   const clearResult = () => {
@@ -221,16 +230,35 @@ const Checkpoint = () => {
     }
   };
 
+  const insideLabel = territory ? "На территории" : "Внутри объекта";
   const tabItems = [
     { id: "scanner" as Tab, label: "Сканер", icon: "ScanLine" },
-    { id: "vehicles" as Tab, label: "Автомобили", icon: "Car" },
+    ...(showVehicles ? [{ id: "vehicles" as Tab, label: "Автомобили", icon: "Car" }] : []),
     { id: "journal" as Tab, label: "Журнал проходов", icon: "FileText" },
-    { id: "on-site" as Tab, label: "На территории", icon: "Users" },
+    { id: "on-site" as Tab, label: insideLabel, icon: "Users" },
   ];
 
   return (
-    <AppLayout title="КПП" subtitle="Контроль входа и выхода через контрольно-пропускной пункт">
+    <AppLayout
+      title={title}
+      subtitle={point?.description || (territory ? "Контроль входа и выхода через контрольно-пропускной пункт" : "Контроль входа и выхода на объект")}
+    >
       <div className="space-y-6">
+        {point && !point.is_main && (
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { on: point.settings.counts_territory, label: territory ? "Вход/выход с территории предприятия" : "Внутренний объект" , always: true },
+              { on: point.settings.require_on_site && !territory, label: "Пускает только отмеченных на главном КПП" },
+              { on: point.settings.check_pass, label: "Проверяет срок пропуска" },
+              { on: point.settings.require_medical, label: "Требует пройденный медосмотр" },
+              { on: point.settings.vehicles, label: "Учёт автомобилей" },
+            ].filter((b) => b.on || b.always).map((b) => (
+              <span key={b.label} className="text-[11px] px-2 py-1 rounded-md bg-secondary/60 text-muted-foreground border border-border">
+                {b.label}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-3">
@@ -272,7 +300,7 @@ const Checkpoint = () => {
               </div>
               <div>
                 <p className="text-2xl font-bold text-primary">{stats.currently_on_site}</p>
-                <p className="text-xs text-muted-foreground">На территории</p>
+                <p className="text-xs text-muted-foreground">{insideLabel}</p>
               </div>
             </div>
           </div>
@@ -479,7 +507,7 @@ const Checkpoint = () => {
           </div>
         )}
 
-        {tab === "vehicles" && <VehicleCheck onChanged={loadStats} />}
+        {tab === "vehicles" && showVehicles && <VehicleCheck onChanged={loadStats} pointId={pointId} />}
 
         {tab === "journal" && (
           <div className="space-y-4">
@@ -526,7 +554,7 @@ const Checkpoint = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">ФИО</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Таб. №</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Направление</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">КПП</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Объект</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Медосмотр</th>
                       {isAdmin && <th className="px-4 py-3 w-24" />}
                     </tr>
@@ -622,7 +650,7 @@ const Checkpoint = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Таб. №</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Должность</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Организация</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">КПП</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Объект</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Вошёл</th>
                     </tr>
                   </thead>

@@ -86,8 +86,229 @@ def sync_rooms(cur):
         WHERE s.id = r.id
     """)
 
+DENY_SQL = "COALESCE(%s.notes, '') NOT LIKE 'ОТКАЗ%%'"
+
+DEFAULT_POINT_SETTINGS = {
+    'counts_territory': False,
+    'require_on_site': True,
+    'check_pass': True,
+    'require_medical': False,
+    'vehicles': False,
+}
+
+POINT_ICONS = ['DoorOpen', 'Factory', 'Warehouse', 'Pickaxe', 'Building2', 'Truck', 'Fuel', 'Zap', 'FlaskConical', 'ShieldCheck', 'HardHat', 'Mountain']
+
+
+def territory_sql(alias='cp'):
+    """Проходы, которые меняют статус «на территории»: главный КПП и объекты-ворота"""
+    return ("(%s.control_point_id IS NULL OR %s.control_point_id IN (SELECT id FROM control_points "
+            "WHERE is_main = TRUE OR (settings->>'counts_territory') = 'true'))") % (alias, alias)
+
+
+def row_to_point(r):
+    settings = r[8] if isinstance(r[8], dict) else json.loads(r[8] or '{}')
+    merged = dict(DEFAULT_POINT_SETTINGS)
+    if r[5]:
+        merged.update({'counts_territory': True, 'require_on_site': False, 'vehicles': True})
+    merged.update(settings or {})
+    return {
+        'id': r[0], 'name': r[1], 'short_name': r[2] or r[1], 'description': r[3] or '', 'icon': r[4] or 'DoorOpen',
+        'is_main': r[5], 'is_active': r[6], 'sort_order': r[7], 'settings': merged,
+        'page_key': 'checkpoint' if r[5] else 'cp_%d' % r[0],
+    }
+
+
+POINT_COLS = "id, name, short_name, description, icon, is_main, is_active, sort_order, settings"
+
+
+def load_point(cur, point_id):
+    """Объект контроля по id, без id — главный КПП"""
+    pid = str(point_id or '').strip()
+    if pid and pid.isdigit():
+        cur.execute("SELECT %s FROM control_points WHERE id = %d AND is_active = TRUE" % (POINT_COLS, int(pid)))
+    else:
+        cur.execute("SELECT %s FROM control_points WHERE is_main = TRUE ORDER BY id LIMIT 1" % POINT_COLS)
+    r = cur.fetchone()
+    return row_to_point(r) if r else None
+
+
+def point_sql(point, alias='cp'):
+    """Фильтр проходов по конкретному объекту"""
+    if not point or point['is_main']:
+        return "(%s.control_point_id IS NULL OR %s.control_point_id = %d)" % (alias, alias, point['id'] if point else 0)
+    return "%s.control_point_id = %d" % (alias, point['id'])
+
+
+def is_territory_point(point):
+    return not point or point['is_main'] or bool(point['settings'].get('counts_territory'))
+
+
+def inside_sql(point, demo_val):
+    """SQL со списком personnel_id, кто сейчас находится внутри объекта"""
+    if is_territory_point(point):
+        flt = territory_sql('cp')
+        extra = ''
+    else:
+        flt = point_sql(point, 'cp')
+        extra = (" AND NOT EXISTS (SELECT 1 FROM checkpoint_passes t WHERE t.personnel_id = ls.personnel_id "
+                 "AND t.direction = 'out' AND %s AND %s AND t.created_at > ls.created_at)") % (territory_sql('t'), DENY_SQL % 't')
+    return """
+        SELECT ls.personnel_id, ls.created_at, ls.checkpoint_name FROM (
+            SELECT DISTINCT ON (cp.personnel_id) cp.personnel_id, cp.direction, cp.created_at, cp.checkpoint_name
+            FROM checkpoint_passes cp
+            JOIN personnel pp ON pp.id = cp.personnel_id AND pp.is_demo_data = %s AND pp.status <> 'archived'
+            WHERE cp.personnel_id IS NOT NULL AND %s AND %s
+            ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
+        ) ls WHERE ls.direction = 'in'%s
+    """ % (demo_val, DENY_SQL % 'cp', flt, extra)
+
+
+def caller_user(cur, event):
+    token = get_auth_token(event)
+    if not token:
+        return None
+    cur.execute("""
+        SELECT u.id, u.full_name, u.role FROM users u JOIN sessions s ON s.user_id = u.id
+        WHERE s.token = '%s' AND s.expires_at > NOW() AND u.is_active = TRUE
+    """ % token.replace("'", "''"))
+    return cur.fetchone()
+
+
+def list_points(params):
+    conn = get_db()
+    cur = conn.cursor()
+    show_all = params.get('all') == '1'
+    cur.execute("SELECT %s FROM control_points %s ORDER BY is_main DESC, sort_order, id"
+                % (POINT_COLS, '' if show_all else 'WHERE is_active = TRUE'))
+    items = [row_to_point(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return json_response(200, {'points': items, 'icons': POINT_ICONS})
+
+
+def clean_settings(raw, is_main):
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    for k in DEFAULT_POINT_SETTINGS:
+        if k in raw:
+            out[k] = bool(raw[k])
+    if is_main:
+        out['counts_territory'] = True
+    return out
+
+
+def save_point(event, body):
+    conn = get_db()
+    cur = conn.cursor()
+    admin = get_admin(cur, event)
+    if not admin:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Объекты контроля настраивает только администратор'})
+    name = str(body.get('name') or '').strip()[:100]
+    if not name:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Укажите название объекта'})
+    short = str(body.get('short_name') or '').strip()[:30]
+    desc = str(body.get('description') or '').strip()[:500]
+    icon = str(body.get('icon') or 'DoorOpen')
+    if icon not in POINT_ICONS:
+        icon = 'DoorOpen'
+    pid = body.get('id')
+    q = lambda v: v.replace("'", "''")
+    if pid:
+        cur.execute("SELECT is_main, settings FROM control_points WHERE id = %d" % int(pid))
+        ex = cur.fetchone()
+        if not ex:
+            cur.close()
+            conn.close()
+            return json_response(404, {'error': 'Объект не найден'})
+        cur_set = ex[1] if isinstance(ex[1], dict) else json.loads(ex[1] or '{}')
+        cur_set.update(clean_settings(body.get('settings'), ex[0]))
+        st = json.dumps(cur_set, ensure_ascii=False)
+        cur.execute("""UPDATE control_points SET name = '%s', short_name = '%s', description = '%s', icon = '%s',
+                       settings = '%s'::jsonb, updated_at = NOW() WHERE id = %d"""
+                    % (q(name), q(short), q(desc), icon, q(st), int(pid)))
+        new_id = int(pid)
+        cur.execute("INSERT INTO events (event_type, description) VALUES ('control_point', '%s')"
+                    % q('Изменён объект контроля «%s»' % name))
+    else:
+        st = dict(DEFAULT_POINT_SETTINGS)
+        st.update(clean_settings(body.get('settings'), False))
+        cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM control_points")
+        order = cur.fetchone()[0]
+        cur.execute("""INSERT INTO control_points (name, short_name, description, icon, sort_order, settings)
+                       VALUES ('%s', '%s', '%s', '%s', %d, '%s'::jsonb) RETURNING id"""
+                    % (q(name), q(short), q(desc), icon, order, q(json.dumps(st, ensure_ascii=False))))
+        new_id = cur.fetchone()[0]
+        cur.execute("INSERT INTO events (event_type, description) VALUES ('control_point', '%s')"
+                    % q('Добавлен объект контроля «%s»' % name))
+    conn.commit()
+    point = load_point(cur, new_id)
+    cur.close()
+    conn.close()
+    return json_response(200, {'point': point})
+
+
+def delete_point(event, body):
+    conn = get_db()
+    cur = conn.cursor()
+    admin = get_admin(cur, event)
+    if not admin:
+        cur.close()
+        conn.close()
+        return json_response(403, {'error': 'Удалять объекты может только администратор'})
+    pid = int(body.get('id') or 0)
+    cur.execute("SELECT is_main, name FROM control_points WHERE id = %d" % pid)
+    r = cur.fetchone()
+    if not r:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Объект не найден'})
+    if r[0]:
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Главный КПП удалить нельзя'})
+    cur.execute("UPDATE control_points SET is_active = FALSE, updated_at = NOW() WHERE id = %d" % pid)
+    cur.execute("INSERT INTO events (event_type, description) VALUES ('control_point', '%s')"
+                % ('Удалён объект контроля «%s»' % r[1]).replace("'", "''"))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'success': True})
+
+
+def points_summary(event):
+    """Сводка по всем объектам: кто внутри, входы/выходы/отказы за сегодня"""
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT %s FROM control_points WHERE is_active = TRUE ORDER BY is_main DESC, sort_order, id" % POINT_COLS)
+    points = [row_to_point(r) for r in cur.fetchall()]
+    out = []
+    for pt in points:
+        cur.execute("SELECT COUNT(*) FROM (%s) x" % inside_sql(pt, demo_val))
+        inside = cur.fetchone()[0]
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE cp.direction = 'in' AND %s),
+                   COUNT(*) FILTER (WHERE cp.direction = 'out' AND %s),
+                   COUNT(*) FILTER (WHERE NOT (%s)),
+                   MAX(cp.created_at)
+            FROM checkpoint_passes cp JOIN personnel p ON p.id = cp.personnel_id AND p.is_demo_data = %s
+            WHERE %s AND cp.created_at::date = CURRENT_DATE
+        """ % (DENY_SQL % 'cp', DENY_SQL % 'cp', DENY_SQL % 'cp', demo_val, point_sql(pt, 'cp')))
+        t = cur.fetchone()
+        item = dict(pt)
+        item.update({'inside': inside, 'today_in': t[0], 'today_out': t[1], 'today_denied': t[2], 'last_pass_at': t[3]})
+        out.append(item)
+    cur.close()
+    conn.close()
+    return json_response(200, {'points': out})
+
+
 def handler(event, context):
-    """КПП — фиксация входа/выхода через сканер, журнал проходов, связь с АХО"""
+    """КПП и объекты контроля — вход/выход через сканер, журнал проходов, настройки объектов, связь с АХО"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
     HIDE_CODES['on'] = not caller_is_admin(event)
@@ -97,12 +318,20 @@ def handler(event, context):
     action = params.get('action', '')
     body = json.loads(event.get('body', '{}') or '{}')
 
-    if method == 'POST' and action == 'pass':
-        return register_pass(body)
+    if method == 'GET' and action == 'points':
+        return list_points(params)
+    elif method == 'POST' and action == 'point-save':
+        return save_point(event, body)
+    elif method == 'DELETE' and action == 'point-delete':
+        return delete_point(event, body)
+    elif method == 'GET' and action == 'points-summary':
+        return points_summary(event)
+    elif method == 'POST' and action == 'pass':
+        return register_pass(body, event)
     elif method == 'GET' and action == 'journal':
         return get_journal(params, event)
     elif method == 'GET' and action == 'stats':
-        return get_stats(event)
+        return get_stats(event, params)
     elif method == 'GET' and action == 'on-site':
         return get_on_site(params, event)
     elif method == 'GET' and action == 'export':
@@ -224,6 +453,9 @@ def vehicle_pass(body, event):
         return json_response(400, {'error': 'direction должен быть in или out'})
     conn = get_db()
     cur = conn.cursor()
+    point = load_point(cur, body.get('control_point_id'))
+    if point:
+        checkpoint_name = point['short_name'][:100]
     v = find_vehicle(cur, plate, event)
     if v:
         allowed = direction == 'out' or v['state'] == 'active'
@@ -236,14 +468,14 @@ def vehicle_pass(body, event):
         reason = ''
     notes = '' if allowed else 'ОТКАЗ: ' + reason
     cur.execute("""
-        INSERT INTO vehicle_passes (personnel_id, vehicle_number, vehicle_brand, owner_name, direction, checkpoint_name, allowed, notes)
-        VALUES (%s, '%s', '%s', '%s', '%s', '%s', %s, '%s') RETURNING id, created_at
+        INSERT INTO vehicle_passes (personnel_id, vehicle_number, vehicle_brand, owner_name, direction, checkpoint_name, allowed, notes, control_point_id)
+        VALUES (%s, '%s', '%s', '%s', '%s', '%s', %s, '%s', %s) RETURNING id, created_at
     """ % (v['personnel_id'] if v else 'NULL', plate, (v['vehicle_brand'] if v else '').replace("'", "''"),
            (v['owner_name'] if v else '').replace("'", "''"), direction, checkpoint_name.replace("'", "''"),
-           'TRUE' if allowed else 'FALSE', notes.replace("'", "''")))
+           'TRUE' if allowed else 'FALSE', notes.replace("'", "''"), point['id'] if point else 'NULL'))
     rec = cur.fetchone()
     if v:
-        desc = 'КПП: автомобиль %s (%s) — %s' % (plate, v['owner_name'],
+        desc = '%s: автомобиль %s (%s) — %s' % (checkpoint_name, plate, v['owner_name'],
                ('въезд' if direction == 'in' else 'выезд') if allowed else 'отказ во въезде. ' + reason)
         cur.execute("INSERT INTO events (event_type, description, personnel_id) VALUES ('%s', '%s', %d)" % (
             'vehicle_' + (direction if allowed else 'denied'), desc.replace("'", "''"), v['personnel_id']))
@@ -275,6 +507,8 @@ def vehicle_journal(params, event):
     where += " AND (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
     conn = get_db()
     cur = conn.cursor()
+    if params.get('control_point_id') != 'all':
+        where += " AND " + point_sql(load_point(cur, params.get('control_point_id')), 'vp')
     cur.execute("SELECT COUNT(*) FROM vehicle_passes vp LEFT JOIN personnel p ON p.id = vp.personnel_id %s" % where)
     total = cur.fetchone()[0]
     cur.execute("""
@@ -326,6 +560,8 @@ def vehicle_export(params, event):
         where += " AND vp.created_at <= '%s 23:59:59'" % date_to
     conn = get_db()
     cur = conn.cursor()
+    if params.get('control_point_id') != 'all':
+        where += " AND " + point_sql(load_point(cur, params.get('control_point_id')), 'vp')
     cur.execute("""
         SELECT vp.created_at, vp.vehicle_number, vp.vehicle_brand, vp.owner_name,
                COALESCE(p.position, ''), COALESCE(p.organization, ''),
@@ -429,10 +665,36 @@ def parse_qr_code(raw):
     except (json.JSONDecodeError, AttributeError):
         return raw.strip()
 
-def register_pass(body):
+def deny_pass(cur, conn, point, person_id, safe_code, safe_name, person_name, checkpoint_name, medical_ok, reason, direction, person_info):
+    cur.execute("""
+        INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes, control_point_id)
+        VALUES (%d, '%s', '%s', '%s', '%s', %s, '%s', %s)
+    """ % (person_id, safe_code, safe_name, direction, checkpoint_name.replace("'", "''"),
+           'TRUE' if medical_ok else 'FALSE', ('ОТКАЗ: ' + reason).replace("'", "''"), point['id'] if point else 'NULL'))
+    cur.execute("""
+        INSERT INTO events (event_type, description, personnel_id)
+        VALUES ('checkpoint_denied', '%s', %d)
+    """ % (('%s: %s — отказ во %s. %s' % (checkpoint_name, person_name, 'входе' if direction == 'in' else 'выходе', reason)).replace("'", "''"), person_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {
+        'result': 'denied', 'message': 'Проход запрещён', 'reason': reason, 'direction': direction,
+        'person_name': person_name, 'medical_ok': medical_ok, 'person': person_info,
+        'point': point
+    })
+
+
+def person_on_territory(cur, person_id):
+    cur.execute("""SELECT direction FROM checkpoint_passes cp WHERE cp.personnel_id = %d AND %s AND %s
+                   ORDER BY cp.created_at DESC, cp.id DESC LIMIT 1""" % (person_id, DENY_SQL % 'cp', territory_sql('cp')))
+    r = cur.fetchone()
+    return bool(r and r[0] == 'in')
+
+
+def register_pass(body, event=None):
     raw_code = body.get('code', '').strip()
     direction = body.get('direction', 'in')
-    checkpoint_name = body.get('checkpoint_name', 'КПП-1')
     notes = body.get('notes', '')
 
     if not raw_code:
@@ -445,6 +707,14 @@ def register_pass(body):
 
     conn = get_db()
     cur = conn.cursor()
+    point = load_point(cur, body.get('control_point_id'))
+    if body.get('control_point_id') and not point:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Объект контроля не найден или отключён'})
+    checkpoint_name = str((point['short_name'] if point else '') or body.get('checkpoint_name') or 'КПП-1')[:100]
+    settings = point['settings'] if point else DEFAULT_POINT_SETTINGS
+    territory = is_territory_point(point)
 
     cur.execute("""
         SELECT p.id, p.personal_code, p.full_name, p.position, p.department,
@@ -487,42 +757,31 @@ def register_pass(body):
         'pass_period': pass_period(row[11], row[12], row[13])
     }
 
+    deny = lambda reason: deny_pass(cur, conn, point, person_id, safe_code, safe_name, person_name,
+                                    checkpoint_name, medical_ok, reason, direction, person_info)
     if direction == 'in':
-        state, reason = check_pass(row[10], row[11], row[12], row[13], 'Личный пропуск')
-        if state != 'active':
-            cur.execute("""
-                INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes)
-                VALUES (%d, '%s', '%s', 'in', '%s', %s, '%s')
-            """ % (person_id, safe_code, safe_name, checkpoint_name.replace("'", "''"),
-                   'TRUE' if medical_ok else 'FALSE', ('ОТКАЗ: ' + reason).replace("'", "''")))
-            cur.execute("""
-                INSERT INTO events (event_type, description, personnel_id)
-                VALUES ('checkpoint_denied', '%s', %d)
-            """ % (('КПП: %s — отказ во входе. %s' % (person_name, reason)).replace("'", "''"), person_id))
-            conn.commit()
-            cur.close()
-            conn.close()
-            return json_response(200, {
-                'result': 'denied',
-                'message': 'Проход запрещён',
-                'reason': reason,
-                'direction': direction,
-                'person_name': person_name,
-                'medical_ok': medical_ok,
-                'person': person_info
-            })
+        if settings.get('check_pass', True):
+            state, reason = check_pass(row[10], row[11], row[12], row[13], 'Личный пропуск')
+            if state != 'active':
+                return deny(reason)
+        if settings.get('require_medical') and not medical_ok:
+            return deny('Не пройден медосмотр')
+        if not territory and settings.get('require_on_site') and not person_on_territory(cur, person_id):
+            return deny('Работник не отмечен на входе через главный КПП')
 
     cur.execute("""
-        INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes)
-        VALUES (%d, '%s', '%s', '%s', '%s', %s, '%s')
+        INSERT INTO checkpoint_passes (personnel_id, personal_code, full_name, direction, checkpoint_name, medical_ok, notes, control_point_id)
+        VALUES (%d, '%s', '%s', '%s', '%s', %s, '%s', %s)
         RETURNING id
     """ % (person_id, safe_code, safe_name, direction, checkpoint_name.replace("'", "''"),
-           'TRUE' if medical_ok else 'FALSE', notes.replace("'", "''")))
+           'TRUE' if medical_ok else 'FALSE', notes.replace("'", "''"), point['id'] if point else 'NULL'))
     pass_id = cur.fetchone()[0]
 
     housing_conflicts = []
-    if direction == 'in':
-        new_status = 'arrived'
+    if not territory:
+        event_type = 'point_in' if direction == 'in' else 'point_out'
+        event_desc = '%s: %s — %s' % (checkpoint_name.replace("'", "''"), safe_name, 'вход' if direction == 'in' else 'выход')
+    elif direction == 'in':
         event_type = 'checkpoint_in'
         event_desc = 'КПП: %s — вход через %s' % (safe_name, checkpoint_name.replace("'", "''"))
 
@@ -538,7 +797,6 @@ def register_pass(body):
         housing_conflicts = detect_housing_conflict(cur, person_id)
 
     else:
-        new_status = 'departed'
         event_type = 'checkpoint_out'
         event_desc = 'КПП: %s — выход через %s' % (safe_name, checkpoint_name.replace("'", "''"))
 
@@ -555,7 +813,8 @@ def register_pass(body):
         INSERT INTO events (event_type, description, personnel_id)
         VALUES ('%s', '%s', %d)
     """ % (event_type, event_desc, person_id))
-    sync_rooms(cur)
+    if territory:
+        sync_rooms(cur)
 
     conn.commit()
     cur.close()
@@ -571,7 +830,8 @@ def register_pass(body):
         'person_name': person_name,
         'medical_ok': medical_ok,
         'person': person_info,
-        'housing_conflicts': housing_conflicts
+        'housing_conflicts': housing_conflicts,
+        'point': point
     })
 
 def get_journal(params, event):
@@ -587,6 +847,8 @@ def get_journal(params, event):
 
     demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
     where = "WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
+    if params.get('control_point_id') != 'all':
+        where += " AND " + point_sql(load_point(cur, params.get('control_point_id')), 'cp')
     if date_from:
         where += " AND cp.created_at >= '%s 00:00:00'" % date_from.replace("'", "''")
     if date_to:
@@ -630,45 +892,36 @@ def get_journal(params, event):
         'pages': (total + per_page - 1) // per_page if per_page > 0 else 1
     })
 
-def get_stats(event):
+def get_stats(event, params=None):
+    params = params or {}
     conn = get_db()
     cur = conn.cursor()
 
     demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
-    demo_join = "JOIN personnel p ON cp.personnel_id = p.id AND p.is_demo_data = %s" % demo_val
-
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.direction = 'in' AND cp.created_at::date = CURRENT_DATE" % demo_join)
-    today_in = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.direction = 'out' AND cp.created_at::date = CURRENT_DATE" % demo_join)
-    today_out = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp %s WHERE cp.notes LIKE 'ОТКАЗ%%' AND cp.created_at::date = CURRENT_DATE" % demo_join)
-    today_denied = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM checkpoint_passes cp LEFT JOIN personnel p ON cp.personnel_id = p.id WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val)
-    total_passes = cur.fetchone()[0]
-
+    point = load_point(cur, params.get('control_point_id'))
+    flt = point_sql(point, 'cp')
     cur.execute("""
-        SELECT COUNT(*) FROM (
-            SELECT DISTINCT ON (cp.personnel_id) cp.personnel_id, cp.direction
-            FROM checkpoint_passes cp
-            JOIN personnel p ON cp.personnel_id = p.id AND p.is_demo_data = %s AND p.status <> 'archived'
-            WHERE cp.personnel_id IS NOT NULL AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%'
-            ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
-        ) last_pass WHERE last_pass.direction = 'in'
-    """ % demo_val)
+        SELECT COUNT(*) FILTER (WHERE cp.direction = 'in' AND %s AND cp.created_at::date = CURRENT_DATE),
+               COUNT(*) FILTER (WHERE cp.direction = 'out' AND %s AND cp.created_at::date = CURRENT_DATE),
+               COUNT(*) FILTER (WHERE NOT (%s) AND cp.created_at::date = CURRENT_DATE),
+               COUNT(*)
+        FROM checkpoint_passes cp JOIN personnel p ON cp.personnel_id = p.id AND p.is_demo_data = %s
+        WHERE %s
+    """ % (DENY_SQL % 'cp', DENY_SQL % 'cp', DENY_SQL % 'cp', demo_val, flt))
+    t = cur.fetchone()
+    cur.execute("SELECT COUNT(*) FROM (%s) x" % inside_sql(point, demo_val))
     currently_on_site = cur.fetchone()[0]
 
     cur.close()
     conn.close()
 
     return json_response(200, {
-        'today_in': today_in,
-        'today_out': today_out,
-        'today_denied': today_denied,
-        'total_passes': total_passes,
-        'currently_on_site': currently_on_site
+        'today_in': t[0],
+        'today_out': t[1],
+        'today_denied': t[2],
+        'total_passes': t[3],
+        'currently_on_site': currently_on_site,
+        'point': point
     })
 
 def get_on_site(params, event):
@@ -676,39 +929,29 @@ def get_on_site(params, event):
     cur = conn.cursor()
 
     demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
-
+    point = load_point(cur, params.get('control_point_id'))
     cur.execute("""
-        SELECT DISTINCT ON (cp.personnel_id)
-            cp.personnel_id, cp.personal_code, cp.full_name, cp.direction,
-            cp.checkpoint_name, cp.created_at,
-            p.position, p.department, p.organization, p.organization_type,
-            COALESCE(p.tab_number, '')
-        FROM checkpoint_passes cp
-        LEFT JOIN personnel p ON cp.personnel_id = p.id
-        WHERE cp.personnel_id IS NOT NULL
-        AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%'
-        AND (p.id IS NULL OR (p.is_demo_data = %s AND p.status <> 'archived'))
-        ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
-    """ % demo_val)
+        SELECT ins.personnel_id, p.personal_code, p.full_name, ins.checkpoint_name, ins.created_at,
+               p.position, p.department, p.organization, p.organization_type, COALESCE(p.tab_number, '')
+        FROM (%s) ins JOIN personnel p ON p.id = ins.personnel_id
+        ORDER BY ins.created_at DESC
+    """ % inside_sql(point, demo_val))
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
-    on_site = []
-    for r in rows:
-        if r[3] == 'in':
-            org_type_labels = {
-                'rudnik': 'Рудник', 'guest': 'Гость',
-                'contractor': 'Подрядная организация', 'gov': 'Гос.органы'
-            }
-            on_site.append({
-                'personnel_id': r[0], 'personal_code': r[1], 'full_name': r[2],
-                'checkpoint_name': r[4], 'entered_at': r[5],
-                'position': r[6] or '—', 'department': r[7] or '—',
-                'organization': r[8] or '—',
-                'organization_type': org_type_labels.get(r[9] or '', r[9] or '—'),
-                'tab_number': r[10] or ''
-            })
+    org_type_labels = {
+        'rudnik': 'Рудник', 'guest': 'Гость',
+        'contractor': 'Подрядная организация', 'gov': 'Гос.органы'
+    }
+    on_site = [{
+        'personnel_id': r[0], 'personal_code': r[1], 'full_name': r[2],
+        'checkpoint_name': r[3], 'entered_at': r[4],
+        'position': r[5] or '—', 'department': r[6] or '—',
+        'organization': r[7] or '—',
+        'organization_type': org_type_labels.get(r[8] or '', r[8] or '—'),
+        'tab_number': r[9] or ''
+    } for r in rows]
 
     return json_response(200, {'items': on_site, 'total': len(on_site)})
 
@@ -721,6 +964,8 @@ def export_journal(params, event):
 
     demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
     where = "WHERE (p.id IS NULL OR p.is_demo_data = %s)" % demo_val
+    if params.get('control_point_id') != 'all':
+        where += " AND " + point_sql(load_point(cur, params.get('control_point_id')), 'cp')
     if date_from:
         where += " AND cp.created_at >= '%s 00:00:00'" % date_from.replace("'", "''")
     if date_to:
@@ -740,7 +985,7 @@ def export_journal(params, event):
     conn.close()
 
     show_code = caller_is_admin(event)
-    lines = [('Код;' if show_code else '') + 'ФИО;Таб. №;Направление;КПП;Медосмотр;Примечание;Дата и время']
+    lines = [('Код;' if show_code else '') + 'ФИО;Таб. №;Направление;Объект;Медосмотр;Примечание;Дата и время']
     for r in rows:
         dt = r[6].strftime('%d.%m.%Y %H:%M') if r[6] else ''
         direction = 'Вход' if r[2] == 'in' else 'Выход'
@@ -786,10 +1031,10 @@ def sync_person_status(cur, personnel_id):
     if not personnel_id:
         return
     cur.execute("""
-        SELECT direction FROM checkpoint_passes
-        WHERE personnel_id = %d AND COALESCE(notes, '') NOT LIKE 'ОТКАЗ%%'
-        ORDER BY created_at DESC, id DESC LIMIT 1
-    """ % int(personnel_id))
+        SELECT cp.direction FROM checkpoint_passes cp
+        WHERE cp.personnel_id = %d AND %s AND %s
+        ORDER BY cp.created_at DESC, cp.id DESC LIMIT 1
+    """ % (int(personnel_id), DENY_SQL % 'cp', territory_sql('cp')))
     row = cur.fetchone()
     if not row:
         return

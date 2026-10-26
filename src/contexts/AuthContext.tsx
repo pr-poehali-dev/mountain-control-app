@@ -159,6 +159,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data?.user) {
       setUser(data.user);
       setStoredUser(data.user);
+      if (Array.isArray(data.allowed_pages)) {
+        setAllowedPages(data.allowed_pages);
+        setStoredPages(data.allowed_pages);
+      }
     }
   };
 

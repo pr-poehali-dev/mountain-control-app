@@ -163,6 +163,7 @@ def get_lantern_stats(event):
                 SELECT DISTINCT ON (cp.personnel_id) cp.personnel_id, cp.direction
                 FROM checkpoint_passes cp
                 WHERE cp.personnel_id IS NOT NULL AND COALESCE(cp.notes, '') NOT LIKE 'ОТКАЗ%%%%'
+                  AND (cp.control_point_id IS NULL OR cp.control_point_id IN (SELECT id FROM control_points WHERE is_main = TRUE OR (settings->>'counts_territory') = 'true'))
                 ORDER BY cp.personnel_id, cp.created_at DESC, cp.id DESC
             ) ls WHERE ls.direction = 'in'
         )""" % p_demo)

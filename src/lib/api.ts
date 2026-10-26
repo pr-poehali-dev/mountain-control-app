@@ -410,29 +410,39 @@ export const securityApi = {
   },
 };
 
+const cpParam = (id?: number | null): Record<string, string> => (id ? { control_point_id: String(id) } : {});
+
 export const checkpointApi = {
-  pass: (code: string, direction: string, checkpoint_name?: string) =>
-    request(API.checkpoint, "", { method: "POST", body: { code, direction, checkpoint_name }, params: { action: "pass" } }),
-  getJournal: (params?: Record<string, string>) =>
-    request(API.checkpoint, "", { params: { action: "journal", ...params } }),
-  getStats: () =>
-    request(API.checkpoint, "", { params: { action: "stats" } }),
-  getOnSite: () =>
-    request(API.checkpoint, "", { params: { action: "on-site" } }),
+  getPoints: (all = false) =>
+    request(API.checkpoint, "", { params: { action: "points", ...(all ? { all: "1" } : {}) } }),
+  savePoint: (body: Record<string, unknown>) =>
+    request(API.checkpoint, "", { method: "POST", body, params: { action: "point-save" } }),
+  deletePoint: (id: number) =>
+    request(API.checkpoint, "", { method: "DELETE", body: { id }, params: { action: "point-delete" } }),
+  getPointsSummary: () =>
+    request(API.checkpoint, "", { params: { action: "points-summary" } }),
+  pass: (code: string, direction: string, checkpoint_name?: string, control_point_id?: number | null) =>
+    request(API.checkpoint, "", { method: "POST", body: { code, direction, checkpoint_name, control_point_id: control_point_id || undefined }, params: { action: "pass" } }),
+  getJournal: (params?: Record<string, string>, control_point_id?: number | null) =>
+    request(API.checkpoint, "", { params: { action: "journal", ...cpParam(control_point_id), ...params } }),
+  getStats: (control_point_id?: number | null) =>
+    request(API.checkpoint, "", { params: { action: "stats", ...cpParam(control_point_id) } }),
+  getOnSite: (control_point_id?: number | null) =>
+    request(API.checkpoint, "", { params: { action: "on-site", ...cpParam(control_point_id) } }),
   vehicleSearch: (number: string) =>
     request(API.checkpoint, "", { params: { action: "vehicle-search", number } }),
-  vehiclePass: (number: string, direction: "in" | "out", checkpoint_name?: string) =>
-    request(API.checkpoint, "", { method: "POST", body: { number, direction, checkpoint_name }, params: { action: "vehicle-pass" } }),
-  getVehicleJournal: (params?: Record<string, string>) =>
-    request(API.checkpoint, "", { params: { action: "vehicle-journal", ...params } }),
-  vehicleExport: (params?: Record<string, string>) =>
-    request(API.checkpoint, "", { params: { action: "vehicle-export", ...params } }),
+  vehiclePass: (number: string, direction: "in" | "out", checkpoint_name?: string, control_point_id?: number | null) =>
+    request(API.checkpoint, "", { method: "POST", body: { number, direction, checkpoint_name, control_point_id: control_point_id || undefined }, params: { action: "vehicle-pass" } }),
+  getVehicleJournal: (params?: Record<string, string>, control_point_id?: number | null) =>
+    request(API.checkpoint, "", { params: { action: "vehicle-journal", ...cpParam(control_point_id), ...params } }),
+  vehicleExport: (params?: Record<string, string>, control_point_id?: number | null) =>
+    request(API.checkpoint, "", { params: { action: "vehicle-export", ...cpParam(control_point_id), ...params } }),
   updatePass: (data: { id: number; direction?: string; checkpoint_name?: string; created_at?: string; medical_ok?: boolean; notes?: string }) =>
     request(API.checkpoint, "", { method: "PUT", body: data, params: { action: "pass-update" } }),
   deletePass: (id: number) =>
     request(API.checkpoint, "", { method: "DELETE", body: { id }, params: { action: "pass-delete" } }),
-  getExportUrl: (params?: Record<string, string>) => {
-    const qs = new URLSearchParams({ action: "export", ...authQuery(), ...params }).toString();
+  getExportUrl: (params?: Record<string, string>, control_point_id?: number | null) => {
+    const qs = new URLSearchParams({ action: "export", ...authQuery(), ...cpParam(control_point_id), ...params }).toString();
     return `${API.checkpoint}?${qs}`;
   },
 };

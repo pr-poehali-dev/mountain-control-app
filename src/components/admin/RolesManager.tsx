@@ -6,6 +6,7 @@ import Icon from "@/components/ui/icon";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { authApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useControlPoints } from "@/hooks/use-control-points";
 
 export interface RoleItem {
   key: string;
@@ -29,6 +30,19 @@ export const PAGE_LABELS: Record<string, { label: string; icon: string }> = {
   profile: { label: "Личный кабинет", icon: "User" },
 };
 
+export function usePageLabels() {
+  const { points, extra } = useControlPoints();
+  const main = points.find((p) => p.is_main);
+  const out: Record<string, { label: string; icon: string }> = {};
+  for (const [k, v] of Object.entries(PAGE_LABELS)) {
+    out[k] = k === "checkpoint" && main ? { label: main.name, icon: main.icon || v.icon } : v;
+    if (k === "checkpoint") {
+      for (const p of extra) out[p.page_key] = { label: p.name, icon: p.icon || "DoorOpen" };
+    }
+  }
+  return out;
+}
+
 interface Props {
   roles: RoleItem[];
   loading: boolean;
@@ -38,6 +52,7 @@ interface Props {
 const RolesManager = ({ roles, loading, onChanged }: Props) => {
   const { toast } = useToast();
   const [editing, setEditing] = useState<RoleItem | null>(null);
+  const pageLabels = usePageLabels();
   const [isNew, setIsNew] = useState(false);
   const [label, setLabel] = useState("");
   const [pages, setPages] = useState<string[]>([]);
@@ -167,10 +182,10 @@ const RolesManager = ({ roles, loading, onChanged }: Props) => {
                     <span className="text-[11px] text-muted-foreground">Нет доступа к разделам</span>
                   ) : (
                     r.pages
-                      .filter((p) => PAGE_LABELS[p])
+                      .filter((p) => pageLabels[p])
                       .map((p) => (
                         <span key={p} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                          {PAGE_LABELS[p].label}
+                          {pageLabels[p].label}
                         </span>
                       ))
                   )}
@@ -200,7 +215,7 @@ const RolesManager = ({ roles, loading, onChanged }: Props) => {
                 Доступные разделы после входа
               </label>
               <div className="grid grid-cols-2 gap-1.5">
-                {Object.entries(PAGE_LABELS).map(([page, meta]) => {
+                {Object.entries(pageLabels).map(([page, meta]) => {
                   const on = pages.includes(page);
                   return (
                     <button

@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Icon from "@/components/ui/icon";
 import { authApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { PAGE_LABELS, RoleItem } from "@/components/admin/RolesManager";
+import { usePageLabels, RoleItem } from "@/components/admin/RolesManager";
 import PersonnelPicker, { PersonnelOption } from "@/components/admin/PersonnelPicker";
 import PhotoField from "@/components/personnel/PhotoField";
 
@@ -51,6 +51,7 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [],
   const isNew = !user;
   const [form, setForm] = useState(emptyForm);
   const [pages, setPages] = useState<string[]>([]);
+  const pageLabels = usePageLabels();
   const [saving, setSaving] = useState(false);
   const [picked, setPicked] = useState<PersonnelOption | null>(null);
 
@@ -287,7 +288,7 @@ const UserAccessDialog = ({ open, onOpenChange, user, roles, existingCodes = [],
               </SelectContent>
             </Select>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {Object.entries(PAGE_LABELS).map(([key, p]) => {
+              {Object.entries(pageLabels).map(([key, p]) => {
                 const on = pages.includes(key);
                 return (
                   <button

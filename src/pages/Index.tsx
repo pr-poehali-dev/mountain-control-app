@@ -8,6 +8,7 @@ import ShiftOverview from "@/components/dashboard/ShiftOverview";
 import LanternStatus from "@/components/dashboard/LanternStatus";
 import ExpiringPasses from "@/components/dashboard/ExpiringPasses";
 import LiveSiteSummary from "@/components/dashboard/LiveSiteSummary";
+import ControlPointsSummary from "@/components/dashboard/ControlPointsSummary";
 import Icon from "@/components/ui/icon";
 import { eventsApi, personnelApi } from "@/lib/api";
 
@@ -147,6 +148,8 @@ const Index = () => {
                 color="red"
               />
             </div>
+
+            <ControlPointsSummary />
 
             <LiveSiteSummary />
 
