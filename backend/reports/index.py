@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 import csv
@@ -92,7 +93,7 @@ def csv_response(csv_text, filename):
         'body': csv_text
     }
 
-def handler(event, context):
+def _handler(event, context):
     """Формирование и экспорт отчётной документации — посещаемость, медосмотры, оборудование, персонал, события"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -845,3 +846,9 @@ def export_report(params, event):
     if err:
         return err
     return csv_response(text, EXPORT_CONFIGS[report_type]['filename'])
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

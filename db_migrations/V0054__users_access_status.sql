@@ -1,0 +1,2 @@
+ALTER TABLE t_p25857058_mountain_control_app.users ADD COLUMN IF NOT EXISTS access_status VARCHAR(20) NOT NULL DEFAULT 'active';
+ALTER TABLE t_p25857058_mountain_control_app.users ADD COLUMN IF NOT EXISTS access_granted_at TIMESTAMP NULL;

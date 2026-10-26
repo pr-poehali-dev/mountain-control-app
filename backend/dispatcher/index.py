@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 from datetime import datetime, date as date_type
@@ -80,7 +81,7 @@ def parse_qr_code(raw):
     except (json.JSONDecodeError, AttributeError):
         return raw.strip()
 
-def handler(event, context):
+def _handler(event, context):
     """Диспетчерская — выдача/возврат фонарей и самоспасателей, поиск сотрудников, чат"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -404,3 +405,9 @@ def send_message(body):
     conn.close()
 
     return json_response(200, {'id': row[0], 'created_at': row[1], 'message': 'Отправлено'})
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

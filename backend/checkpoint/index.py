@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 from datetime import datetime, date as date_type
@@ -307,7 +308,7 @@ def points_summary(event):
     return json_response(200, {'points': out})
 
 
-def handler(event, context):
+def _handler(event, context):
     """КПП и объекты контроля — вход/выход через сканер, журнал проходов, настройки объектов, связь с АХО"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -1133,3 +1134,9 @@ def delete_pass(event, body, params):
     cur.close()
     conn.close()
     return json_response(200, {'success': True})
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

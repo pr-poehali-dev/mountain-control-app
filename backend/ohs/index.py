@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 import base64
@@ -332,7 +333,7 @@ def delete_document(body):
     conn.close()
     return json_response(200, {'success': True})
 
-def handler(event, context):
+def _handler(event, context):
     """ОТ и ПБ — загрузка Excel-документов, парсинг листов с формулами, электронный реестр"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -358,3 +359,9 @@ def handler(event, context):
         return delete_document(body)
 
     return json_response(400, {'error': 'Неизвестное действие: %s' % action})
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

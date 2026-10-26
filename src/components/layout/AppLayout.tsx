@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { useDemo } from "@/contexts/DemoContext";
 import HousingConflictAlert from "@/components/aho/HousingConflictAlert";
+import PendingAccessBanner from "@/components/demo/PendingAccessBanner";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -13,7 +14,7 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children, title, subtitle }: AppLayoutProps) {
   useEffect(() => {
-    if (localStorage.getItem("mc_demo") === "true") return;
+    if (localStorage.getItem("mc_demo") === "true" || localStorage.getItem("mc_pending") === "true") return;
     const key = `mc_pass_alert_${new Date().toISOString().slice(0, 13)}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
@@ -27,7 +28,10 @@ export default function AppLayout({ children, title, subtitle }: AppLayoutProps)
       <Sidebar />
       <div className="ml-60 transition-all duration-300">
         <Header title={title} subtitle={subtitle} />
-        <main className="p-6">{children}</main>
+        <main className="p-6">
+          <PendingAccessBanner />
+          {children}
+        </main>
       </div>
       <HousingConflictAlert />
     </div>

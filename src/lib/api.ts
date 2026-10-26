@@ -13,6 +13,8 @@ const API = {
   ohs: "https://functions.poehali.dev/bbbb23f3-816f-4c4f-a010-571fbf96b0be",
 };
 
+export const REPORTS_CRON_URL = `${API.reports}?action=cron`;
+
 function getToken(): string | null {
   return localStorage.getItem("mc_token");
 }
@@ -77,6 +79,12 @@ async function request(
       throw new Error("Демо-режим: сохранение данных доступно только в приобретённой версии");
     }
   }
+  if (localStorage.getItem("mc_pending") === "true" && method !== "GET") {
+    const action = params?.action || "";
+    if (!["login", "login-code", "email-send-code", "email-verify-code", "face-login", "logout", "face-save", "register"].includes(action)) {
+      throw new Error("Режим просмотра: сохранение недоступно, пока администратор не откроет полный доступ");
+    }
+  }
 
   let url = `${base}${path}`;
   if (params) {
@@ -112,6 +120,11 @@ async function request(
     throw new Error("Ошибка ответа сервера");
   }
 
+  if (!res.ok && data?.restricted && localStorage.getItem("mc_demo") !== "true" && localStorage.getItem("mc_pending") !== "true") {
+    localStorage.setItem("mc_pending", "true");
+    window.dispatchEvent(new Event("mc-access-changed"));
+  }
+
   if (!res.ok) {
     const err = new Error(data.error || data.errorMessage || "Ошибка сервера") as Error & { status?: number; data?: Record<string, unknown> };
     err.status = res.status;
@@ -142,6 +155,8 @@ export const authApi = {
   me: () => request(API.auth, "", { params: { action: "me" } }),
   logout: () => request(API.auth, "", { method: "POST", params: { action: "logout" } }),
   listUsers: () => request(API.auth, "", { params: { action: "users" } }),
+  grantAccess: (user_id: number, grant = true, role?: string) =>
+    request(API.auth, "", { method: "POST", body: { user_id, grant, role }, params: { action: "grant-access" } }),
   updateRole: (user_id: number, role: string) =>
     request(API.auth, "", { method: "PUT", body: { user_id, role }, params: { action: "role" } }),
   getPermissions: () => request(API.auth, "", { params: { action: "permissions" } }),

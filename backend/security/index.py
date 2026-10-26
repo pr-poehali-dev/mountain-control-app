@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 from datetime import datetime, date as date_type
@@ -73,7 +74,7 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
-def handler(event, context):
+def _handler(event, context):
     """СБ — проверка подлинности пропусков, данные сотрудников, журнал проверок"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -469,3 +470,9 @@ def export_journal(params, show_code=False):
         },
         'body': csv_content
     }
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

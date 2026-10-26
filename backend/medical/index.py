@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 import csv
@@ -200,7 +201,7 @@ def auto_reset_if_needed():
         cur.close()
         conn.close()
 
-def handler(event, context):
+def _handler(event, context):
     """Медицинский контроль — предсменные/послесменные осмотры, смены, история, экспорт, автосброс"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -903,3 +904,9 @@ def admin_mark(event, body):
         'medical_status': status,
         'message': '%s — медосмотр %s' % (person_name, ADMIN_MARK_LABELS[status]),
     })
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

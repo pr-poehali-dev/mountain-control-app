@@ -9,7 +9,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { reportsApi } from "@/lib/api";
+import { reportsApi, REPORTS_CRON_URL } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 interface CatalogItem { key: string; title: string; group: string }
@@ -75,6 +75,8 @@ export default function ReportMailings() {
   const [saving, setSaving] = useState(false);
   const [sendingId, setSendingId] = useState<number | null>(null);
   const [toRemove, setToRemove] = useState<Mailing | null>(null);
+  const [cronLast, setCronLast] = useState<{ at: string } | null>(null);
+  const [showCron, setShowCron] = useState(false);
 
   const titles = useMemo(() => Object.fromEntries(catalog.map((c) => [c.key, c.title])), [catalog]);
   const groups = useMemo(() => {
@@ -90,6 +92,7 @@ export default function ReportMailings() {
         setCatalog(d.catalog || []);
         setPeriods(d.periods || {});
         setSmtpReady(!!d.smtp_ready);
+        setCronLast(d.cron_last || null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -174,6 +177,38 @@ export default function ReportMailings() {
         {!smtpReady && (
           <p className="text-xs text-mine-red rounded-md bg-mine-red/10 px-3 py-2">Почта для отправки не настроена — письма не уйдут</p>
         )}
+        {(() => {
+          const ageMin = cronLast ? (Date.now() - new Date(cronLast.at).getTime()) / 60000 : Infinity;
+          const ok = ageMin < 90;
+          return (
+            <div className={`rounded-lg border px-3 py-2 ${ok ? "border-mine-green/30 bg-mine-green/5" : "border-mine-amber/30 bg-mine-amber/5"}`}>
+              <button type="button" onClick={() => setShowCron((v) => !v)} className="w-full flex items-center gap-2 text-left">
+                <Icon name={ok ? "AlarmClockCheck" : "AlarmClock"} size={14} className={ok ? "text-mine-green" : "text-mine-amber"} />
+                <span className="text-xs flex-1 text-foreground">
+                  {ok
+                    ? `Автозапуск по часам работает · ${new Date(cronLast!.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`
+                    : "Автозапуск по часам не подключён — письма уходят, только когда кто-то открывает систему"}
+                </span>
+                <Icon name={showCron ? "ChevronUp" : "ChevronDown"} size={14} className="text-muted-foreground" />
+              </button>
+              {showCron && (
+                <div className="mt-2 space-y-2 text-[11px] text-muted-foreground">
+                  <p>Один раз добавьте эту ссылку в бесплатный сервис расписаний (например, cron-job.org) с запуском <b>каждые 15 минут</b>:</p>
+                  <div className="flex gap-1">
+                    <Input readOnly value={REPORTS_CRON_URL} className="h-7 text-[11px] font-mono bg-background" onFocus={(e) => e.target.select()} />
+                    <Button
+                      size="sm" variant="outline" className="h-7 px-2"
+                      onClick={() => { navigator.clipboard.writeText(REPORTS_CRON_URL); toast({ title: "Ссылка скопирована" }); }}
+                    >
+                      <Icon name="Copy" size={12} />
+                    </Button>
+                  </div>
+                  <p>Ссылка запускает и эти рассылки, и утреннюю сводку по пропускам. Повторных писем не будет — каждое уходит один раз в свой срок. Через 15 минут после подключения здесь появится зелёная отметка.</p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {loading ? (
           <div className="py-6 flex justify-center"><Icon name="Loader2" size={18} className="animate-spin text-muted-foreground" /></div>
         ) : items.length === 0 ? (

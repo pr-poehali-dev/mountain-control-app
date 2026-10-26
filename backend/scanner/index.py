@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 from datetime import datetime, date as date_type
@@ -73,7 +74,7 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
-def handler(event, context):
+def _handler(event, context):
     """Сканирование QR-кодов и личных кодов — идентификация и отметка персонала"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -376,3 +377,9 @@ def get_recent(event):
         })
 
     return json_response(200, {'scans': scans})
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

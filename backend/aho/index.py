@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 import base64
@@ -184,7 +185,7 @@ def log_housing(cur, pid, old_rid, new_rid, source):
            (nname or '').replace("'", "''"), (nnum or '').replace("'", "''"),
            (prev_b or '').replace("'", "''"), (prev_r or '').replace("'", "''"), source.replace("'", "''")))
 
-def handler(event, context):
+def _handler(event, context):
     """АХО — загрузка списков, контроль въезда/выезда, расселение, статистика"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -2236,3 +2237,9 @@ def get_housing_stats(params):
     cur.close()
     conn.close()
     return json_response(200, result)
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

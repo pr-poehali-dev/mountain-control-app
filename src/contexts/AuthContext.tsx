@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import {
   authApi,
   setToken,
@@ -22,6 +22,7 @@ interface User {
   has_face?: boolean;
   face_photo_url?: string;
   face_can_self_enroll?: boolean;
+  access_status?: string;
 }
 
 interface AuthContextType {
@@ -35,6 +36,7 @@ interface AuthContextType {
   register: (data: Record<string, unknown>) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  isPending: boolean;
 }
 
 const ALL_PAGES = ['dashboard', 'personnel', 'dispatcher', 'medical', 'lampa', 'scanner', 'security', 'checkpoint', 'aho', 'ohs', 'reports', 'profile', 'admin'];
@@ -50,6 +52,13 @@ function setStoredPages(pages: string[]) {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+function withAccess(data: { user: User; access_status?: string }): User {
+  const status = data.access_status || data.user?.access_status || "active";
+  if (status === "pending") localStorage.setItem("mc_pending", "true");
+  else localStorage.removeItem("mc_pending");
+  return { ...data.user, access_status: status };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(getStoredUser());
@@ -77,8 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authApi
         .me()
         .then((data) => {
-          setUser(data.user);
-          setStoredUser(data.user);
+          const u = withAccess(data);
+          setUser(u);
+          setStoredUser(u);
           const pages = data.allowed_pages || (data.user.role === 'admin' ? ALL_PAGES : ['dashboard', 'profile']);
           setAllowedPages(pages);
           setStoredPages(pages);
@@ -103,8 +113,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearDemoFlags();
     const data = await authApi.login({ email, password });
     setToken(data.token);
-    setUser(data.user);
-    setStoredUser(data.user);
+    const u = withAccess(data);
+    setUser(u);
+    setStoredUser(u);
     const pages = data.allowed_pages || (data.user.role === 'admin' ? ALL_PAGES : ['dashboard', 'profile']);
     setAllowedPages(pages);
     setStoredPages(pages);
@@ -114,8 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearDemoFlags();
     const data = await authApi.emailVerifyCode(email, code);
     setToken(data.token);
-    setUser(data.user);
-    setStoredUser(data.user);
+    const u = withAccess(data);
+    setUser(u);
+    setStoredUser(u);
     const pages = data.allowed_pages || (data.user.role === 'admin' ? ALL_PAGES : ['dashboard', 'profile']);
     setAllowedPages(pages);
     setStoredPages(pages);
@@ -125,8 +137,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearDemoFlags();
     const data = await authApi.faceLogin(descriptor);
     setToken(data.token);
-    setUser(data.user);
-    setStoredUser(data.user);
+    const u = withAccess(data);
+    setUser(u);
+    setStoredUser(u);
     const pages = data.allowed_pages || (data.user.role === 'admin' ? ALL_PAGES : ['dashboard', 'profile']);
     setAllowedPages(pages);
     setStoredPages(pages);
@@ -136,8 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearDemoFlags();
     const data = await authApi.loginByCode(code);
     setToken(data.token);
-    setUser(data.user);
-    setStoredUser(data.user);
+    const u = withAccess(data);
+    setUser(u);
+    setStoredUser(u);
     const pages = data.allowed_pages || (data.user.role === 'admin' ? ALL_PAGES : ['dashboard', 'profile']);
     setAllowedPages(pages);
     setStoredPages(pages);
@@ -147,24 +161,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearDemoFlags();
     const data = await authApi.register(regData);
     setToken(data.token);
-    setUser(data.user);
-    setStoredUser(data.user);
+    const u = withAccess(data);
+    setUser(u);
+    setStoredUser(u);
     const pages = data.allowed_pages || ['dashboard', 'profile'];
     setAllowedPages(pages);
     setStoredPages(pages);
   };
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     const data = await authApi.me();
     if (data?.user) {
-      setUser(data.user);
-      setStoredUser(data.user);
+      const u = withAccess(data);
+      setUser(u);
+      setStoredUser(u);
       if (Array.isArray(data.allowed_pages)) {
         setAllowedPages(data.allowed_pages);
         setStoredPages(data.allowed_pages);
       }
     }
-  };
+  }, []);
+
 
   const logout = () => {
     authApi.logout().catch(() => {});
@@ -172,11 +189,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setAllowedPages([]);
     localStorage.removeItem("mc_pages");
+    localStorage.removeItem("mc_pending");
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, allowedPages, login, loginByCode, loginByEmailCode, loginByFace, register, logout, refreshUser }}
+      value={{ user, loading, allowedPages, login, loginByCode, loginByEmailCode, loginByFace, register, logout, refreshUser, isPending: user?.access_status === "pending" }}
     >
       {children}
     </AuthContext.Provider>

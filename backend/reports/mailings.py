@@ -10,7 +10,9 @@ from email.mime.base import MIMEBase
 from email.header import Header
 from email import encoders
 
-ACTIONS = ('mailings', 'mailing-save', 'mailing-remove', 'mailing-send', 'mailings-auto')
+ACTIONS = ('mailings', 'mailing-save', 'mailing-remove', 'mailing-send', 'mailings-auto', 'cron')
+
+EVENTS_URL = 'https://functions.poehali.dev/7ddc9847-facb-4e59-8cfe-6b535f9fa0cd'
 
 STATIC_REPORTS = [
     ('attendance', 'Посещаемость за смену'),
@@ -249,6 +251,20 @@ def route(action, method, params, body, event, deps):
     items = catalog(cur)
     titles = {i['key']: i['title'] for i in items}
 
+    if action == 'cron':
+        import urllib.request
+        pass_alert = ''
+        try:
+            with urllib.request.urlopen(EVENTS_URL + '?action=pass-alert-auto', timeout=4) as r:
+                pass_alert = json.loads(r.read().decode()).get('status', '')
+        except Exception as e:
+            pass_alert = 'error: %s' % str(e)[:60]
+        stamp = json.dumps({'at': datetime.utcnow().isoformat() + 'Z', 'pass_alert': pass_alert}).replace("'", "''")
+        cur.execute("""INSERT INTO settings (key, value, updated_at) VALUES ('cron_last', '%s'::jsonb, NOW())
+                       ON CONFLICT (key) DO UPDATE SET value = '%s'::jsonb, updated_at = NOW()""" % (stamp, stamp))
+        conn.commit()
+        action = 'mailings-auto'
+
     if action == 'mailings-auto':
         if not smtp_ready():
             return done(200, {'status': 'smtp_off'})
@@ -277,7 +293,11 @@ def route(action, method, params, body, event, deps):
     if action == 'mailings':
         cur.execute("SELECT %s FROM report_mailings WHERE is_archived = FALSE ORDER BY id" % COLS)
         rows = [row_to_mailing(r, titles) for r in cur.fetchall()]
-        return done(200, {'mailings': rows, 'catalog': items, 'periods': PERIODS, 'smtp_ready': smtp_ready()})
+        cur.execute("SELECT value FROM settings WHERE key = 'cron_last'")
+        cl = cur.fetchone()
+        cron_last = (cl[0] if isinstance(cl[0], dict) else json.loads(cl[0])) if cl else None
+        return done(200, {'mailings': rows, 'catalog': items, 'periods': PERIODS, 'smtp_ready': smtp_ready(),
+                          'cron_last': cron_last})
 
     if action == 'mailing-save' and method == 'POST':
         name = str(body.get('name') or '').strip()[:150]

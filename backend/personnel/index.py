@@ -1,3 +1,4 @@
+import privacy
 import base64
 import secrets
 import json
@@ -122,7 +123,7 @@ def log_housing(cur, pid, old_rid, new_rid, source):
            (nname or '').replace("'", "''"), (nnum or '').replace("'", "''"),
            (prev_b or '').replace("'", "''"), (prev_r or '').replace("'", "''"), source.replace("'", "''")))
 
-def handler(event, context):
+def _handler(event, context):
     """Управление персоналом рудника — список, добавление, обновление статусов"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -854,3 +855,9 @@ def upload_photo(body):
     cur.close()
     conn.close()
     return json_response(200, {'photo_url': url, 'message': 'Фото сохранено' if url else 'Фото удалено'})
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+

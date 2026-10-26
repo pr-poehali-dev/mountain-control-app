@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 import hashlib
@@ -111,6 +112,15 @@ def valid_page(p):
     return p in ALL_PAGES or (isinstance(p, str) and p.startswith('cp_') and p[3:].isdigit())
 
 
+PENDING_PAGES = [p for p in ALL_PAGES if p != 'admin']
+
+
+def access_of(cur, user_id):
+    cur.execute("SELECT COALESCE(access_status, 'active') FROM users WHERE id = %d" % int(user_id))
+    r = cur.fetchone()
+    return r[0] if r else 'active'
+
+
 def get_auth_token(event):
     headers = event.get('headers') or {}
     for key in ['X-Authorization', 'x-authorization', 'Authorization', 'authorization']:
@@ -175,7 +185,7 @@ def load_permissions(cur):
     return DEFAULT_PERMISSIONS
 
 
-def handler(event, context):
+def _handler(event, context):
     """Авторизация и управление пользователями системы Горный контроль"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -208,6 +218,8 @@ def handler(event, context):
         return logout(event)
     elif method == 'GET' and action == 'users':
         return list_users(event)
+    elif method == 'POST' and action == 'grant-access':
+        return grant_access(event, body)
     elif method == 'PUT' and action == 'role':
         return update_role(event, body)
     elif method == 'GET' and action == 'permissions':
@@ -271,8 +283,8 @@ def register(body):
     password_hash = hash_password(password)
 
     cur.execute("""
-        INSERT INTO users (email, password_hash, full_name, position, department, personal_code, qr_code, role, organization, organization_type)
-        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'operator', '%s', '%s')
+        INSERT INTO users (email, password_hash, full_name, position, department, personal_code, qr_code, role, organization, organization_type, access_status)
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'operator', '%s', '%s', 'pending')
         RETURNING id, personal_code, qr_code
     """ % (
         email.replace("'", "''"),
@@ -311,8 +323,10 @@ def register(body):
             'qr_code': qr_code,
             'role': 'operator',
             'organization': organization,
-            'organization_type': organization_type
-        }
+            'organization_type': organization_type,
+            'access_status': 'pending'
+        },
+        'allowed_pages': PENDING_PAGES
     })
 
 def login(body):
@@ -359,6 +373,9 @@ def login(body):
         allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+    access_status = access_of(cur, row[0])
+    if access_status == 'pending':
+        allowed = PENDING_PAGES[:]
 
     conn.commit()
     role_label = role_label_map(cur).get(role, role)
@@ -373,7 +390,8 @@ def login(body):
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[9] or '', 'organization_type': row[10] or ''
         },
-        'allowed_pages': allowed
+        'allowed_pages': allowed,
+        'access_status': access_status
     })
 
 def parse_qr_code(raw):
@@ -426,6 +444,9 @@ def login_by_code(body):
         allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+    access_status = access_of(cur, row[0])
+    if access_status == 'pending':
+        allowed = PENDING_PAGES[:]
 
     conn.commit()
     role_label = role_label_map(cur).get(role, role)
@@ -440,7 +461,8 @@ def login_by_code(body):
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[9] or '', 'organization_type': row[10] or ''
         },
-        'allowed_pages': allowed
+        'allowed_pages': allowed,
+        'access_status': access_status
     })
 
 def get_me(event):
@@ -470,6 +492,9 @@ def get_me(event):
     else:
         perms = load_permissions(cur)
         allowed = perms.get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+    access_status = access_of(cur, row[0])
+    if access_status == 'pending':
+        allowed = PENDING_PAGES[:]
 
     role_label = role_label_map(cur).get(role, role)
     cur.execute("SELECT COALESCE(residence, '') FROM personnel WHERE personal_code = '%s' AND status != 'archived' LIMIT 1" % str(row[5] or '').replace("'", "''"))
@@ -489,7 +514,8 @@ def get_me(event):
             'has_face': bool(row[10]), 'face_photo_url': row[11] or '',
             'face_can_self_enroll': role == 'admin' or (not row[10] and not row[12])
         },
-        'allowed_pages': allowed
+        'allowed_pages': allowed,
+        'access_status': access_status
     })
 
 def logout(event):
@@ -524,6 +550,37 @@ def get_current_user(event):
     return {'id': row[0], 'role': row[1]}
 
 
+def grant_access(event, body):
+    """Администратор открывает полный доступ пользователю, прошедшему самостоятельную регистрацию"""
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+    uid = int(body.get('user_id') or 0)
+    status = 'active' if body.get('grant', True) else 'pending'
+    role = str(body.get('role') or '').strip()
+    conn = get_db()
+    cur = conn.cursor()
+    if role and role not in role_keys(cur):
+        cur.close()
+        conn.close()
+        return json_response(400, {'error': 'Неизвестная роль'})
+    sets = "access_status = '%s', access_granted_at = %s" % (status, 'NOW()' if status == 'active' else 'NULL')
+    if role and role != 'admin':
+        sets += ", role = '%s'" % role.replace("'", "''")
+    cur.execute("UPDATE users SET %s WHERE id = %d AND id <> %d RETURNING full_name" % (sets, uid, caller['id']))
+    r = cur.fetchone()
+    if not r:
+        cur.close()
+        conn.close()
+        return json_response(404, {'error': 'Пользователь не найден'})
+    cur.execute("INSERT INTO events (event_type, description) VALUES ('user_access', '%s')"
+                % (('Открыт полный доступ: %s' if status == 'active' else 'Доступ ограничен до просмотра: %s') % r[0]).replace("'", "''"))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {'success': True, 'access_status': status})
+
+
 def list_users(event):
     caller = get_current_user(event)
     if not caller or caller['role'] != 'admin':
@@ -533,8 +590,9 @@ def list_users(event):
     cur = conn.cursor()
     cur.execute("""
         SELECT id, email, full_name, position, department, personal_code, role, is_active, organization, organization_type,
-               created_at, login_email, login_code, face_descriptor IS NOT NULL, face_photo_url, COALESCE(photo_url, '')
-        FROM users ORDER BY id
+               created_at, login_email, login_code, face_descriptor IS NOT NULL, face_photo_url, COALESCE(photo_url, ''),
+               COALESCE(access_status, 'active')
+        FROM users ORDER BY (COALESCE(access_status, 'active') = 'pending') DESC, id
     """)
     rows = cur.fetchall()
     cur.close()
@@ -550,7 +608,8 @@ def list_users(event):
             'organization_type': r[9] or '',
             'created_at': r[10],
             'login_email': r[11], 'login_code': r[12],
-            'has_face': bool(r[13]), 'face_photo_url': r[14] or '', 'photo_url': r[15] or ''
+            'has_face': bool(r[13]), 'face_photo_url': r[14] or '', 'photo_url': r[15] or '',
+            'access_status': r[16]
         })
 
     return json_response(200, {'users': users})
@@ -1377,6 +1436,9 @@ def email_verify_code(body):
         allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+    access_status = access_of(cur, row[0])
+    if access_status == 'pending':
+        allowed = PENDING_PAGES[:]
     conn.commit()
     role_label = role_label_map(cur).get(role, role)
     cur.close()
@@ -1390,7 +1452,8 @@ def email_verify_code(body):
             'personal_code': row[5], 'qr_code': row[6], 'role': role, 'role_label': role_label,
             'organization': row[9] or '', 'organization_type': row[10] or ''
         },
-        'allowed_pages': allowed
+        'allowed_pages': allowed,
+        'access_status': access_status
     })
 
 
@@ -1543,6 +1606,9 @@ def face_login(body):
         allowed = full_pages(cur)
     else:
         allowed = load_permissions(cur).get(role, DEFAULT_PERMISSIONS.get(role, ['dashboard', 'profile']))
+    access_status = access_of(cur, row[0])
+    if access_status == 'pending':
+        allowed = PENDING_PAGES[:]
     conn.commit()
     role_label = role_label_map(cur).get(role, role)
     cur.close()
@@ -1558,5 +1624,12 @@ def face_login(body):
             'organization': row[9] or '', 'organization_type': row[10] or '',
             'has_face': True, 'face_photo_url': row[11] or ''
         },
-        'allowed_pages': allowed
+        'allowed_pages': allowed,
+        'access_status': access_status
     })
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=('face-save',))
+

@@ -48,6 +48,7 @@ interface SystemUser {
   has_face?: boolean;
   face_photo_url?: string;
   photo_url?: string;
+  access_status?: string;
 }
 
 const roleColors: Record<string, string> = {
@@ -260,6 +261,19 @@ const Admin = () => {
     }
   };
 
+  const handleGrantAccess = async (u: SystemUser, grant: boolean) => {
+    try {
+      await authApi.grantAccess(u.id, grant);
+      toast({
+        title: grant ? "Полный доступ открыт" : "Доступ ограничен",
+        description: grant ? `${u.full_name} может работать с данными согласно своей роли` : `${u.full_name} переведён в режим просмотра`,
+      });
+      loadUsers();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Ошибка", variant: "destructive" });
+    }
+  };
+
   const handleRestoreUser = async (userId: number) => {
     try {
       const res = await authApi.updateUser({ user_id: userId, is_active: true });
@@ -421,7 +435,13 @@ const Admin = () => {
         u.full_name.toLowerCase().includes(search.toLowerCase()) ||
         u.email.toLowerCase().includes(search.toLowerCase())
     )
-    .sort((a, b) => (a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1));
+    .sort((a, b) => {
+      const ap = a.access_status === "pending" && a.is_active ? 0 : 1;
+      const bp = b.access_status === "pending" && b.is_active ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1;
+    });
+  const pendingCount = users.filter((u) => u.is_active && u.access_status === "pending").length;
 
   return (
     <AppLayout title="Администрирование" subtitle="Управление пользователями и системой">
@@ -474,6 +494,11 @@ const Admin = () => {
                 <Badge variant="outline" className="text-[11px]">
                   {users.filter(u => u.is_active).length} чел.
                 </Badge>
+                {pendingCount > 0 && (
+                  <Badge className="text-[11px] bg-mine-amber/15 text-mine-amber border border-mine-amber/30 hover:bg-mine-amber/15">
+                    ждут допуска: {pendingCount}
+                  </Badge>
+                )}
                 <Button
                   size="sm"
                   className="gap-1.5 h-8 bg-mine-green text-white hover:bg-mine-green/90"
@@ -590,16 +615,42 @@ const Admin = () => {
                           {u.department || "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                u.is_active ? "bg-mine-green" : "bg-muted-foreground"
-                              }`}
-                            />
-                            <span className="text-xs text-muted-foreground">
-                              {u.is_active ? "Активен" : "Отключён"}
-                            </span>
-                          </div>
+                          {u.is_active && u.access_status === "pending" ? (
+                            <div className="flex flex-col items-start gap-1">
+                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-mine-amber/15 text-mine-amber border border-mine-amber/30 whitespace-nowrap">
+                                Ждёт допуска · просмотр
+                              </span>
+                              {!isSelf && (
+                                <button
+                                  onClick={() => handleGrantAccess(u, true)}
+                                  className="text-[11px] px-2 py-1 rounded-md bg-mine-green text-white hover:bg-mine-green/90 flex items-center gap-1 whitespace-nowrap"
+                                >
+                                  <Icon name="ShieldCheck" size={12} />
+                                  Дать допуск
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  u.is_active ? "bg-mine-green" : "bg-muted-foreground"
+                                }`}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {u.is_active ? "Активен" : "Отключён"}
+                              </span>
+                              {u.is_active && !isSelf && u.role !== "admin" && (
+                                <button
+                                  onClick={() => handleGrantAccess(u, false)}
+                                  className="ml-1 p-1 rounded text-muted-foreground hover:text-mine-amber hover:bg-mine-amber/10"
+                                  title="Ограничить до режима просмотра"
+                                >
+                                  <Icon name="EyeOff" size={12} />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {!isSelf && u.role !== "admin" && (

@@ -1,3 +1,4 @@
+import privacy
 import json
 import os
 from datetime import datetime, date as date_type
@@ -80,7 +81,7 @@ def json_response(status, body):
         'body': json.dumps(body, ensure_ascii=False, default=serialize_default)
     }
 
-def handler(event, context):
+def _handler(event, context):
     """Лента событий, дашборд, уведомления диспетчеру"""
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
@@ -637,3 +638,9 @@ def get_dashboard(event):
         'by_medical': by_medical,
         'by_status': by_status
     })
+
+
+def handler(event, context):
+    """Точка входа: режим просмотра для демо и новых пользователей без допуска (без записи, ФИО скрыты)"""
+    return privacy.guard(event, context, _handler, write_ok=())
+
