@@ -99,7 +99,7 @@ def _handler(event, context):
     elif method == 'GET' and action == 'search':
         return search_person(params, event)
     elif method == 'GET' and action == 'available':
-        return get_available_lanterns()
+        return get_available_lanterns(event)
     elif method == 'POST' and action == 'issue':
         return issue_lantern(body)
     elif method == 'POST' and action == 'issue-by-code':
@@ -107,7 +107,7 @@ def _handler(event, context):
     elif method == 'POST' and action == 'return':
         return return_lantern(body)
     elif method == 'GET' and action == 'messages':
-        return get_messages(params)
+        return get_messages(params, event)
     elif method == 'POST' and action == 'message':
         return send_message(body)
 
@@ -152,10 +152,10 @@ def get_lantern_stats(event):
 
     demo_filter = "AND is_demo_data = TRUE" if is_demo_request(event) else "AND is_demo_data = FALSE"
 
-    cur.execute("SELECT status, COUNT(*) FROM lanterns GROUP BY status")
+    cur.execute("SELECT status, COUNT(*) FROM lanterns WHERE TRUE %s GROUP BY status" % demo_filter)
     by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT COUNT(*) FROM lanterns")
+    cur.execute("SELECT COUNT(*) FROM lanterns WHERE TRUE %s" % demo_filter)
     total = cur.fetchone()[0]
 
     p_demo = demo_filter.replace('is_demo_data', 'p.is_demo_data')
@@ -182,14 +182,14 @@ def get_lantern_stats(event):
         'on_site': on_site
     })
 
-def get_available_lanterns():
+def get_available_lanterns(event):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
         SELECT id, lantern_number, rescuer_number, condition
-        FROM lanterns WHERE status IN ('available', 'charging')
+        FROM lanterns WHERE status IN ('available', 'charging') AND is_demo_data = %s
         ORDER BY lantern_number
-    """)
+    """ % ('TRUE' if is_demo_request(event) else 'FALSE'))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -351,16 +351,16 @@ def return_lantern(body):
 
     return json_response(200, {'message': 'Фонарь %s принят' % row[0], 'lantern': row[0], 'person': person_name})
 
-def get_messages(params):
+def get_messages(params, event=None):
     limit = int(params.get('limit', '50'))
     conn = get_db()
     cur = conn.cursor()
 
     cur.execute("""
         SELECT id, sender_name, sender_role, message, is_urgent, created_at
-        FROM dispatcher_messages
+        FROM dispatcher_messages WHERE is_demo_data = %s
         ORDER BY created_at DESC LIMIT %d
-    """ % min(limit, 200))
+    """ % ('TRUE' if event and is_demo_request(event) else 'FALSE', min(limit, 200)))
     rows = cur.fetchall()
     cur.close()
     conn.close()

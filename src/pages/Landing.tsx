@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import Icon from "@/components/ui/icon";
-import ThemeToggle from "@/components/theme/ThemeToggle";
+import ThemeSwitch from "@/components/landing/ThemeSwitch";
 import LandingHeader from "@/components/landing/LandingHeader";
 import LandingHero from "@/components/landing/LandingHero";
 import LandingAbout from "@/components/landing/LandingAbout";
@@ -32,7 +32,7 @@ const Landing = () => (
           <Link to="/demo" className="hover:text-foreground">Демо</Link>
           <Link to="/login" className="hover:text-foreground">Вход</Link>
           <Link to="/login?tab=register" className="hover:text-foreground">Регистрация</Link>
-          <ThemeToggle />
+          <ThemeSwitch />
         </div>
       </div>
     </footer>

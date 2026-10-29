@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { NAV } from "./data";
+import ThemeSwitch from "./ThemeSwitch";
 
 const LandingHeader = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -26,10 +27,10 @@ const LandingHeader = () => {
           <span className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
             <Icon name="Mountain" size={20} className="text-primary-foreground" />
           </span>
-          <span className="font-bold text-foreground">Горный контроль</span>
+          <span className="font-bold text-foreground whitespace-nowrap">Горный контроль</span>
         </a>
 
-        <nav className="hidden lg:flex items-center gap-6">
+        <nav className="hidden lg:flex items-center gap-5 whitespace-nowrap">
           {NAV.map((n) => (
             <a key={n.href} href={n.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               {n.label}
@@ -38,6 +39,8 @@ const LandingHeader = () => {
         </nav>
 
         <div className="hidden sm:flex items-center gap-2">
+          <span className="hidden min-[1360px]:inline-flex"><ThemeSwitch /></span>
+          <span className="min-[1360px]:hidden"><ThemeSwitch compact /></span>
           <Button asChild variant="ghost" size="sm" className="text-foreground">
             <Link to="/login">Войти</Link>
           </Button>
@@ -49,9 +52,12 @@ const LandingHeader = () => {
           </Button>
         </div>
 
-        <button className="sm:hidden p-2 text-foreground" onClick={() => setOpen(!open)} aria-label="Меню">
+        <div className="sm:hidden flex items-center gap-1">
+        <ThemeSwitch compact />
+        <button className="p-2 text-foreground" onClick={() => setOpen(!open)} aria-label="Меню">
           <Icon name={open ? "X" : "Menu"} size={22} />
         </button>
+        </div>
       </div>
 
       {open && (

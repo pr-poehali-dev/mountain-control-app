@@ -97,7 +97,7 @@ def _handler(event, context):
     if method == 'GET' and action == 'list':
         return get_issues(params, event)
     elif method == 'GET' and action == 'stats':
-        return get_stats()
+        return get_stats(event)
     elif method == 'GET' and action == 'detail':
         return get_detail(params, event)
     elif method == 'GET' and action == 'search':
@@ -273,26 +273,27 @@ def get_detail(params, event):
 
     return json_response(200, {'items': items, 'total': len(items), 'type': detail_type})
 
-def get_stats():
+def get_stats(event):
     conn = get_db()
     cur = conn.cursor()
+    dq = 'TRUE' if is_demo_request(event) else 'FALSE'
 
-    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE status = 'issued'")
+    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE status = 'issued' AND is_demo_data = %s" % dq)
     active = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE status = 'issued' AND item_type IN ('lantern', 'both')")
+    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE status = 'issued' AND item_type IN ('lantern', 'both') AND is_demo_data = %s" % dq)
     lanterns_out = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE status = 'issued' AND item_type IN ('rescuer', 'both')")
+    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE status = 'issued' AND item_type IN ('rescuer', 'both') AND is_demo_data = %s" % dq)
     rescuers_out = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE issued_at >= CURRENT_DATE")
+    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE issued_at >= CURRENT_DATE AND is_demo_data = %s" % dq)
     today_issued = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE returned_at >= CURRENT_DATE")
+    cur.execute("SELECT COUNT(*) FROM lamp_room_issues WHERE returned_at >= CURRENT_DATE AND is_demo_data = %s" % dq)
     today_returned = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM lamp_room_denials WHERE denied_at >= CURRENT_DATE")
+    cur.execute("SELECT COUNT(*) FROM lamp_room_denials WHERE denied_at >= CURRENT_DATE AND is_demo_data = %s" % dq)
     today_denied = cur.fetchone()[0]
 
     cur.execute("SELECT value FROM settings WHERE key = 'lamp_room_total_lanterns'")

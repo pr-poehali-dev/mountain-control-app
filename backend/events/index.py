@@ -1,5 +1,6 @@
 import privacy
 import json
+import re
 import os
 from datetime import datetime, date as date_type
 import psycopg2
@@ -44,7 +45,19 @@ def is_demo_request(event):
     return headers.get('X-Demo', headers.get('x-demo', '')) == 'true'
 
 def get_db():
-    return psycopg2.connect(os.environ['DATABASE_URL'])
+    return psycopg2.connect(os.environ['DATABASE_URL'], cursor_factory=_DemoCursor)
+
+
+DEMO_MODE = {'on': False}
+_B_ACTIVE = re.compile(r'\bb\.is_active = TRUE')
+
+
+class _DemoCursor(psycopg2.extensions.cursor):
+    """Разделяет демо- и рабочие общежития во всех запросах к зданиям"""
+    def execute(self, query, vars=None):
+        if isinstance(query, str) and 'is_active = TRUE' in query:
+            query = _B_ACTIVE.sub('b.is_active = TRUE AND b.is_demo_data = %s' % ('TRUE' if DEMO_MODE['on'] else 'FALSE'), query)
+        return super().execute(query, vars)
 
 def serialize_default(obj):
     if isinstance(obj, datetime):
@@ -86,6 +99,7 @@ def _handler(event, context):
     if event.get('httpMethod') == 'OPTIONS':
         return json_response(200, '')
     HIDE_CODES['on'] = not caller_is_admin(event)
+    DEMO_MODE['on'] = is_demo_request(event)
 
     method = event.get('httpMethod', 'GET')
     params = event.get('queryStringParameters') or {}
@@ -581,15 +595,15 @@ def get_dashboard(event):
     cur.execute("SELECT COUNT(*) FROM " + on_site_from)
     on_site = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM lanterns WHERE status = 'issued'")
+    cur.execute("SELECT COUNT(*) FROM lanterns WHERE status = 'issued' %s" % demo_filter)
     lanterns_issued = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM lanterns")
+    cur.execute("SELECT COUNT(*) FROM lanterns WHERE TRUE %s" % demo_filter)
     lanterns_total = cur.fetchone()[0]
 
     cur.execute("""
-        SELECT COUNT(*) FROM medical_checks
-        WHERE checked_at::date = CURRENT_DATE AND status = 'passed'
-    """)
+        SELECT COUNT(DISTINCT personnel_id) FROM medical_checks
+        WHERE checked_at::date = CURRENT_DATE AND status = 'passed' %s
+    """ % demo_filter)
     medical_passed = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM personnel WHERE status != 'archived' %s" % demo_filter)

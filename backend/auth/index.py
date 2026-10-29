@@ -12,6 +12,7 @@ from email.mime.image import MIMEImage
 import base64
 import html as html_lib
 from logo_data import LOGO_PNG_B64
+from demo_seed import refresh_demo
 from email.header import Header
 from datetime import datetime, timedelta, date as date_type
 
@@ -250,6 +251,8 @@ def _handler(event, context):
         return demo_toggle(event, body)
     elif method == 'DELETE' and action == 'demo-delete':
         return demo_delete(event, body)
+    elif method == 'POST' and action == 'demo-refresh':
+        return demo_refresh(event)
     elif method == 'POST' and action == 'demo-preview':
         return demo_preview(event)
     elif method == 'POST' and action == 'demo-enter':
@@ -1239,6 +1242,8 @@ def demo_enter(body):
         return json_response(403, {'error': 'Достигнут лимит посещений демо-ссылки'})
 
     cur.execute("UPDATE demo_links SET visit_count = visit_count + 1 WHERE id = %d" % row[0])
+    conn.commit()
+    safe_refresh_demo(conn)
 
     session_token = secrets.token_hex(32)
     expires = datetime.now() + timedelta(hours=24)
@@ -1275,6 +1280,27 @@ def demo_enter(body):
     })
 
 
+def safe_refresh_demo(conn, force=False):
+    """Обновляет демо-данные на сегодня; ошибка обновления не мешает входу в демо"""
+    try:
+        return refresh_demo(conn, force)
+    except Exception as e:
+        print('demo refresh failed: %s' % e)
+        conn.rollback()
+        return False
+
+
+def demo_refresh(event):
+    """Принудительное обновление демо-данных администратором"""
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+    conn = get_db()
+    ok = refresh_demo(conn, True)
+    conn.close()
+    return json_response(200, {'refreshed': ok})
+
+
 def demo_preview(event):
     """Просмотр системы администратором глазами демо-пользователя, без расхода посещений демо-ссылок"""
     caller = get_current_user(event)
@@ -1282,6 +1308,7 @@ def demo_preview(event):
         return json_response(403, {'error': 'Доступ только для администраторов'})
     conn = get_db()
     cur = conn.cursor()
+    safe_refresh_demo(conn)
     session_token = secrets.token_hex(32)
     expires = datetime.now() + timedelta(hours=2)
     cur.execute("""

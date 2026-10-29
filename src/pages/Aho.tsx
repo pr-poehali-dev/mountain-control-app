@@ -125,7 +125,7 @@ function formatDateTime(s: string) {
 
 const Aho = () => {
   const { toast } = useToast();
-  const [tab, setTab] = useState("upload");
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "upload");
   const [loading, setLoading] = useState(false);
 
   const [arrivals, setArrivals] = useState<ArrivalItem[]>([]);

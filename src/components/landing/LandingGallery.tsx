@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import Section from "./Section";
 import { SCREENS } from "./data";
+import { useTheme } from "@/components/theme/ThemeToggle";
 
 const LandingGallery = () => {
   const [active, setActive] = useState(0);
   const [zoom, setZoom] = useState(false);
+  const { theme } = useTheme();
   const screen = SCREENS[active];
+  const src = theme === "light" ? screen.light : screen.src;
   const go = (d: number) => setActive((active + d + SCREENS.length) % SCREENS.length);
 
   return (
@@ -46,7 +49,7 @@ const LandingGallery = () => {
             <span className="ml-3 text-xs text-muted-foreground truncate">Горный контроль — {screen.title}</span>
           </div>
           <button className="group relative block w-full" onClick={() => setZoom(true)} aria-label="Увеличить">
-            <img key={screen.key} src={screen.src} alt={`Раздел «${screen.title}»`} className="w-full aspect-[1440/710] object-cover object-top animate-fade-in" />
+            <img key={screen.key + theme} src={src} alt={`Раздел «${screen.title}»`} className="w-full aspect-[1440/710] object-cover object-top animate-fade-in" />
             <span className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/30 transition-colors">
               <span className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 rounded-full bg-background/90 px-4 py-2 text-sm text-foreground">
                 <Icon name="ZoomIn" size={16} />
@@ -79,7 +82,7 @@ const LandingGallery = () => {
       <Dialog open={zoom} onOpenChange={setZoom}>
         <DialogContent className="max-w-[96vw] w-[1440px] p-0 overflow-hidden">
           <DialogTitle className="sr-only">{screen.title}</DialogTitle>
-          <img src={screen.src} alt={`Раздел «${screen.title}»`} className="w-full h-auto" />
+          <img src={src} alt={`Раздел «${screen.title}»`} className="w-full h-auto" />
         </DialogContent>
       </Dialog>
     </Section>

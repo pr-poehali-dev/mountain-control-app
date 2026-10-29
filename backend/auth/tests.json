@@ -214,6 +214,13 @@
       "path": "/?action=demo-preview",
       "body": {},
       "expectedStatus": 403
+    },
+    {
+      "name": "Demo refresh admin only",
+      "method": "POST",
+      "path": "/?action=demo-refresh",
+      "body": {},
+      "expectedStatus": 403
     }
   ]
 }

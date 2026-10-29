@@ -124,8 +124,8 @@ export const NAV = [
 ];
 
 export const SCREENS = [
-  { key: "dashboard", icon: "LayoutDashboard", title: "Дашборд", src: "/screens/dashboard.webp", text: "Сводка по руднику: сколько людей на объекте, выданные фонари, медосмотры, жилой фонд и проходы через контрольные точки." },
-  { key: "checkpoint", icon: "DoorOpen", title: "КПП", src: "/screens/checkpoint.webp", text: "Вход и выход по QR-коду или личному коду, учёт автомобилей, журнал проходов и список тех, кто на территории." },
-  { key: "medical", icon: "HeartPulse", title: "Медконтроль", src: "/screens/medical.webp", text: "Текущая смена, допущенные и отстранённые отдельно по рабочим и ИТР, отметка медосмотра сканированием QR-кода." },
-  { key: "aho", icon: "Building2", title: "АХО", src: "/screens/aho.webp", text: "Загрузка списков заезда из Excel, въезд и выезд, расселение по комнатам и статистика жилого фонда." },
+  { key: "dashboard", icon: "LayoutDashboard", title: "Дашборд", src: "/screens/dashboard-dark.webp", light: "/screens/dashboard-light.webp", text: "Сводка по руднику: сколько людей на объекте, выданные фонари, медосмотры, жилой фонд и проходы через контрольные точки." },
+  { key: "checkpoint", icon: "DoorOpen", title: "КПП", src: "/screens/checkpoint-dark.webp", light: "/screens/checkpoint-light.webp", text: "Вход и выход по QR-коду или личному коду, учёт автомобилей, журнал проходов и список тех, кто на территории." },
+  { key: "medical", icon: "HeartPulse", title: "Медконтроль", src: "/screens/medical-dark.webp", light: "/screens/medical-light.webp", text: "Текущая смена, допущенные и отстранённые отдельно по рабочим и ИТР, отметка медосмотра сканированием QR-кода." },
+  { key: "aho", icon: "Building2", title: "АХО", src: "/screens/aho-dark.webp", light: "/screens/aho-light.webp", text: "Загрузка списков заезда из Excel, въезд и выезд, расселение по комнатам и статистика жилого фонда." },
 ];

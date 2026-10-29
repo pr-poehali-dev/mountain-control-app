@@ -173,7 +173,7 @@ def auto_reset_if_needed():
         if not exists:
             cur.execute("""
                 UPDATE personnel SET medical_status = 'pending', updated_at = NOW()
-                WHERE status != 'archived' AND medical_status != 'pending'
+                WHERE status != 'archived' AND medical_status != 'pending' AND is_demo_data = FALSE
             """)
             reset_count = cur.rowcount
 
