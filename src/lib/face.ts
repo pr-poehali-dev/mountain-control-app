@@ -6,7 +6,7 @@ export function loadFaceApi(): Promise<typeof FaceApi> {
   if (!faceapiPromise) {
     faceapiPromise = (async () => {
       const faceapi = await import("@vladmandic/face-api");
-      await faceapi.tf.ready();
+      await (faceapi.tf as unknown as { ready: () => Promise<void> }).ready();
       await Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
         faceapi.nets.faceLandmark68Net.loadFromUri("/models"),

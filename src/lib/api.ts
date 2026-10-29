@@ -47,7 +47,7 @@ export function getStoredUser() {
   }
 }
 
-export function setStoredUser(user: Record<string, unknown>) {
+export function setStoredUser(user: object) {
   localStorage.setItem("mc_user", JSON.stringify(user));
 }
 

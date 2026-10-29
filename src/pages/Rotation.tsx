@@ -9,6 +9,7 @@ import RotationCalendar from "@/components/rotation/RotationCalendar";
 import RotationChanges from "@/components/rotation/RotationChanges";
 import RotationAbsences from "@/components/rotation/RotationAbsences";
 import RotationGuide from "@/components/rotation/RotationGuide";
+import RotationManual from "@/components/rotation/RotationManual";
 import DeptDetail from "@/components/rotation/DeptDetail";
 import DeptDialog, { type DeptForm } from "@/components/rotation/DeptDialog";
 import type { Overview } from "@/components/rotation/types";
@@ -29,6 +30,7 @@ export default function Rotation() {
   const [data, setData] = useState<Overview | null>(null);
   const [deptId, setDeptId] = useState<number | null>(null);
   const [dialog, setDialog] = useState<{ open: boolean; initial: DeptForm | null; departments: string[] }>({ open: false, initial: null, departments: [] });
+  const [manual, setManual] = useState(false);
   const [focus, setFocus] = useState<{ date: string; deptId: number } | null>(null);
 
   const load = useCallback(() => {
@@ -70,6 +72,10 @@ export default function Rotation() {
             </button>
           ))}
           <div className="flex-1" />
+          <Button size="sm" variant="outline" onClick={() => setManual(true)} className="gap-1.5 text-foreground">
+            <Icon name="BookOpenCheck" size={14} fallback="BookOpen" />
+            Инструкция
+          </Button>
           {tab === "overview" && !deptId && data && data.departments.length > 0 && (
             <Button size="sm" onClick={() => setDialog({ open: true, initial: null, departments: data?.personnel_departments || [] })} className="gap-1.5">
               <Icon name="Plus" size={14} />
@@ -110,6 +116,8 @@ export default function Rotation() {
           </>
         )}
       </div>
+
+      <RotationManual open={manual} onOpenChange={setManual} />
 
       <DeptDialog
         open={dialog.open}

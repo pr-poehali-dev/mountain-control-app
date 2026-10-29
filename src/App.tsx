@@ -107,10 +107,8 @@ const pageLoaders = [
 function usePrefetchPages(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
-    const idle = (cb: () => void) =>
-      "requestIdleCallback" in window
-        ? (window as Window & { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(cb)
-        : window.setTimeout(cb, 1500);
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    const idle = (cb: () => void) => (w.requestIdleCallback ? w.requestIdleCallback(cb) : window.setTimeout(cb, 1500));
     let i = 0;
     const next = () => {
       if (i >= pageLoaders.length) return;
