@@ -114,6 +114,8 @@ def _handler(event, context):
         return get_notifications(params)
     elif method == 'GET' and action == 'expiring-passes':
         return get_expiring_passes(params, event)
+    elif method == 'GET' and action == 'pass-registry':
+        return get_pass_registry(params, event)
     elif method == 'GET' and action == 'pass-alert-settings':
         return pass_alert_get(event)
     elif method == 'PUT' and action == 'pass-alert-settings':
@@ -176,6 +178,64 @@ def get_expiring_passes(params, event):
         'expired': sum(1 for i in items if i['days_left'] < 0),
         'expiring': sum(1 for i in items if i['days_left'] >= 0)
     })
+
+
+def get_pass_registry(params, event):
+    """Реестр выданных пропусков (личных или на автомобиль) с состоянием срока действия"""
+    kind = 'vehicle' if params.get('kind') == 'vehicle' else 'personal'
+    warn = max(0, min(60, int(params.get('warn_days', '7') or 7)))
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    if kind == 'vehicle':
+        num, perm, vfrom, vto = 'vehicle_pass_number', 'vehicle_pass_permanent', 'vehicle_pass_valid_from', 'vehicle_pass_valid_to'
+        has = "(COALESCE(vehicle_pass_number, '') <> '' OR COALESCE(vehicle_number, '') <> '')"
+    else:
+        num, perm, vfrom, vto = 'pass_number', 'pass_permanent', 'pass_valid_from', 'pass_valid_to'
+        has = "(COALESCE(pass_number, '') <> '' OR pass_permanent = TRUE OR pass_valid_to IS NOT NULL)"
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, full_name, COALESCE(position, ''), COALESCE(department, ''), COALESCE(organization, ''),
+               COALESCE(organization_type, ''), COALESCE(category, ''), status, COALESCE(photo_url, ''),
+               COALESCE(%s, ''), COALESCE(%s, FALSE), %s, %s,
+               COALESCE(vehicle_number, ''), COALESCE(vehicle_brand, ''), COALESCE(phone, '')
+        FROM personnel
+        WHERE status != 'archived' AND COALESCE(is_hidden, FALSE) = FALSE AND is_demo_data = %s AND %s
+        ORDER BY full_name
+        LIMIT 2000
+    """ % (num, perm, vfrom, vto, demo_val, has))
+    today = date_type.today()
+    items = []
+    for r in cur.fetchall():
+        permanent, v_from, v_to = r[10], r[11], r[12]
+        days_left = None
+        if permanent:
+            state = 'permanent'
+        elif not v_to:
+            state = 'no_date'
+        else:
+            days_left = (v_to - today).days
+            if days_left < 0:
+                state = 'expired'
+            elif v_from and v_from > today:
+                state = 'future'
+            elif days_left <= warn:
+                state = 'expiring'
+            else:
+                state = 'active'
+        items.append({
+            'personnel_id': r[0], 'full_name': r[1], 'position': r[2], 'department': r[3], 'organization': r[4],
+            'organization_type': r[5], 'category': r[6], 'status': r[7], 'photo_url': r[8],
+            'pass_number': r[9], 'permanent': bool(permanent),
+            'valid_from': v_from.isoformat() if v_from else '', 'valid_to': v_to.isoformat() if v_to else '',
+            'vehicle_number': r[13], 'vehicle_brand': r[14], 'phone': r[15],
+            'state': state, 'days_left': days_left,
+        })
+    cur.close()
+    conn.close()
+    order = {'expired': 0, 'expiring': 1, 'no_date': 2, 'future': 3, 'active': 4, 'permanent': 5}
+    items.sort(key=lambda i: (order[i['state']], i['days_left'] if i['days_left'] is not None else 99999, i['full_name']))
+    counts = {k: sum(1 for i in items if i['state'] == k) for k in order}
+    return json_response(200, {'kind': kind, 'items': items, 'total': len(items), 'counts': counts, 'warn_days': warn})
 
 
 ALERT_DEFAULTS = {'enabled': False, 'emails': [], 'hour': 8, 'tz': 'Asia/Chita', 'last_sent': '', 'cron_key': ''}

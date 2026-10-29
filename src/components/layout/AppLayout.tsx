@@ -6,6 +6,7 @@ import { useDemo } from "@/contexts/DemoContext";
 import HousingConflictAlert from "@/components/aho/HousingConflictAlert";
 import PendingAccessBanner from "@/components/demo/PendingAccessBanner";
 import PendingAccessAlert from "@/components/admin/PendingAccessAlert";
+import PassExpiryAlert from "@/components/checkpoint/PassExpiryAlert";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -36,6 +37,7 @@ export default function AppLayout({ children, title, subtitle }: AppLayoutProps)
       </div>
       <HousingConflictAlert />
       <PendingAccessAlert />
+      <PassExpiryAlert />
     </div>
   );
 }

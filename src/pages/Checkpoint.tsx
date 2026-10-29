@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { useCanSeeCode } from "@/hooks/use-can-see-code";
 import { useToast } from "@/hooks/use-toast";
 import PassEditDialog from "@/components/checkpoint/PassEditDialog";
 import VehicleCheck from "@/components/checkpoint/VehicleCheck";
+import PassRegistry from "@/components/checkpoint/PassRegistry";
 import { triggerConflictCheck } from "@/components/aho/HousingConflictAlert";
 import type { ControlPoint } from "@/hooks/use-control-points";
 import {
@@ -66,14 +67,17 @@ interface Stats {
   currently_on_site: number;
 }
 
-type Tab = "scanner" | "vehicles" | "journal" | "on-site";
+type Tab = "scanner" | "vehicles" | "passes" | "journal" | "on-site";
 
 const Checkpoint = ({ point }: { point?: ControlPoint | null }) => {
   const pointId = point && !point.is_main ? point.id : null;
   const territory = !point || point.is_main || point.settings.counts_territory;
   const showVehicles = !point || point.settings.vehicles;
   const title = point?.name || "КПП";
-  const [tab, setTab] = useState<Tab>("scanner");
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t === "vehicles" || t === "passes" || t === "journal" || t === "on-site" ? t : "scanner";
+  });
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [direction, setDirection] = useState<"in" | "out">("in");
@@ -108,11 +112,13 @@ const Checkpoint = ({ point }: { point?: ControlPoint | null }) => {
   const [onSite, setOnSite] = useState<OnSiteItem[]>([]);
   const [stats, setStats] = useState<Stats>({ today_in: 0, today_out: 0, today_denied: 0, total_passes: 0, currently_on_site: 0 });
 
+  const firstPoint = useRef(true);
   useEffect(() => {
     loadStats();
     setPassResult(null);
     setError("");
-    setTab("scanner");
+    if (firstPoint.current) firstPoint.current = false;
+    else setTab("scanner");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pointId]);
 
@@ -234,6 +240,7 @@ const Checkpoint = ({ point }: { point?: ControlPoint | null }) => {
   const tabItems = [
     { id: "scanner" as Tab, label: "Сканер", icon: "ScanLine" },
     ...(showVehicles ? [{ id: "vehicles" as Tab, label: "Автомобили", icon: "Car" }] : []),
+    { id: "passes" as Tab, label: "Пропуска", icon: "CreditCard" },
     { id: "journal" as Tab, label: "Журнал проходов", icon: "FileText" },
     { id: "on-site" as Tab, label: insideLabel, icon: "Users" },
   ];
@@ -507,7 +514,13 @@ const Checkpoint = ({ point }: { point?: ControlPoint | null }) => {
           </div>
         )}
 
-        {tab === "vehicles" && showVehicles && <VehicleCheck onChanged={loadStats} pointId={pointId} />}
+        {tab === "vehicles" && showVehicles && (
+          <div className="space-y-6">
+            <VehicleCheck onChanged={loadStats} pointId={pointId} />
+            <PassRegistry kind="vehicle" />
+          </div>
+        )}
+        {tab === "passes" && <PassRegistry kind="personal" />}
 
         {tab === "journal" && (
           <div className="space-y-4">

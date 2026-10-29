@@ -267,6 +267,8 @@ export const eventsApi = {
   getEvents: (limit = 20) =>
     request(API.events, "", { params: { action: "list", limit: String(limit) } }),
   getDashboard: () => request(API.events, "", { params: { action: "dashboard" } }),
+  getPassRegistry: (kind: "personal" | "vehicle", warnDays = 7) =>
+    request(API.events, "", { params: { action: "pass-registry", kind, warn_days: String(warnDays) } }),
   getExpiringPasses: (days = 7) => request(API.events, "", { params: { action: "expiring-passes", days: String(days) } }),
   getPassAlert: () => request(API.events, "", { params: { action: "pass-alert-settings" } }),
   savePassAlert: (body: { enabled: boolean; emails: string[]; hour: number; tz?: string }) =>

@@ -184,9 +184,9 @@ function growSpan(text: string, base: 1 | 2 = 1) {
 
 const inlineInput = "h-8 px-2 -mx-2 w-[calc(100%+1rem)] bg-transparent border-transparent shadow-none text-sm font-medium text-foreground hover:bg-secondary/40 hover:border-border focus:bg-secondary/50 focus-visible:ring-1 focus-visible:ring-mine-cyan/50 focus-visible:ring-offset-0 disabled:opacity-100 disabled:cursor-default disabled:hover:bg-transparent";
 
-function CardField({ label, icon, action, className = "", children }: { label: string; icon?: string; action?: React.ReactNode; className?: string; children: React.ReactNode }) {
+function CardField({ id, label, icon, action, className = "", children }: { id?: string; label: string; icon?: string; action?: React.ReactNode; className?: string; children: React.ReactNode }) {
   return (
-    <div className={`rounded-lg border border-border bg-background/50 px-3 py-1.5 min-h-[62px] ${className}`}>
+    <div id={id} className={`rounded-lg border border-border bg-background/50 px-3 py-1.5 min-h-[62px] ${className}`}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] text-muted-foreground flex items-center gap-1">
           {icon && <Icon name={icon} size={11} />}
@@ -411,11 +411,27 @@ const Personnel = () => {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const openParam = searchParams.get("open");
+  const passParam = searchParams.get("pass");
+  const [focusPass, setFocusPass] = useState<"" | "personal" | "vehicle">("");
+
+  useEffect(() => {
+    if (!focusPass || !showCard) return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(focusPass === "vehicle" ? "pass-block-vehicle" : "pass-block-personal");
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 350);
+    const off = window.setTimeout(() => setFocusPass(""), 4500);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(off);
+    };
+  }, [focusPass, showCard]);
 
   useEffect(() => {
     if (!openParam || personnel.length === 0) return;
     const target = personnel.find((x) => String(x.id) === openParam);
     setSearchParams({}, { replace: true });
+    if (passParam === "vehicle" || passParam === "personal") setFocusPass(passParam);
     if (target) openCard(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openParam, personnel]);
@@ -1316,12 +1332,13 @@ const Personnel = () => {
                 <CardField label="Комната" className={growSpan(editRoom)}>
                   <AutoGrowInput value={editRoom} onChange={setEditRoom} placeholder="—" />
                 </CardField>
-                <CardField label="№ пропуска" icon="CreditCard" className={growSpan(editPass.pass_number)}>
+                <CardField id="pass-block-personal" label="№ пропуска" icon="CreditCard" className={`${growSpan(editPass.pass_number)} ${focusPass === "personal" ? "ring-2 ring-mine-red rounded-lg animate-pulse" : ""}`}>
                   <AutoGrowInput value={editPass.pass_number} onChange={(v) => setEditPass({ ...editPass, pass_number: v })} className="font-mono" placeholder="—" />
                 </CardField>
                 <CardField
                   label="Действие пропуска"
                   icon="CalendarRange"
+                  className={focusPass === "personal" ? "ring-2 ring-mine-red rounded-lg animate-pulse" : ""}
                   action={
                     <label className="flex items-center gap-1 text-[10px] text-foreground cursor-pointer">
                       <input
@@ -1356,7 +1373,7 @@ const Personnel = () => {
                 </CardField>
               </div>
 
-              <div className="space-y-2">
+              <div id="pass-block-vehicle" className={`space-y-2 rounded-lg transition-shadow ${focusPass === "vehicle" ? "ring-2 ring-mine-red p-2 animate-pulse" : ""}`}>
                 <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <Icon name="Car" size={14} className="text-primary" />
                   Пропуск на автомобиль

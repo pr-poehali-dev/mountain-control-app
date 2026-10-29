@@ -79,6 +79,10 @@ export default {
 				sm: 'calc(var(--radius) - 4px)'
 			},
 			keyframes: {
+				'alarm-blink': {
+					'0%, 100%': { opacity: '1', boxShadow: '0 0 0 0 hsl(var(--mine-red) / 0.6)' },
+					'50%': { opacity: '0.35', boxShadow: '0 0 0 4px hsl(var(--mine-red) / 0)' }
+				},
 				'accordion-down': {
 					from: { height: '0' },
 					to: { height: 'var(--radix-accordion-content-height)' }
@@ -101,6 +105,7 @@ export default {
 				}
 			},
 			animation: {
+				'alarm-blink': 'alarm-blink 1s ease-in-out infinite',
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'fade-in': 'fade-in 0.4s ease-out',
