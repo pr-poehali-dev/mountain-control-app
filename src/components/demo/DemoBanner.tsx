@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 const DemoBanner = () => {
-  const { isDemo, demoName, exitDemo } = useDemo();
+  const { isDemo, exitDemo } = useDemo();
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
 
@@ -22,7 +22,7 @@ const DemoBanner = () => {
         <div className="flex items-center gap-2 min-w-0">
           <Icon name="Eye" size={18} className="shrink-0" />
           <span className="text-sm font-semibold truncate">
-            ДЕМО-РЕЖИМ{demoName ? `: ${demoName}` : ""}
+            ДЕМО-РЕЖИМ
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
