@@ -67,7 +67,6 @@ export interface Overview {
   departments: DeptCard[];
   alerts: Alert[];
   upcoming: Upcoming[];
-  personnel_departments: string[];
 }
 
 export interface Issue {

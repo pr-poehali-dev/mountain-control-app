@@ -1,6 +1,45 @@
-{"tests": [
-  {"name": "Overview requires admin", "method": "GET", "path": "/?action=overview", "expectedStatus": 403, "expectedBody": {"error": "string"}, "bodyMatcher": "partial"},
-  {"name": "Calendar requires admin", "method": "GET", "path": "/?action=calendar", "expectedStatus": 403},
-  {"name": "Save department requires admin", "method": "POST", "path": "/?action=department", "body": {"name": "ОГР"}, "expectedStatus": 403},
-  {"name": "Options", "method": "OPTIONS", "path": "/", "expectedStatus": 200}
-]}
+{
+  "tests": [
+    {
+      "name": "Overview requires admin",
+      "method": "GET",
+      "path": "/?action=overview",
+      "expectedStatus": 403,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Calendar requires admin",
+      "method": "GET",
+      "path": "/?action=calendar",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Save department requires admin",
+      "method": "POST",
+      "path": "/?action=department",
+      "body": {
+        "name": "ОГР"
+      },
+      "expectedStatus": 403
+    },
+    {
+      "name": "Options",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Add worker requires admin",
+      "method": "POST",
+      "path": "/?action=worker",
+      "body": {
+        "full_name": "Тест",
+        "department_id": 5
+      },
+      "expectedStatus": 403
+    }
+  ]
+}

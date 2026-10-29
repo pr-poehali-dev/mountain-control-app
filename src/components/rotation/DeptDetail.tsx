@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,12 +7,17 @@ import { rotationApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { colorOf, daysLabel, fmtDate, type CrewSummary, type Gap } from "./types";
 import type { DeptForm } from "./DeptDialog";
+import WorkerDialog, { type WorkerForm } from "./WorkerDialog";
 
 interface Member {
   id: number;
   full_name: string;
   position: string;
-  status: string;
+  tab_number: string;
+  phone: string;
+  pass_valid_to: string | null;
+  housing: string;
+  notes: string;
   is_key: boolean;
   exceptions: { id: number; label: string; date_from: string; date_to: string; kind: string }[];
 }
@@ -26,16 +31,15 @@ interface Detail {
   department: DeptForm & { id: number };
   crews: Crew[];
   norms: { id: number; position: string; min_count: number }[];
-  unassigned: { id: number; full_name: string; position: string; department: string }[];
+  unassigned: { id: number; full_name: string; position: string; tab_number: string }[];
   positions: { position: string; by_crew: Record<string, number> }[];
   gaps: Gap[];
-  personnel_departments: string[];
 }
 
 interface Props {
   id: number;
   onBack: () => void;
-  onEdit: (d: DeptForm, departments: string[]) => void;
+  onEdit: (d: DeptForm) => void;
   onChanged: () => void;
 }
 
@@ -45,6 +49,24 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
   const [newNorm, setNewNorm] = useState({ position: "", min: 1 });
   const [search, setSearch] = useState("");
+  const [worker, setWorker] = useState<{ open: boolean; initial: WorkerForm | null }>({ open: false, initial: null });
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const importFile = async (file: File) => {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+    await run(() => rotationApi.importWorkers(id, btoa(bin)));
+  };
+
+  const openWorker = (m: Member, crewId: number | null) =>
+    setWorker({
+      open: true,
+      initial: {
+        id: m.id, full_name: m.full_name, position: m.position === "Без должности" ? "" : m.position, tab_number: m.tab_number || "",
+        phone: m.phone || "", pass_valid_to: m.pass_valid_to || "", housing: m.housing || "", notes: m.notes || "", crew_id: crewId,
+      },
+    });
 
   const load = useCallback(() => {
     rotationApi.department(id).then(setData).catch((e) => toast({ title: "Ошибка загрузки", description: e.message, variant: "destructive" }));
@@ -97,7 +119,26 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
             {dep.head_name && ` · руководитель: ${dep.head_name}`}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => onEdit(dep, data.personnel_departments)} className="gap-1.5 text-foreground">
+        <Button variant="outline" size="sm" onClick={() => setWorker({ open: true, initial: null })} className="gap-1.5 text-foreground">
+          <Icon name="UserPlus" size={14} />
+          Добавить работника
+        </Button>
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => fileRef.current?.click()} className="gap-1.5 text-foreground">
+          <Icon name="FileUp" size={14} />
+          Загрузить из Excel
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) importFile(f);
+          }}
+        />
+        <Button variant="outline" size="sm" onClick={() => onEdit(dep)} className="gap-1.5 text-foreground">
           <Icon name="Settings" size={14} />
           Настроить
         </Button>
@@ -163,23 +204,23 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
                 <div key={m.id} className="px-3 py-2 flex items-center gap-2 group">
                   <button
                     title={m.is_key ? "Закреплён за вахтой (не переносится при перебалансировке)" : "Закрепить за вахтой"}
-                    onClick={() => run(() => rotationApi.setMember({ personnel_id: m.id, crew_id: cr.id, is_key: !m.is_key }), m.is_key ? "Снято закрепление" : "Закреплён")}
+                    onClick={() => run(() => rotationApi.setMember({ worker_id: m.id, is_key: !m.is_key }), m.is_key ? "Снято закрепление" : "Закреплён")}
                     className={m.is_key ? "text-mine-amber" : "text-muted-foreground/40 hover:text-mine-amber"}
                   >
                     <Icon name="Star" size={14} />
                   </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground truncate">{m.full_name}</p>
+                  <button className="flex-1 min-w-0 text-left" onClick={() => openWorker(m, cr.id)} title="Открыть карточку">
+                    <p className="text-sm text-foreground truncate hover:underline">{m.full_name}</p>
                     <p className="text-[11px] text-muted-foreground truncate">
                       {m.position}
                       {m.exceptions.length > 0 && (
                         <span className="text-mine-red"> · {m.exceptions[m.exceptions.length - 1].label.toLowerCase()} {fmtDate(m.exceptions[m.exceptions.length - 1].date_from).slice(0, 5)}</span>
                       )}
                     </p>
-                  </div>
+                  </button>
                   <Select
                     value={String(cr.id)}
-                    onValueChange={(v) => run(() => rotationApi.setMember({ personnel_id: m.id, crew_id: v === "none" ? null : Number(v) }), "Перемещён")}
+                    onValueChange={(v) => run(() => rotationApi.setMember({ worker_id: m.id, crew_id: v === "none" ? null : Number(v) }), "Перемещён")}
                   >
                     <SelectTrigger className="h-7 w-[74px] text-xs opacity-60 group-hover:opacity-100">
                       <SelectValue />
@@ -195,7 +236,7 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
                   </Select>
                 </div>
               ))}
-              {cr.members.length === 0 && <p className="p-4 text-xs text-center text-muted-foreground">Пусто — нажмите «Автосборка»</p>}
+              {cr.members.length === 0 && <p className="p-4 text-xs text-center text-muted-foreground">Пусто — добавьте работников или нажмите «Автосборка»</p>}
             </div>
           </div>
         ))}
@@ -267,20 +308,18 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
         <div className="rounded-xl border border-border bg-card">
           <div className="p-3 border-b border-border">
             <p className="text-sm font-semibold text-foreground">Не распределены по вахтам ({data.unassigned.length})</p>
-            <p className="text-xs text-muted-foreground">
-              Сотрудники из «Персонала» с подразделением: {[dep.name, dep.code, ...(dep.aliases || [])].filter(Boolean).join(", ")}
-            </p>
+            <p className="text-xs text-muted-foreground">Работники подразделения без вахты. «Автосборка» распределит их поровну по должностям.</p>
           </div>
           <div className="max-h-[360px] overflow-y-auto divide-y divide-border/60">
             {data.unassigned.filter(match).map((u) => (
               <div key={u.id} className="px-3 py-2 flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-foreground truncate">{u.full_name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{u.position} · {u.department}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{u.position}{u.tab_number && ` · таб. ${u.tab_number}`}</p>
                 </div>
                 {data.crews.map((cr) => (
                   <Button key={cr.id} size="sm" variant="outline" className="h-7 px-2 text-xs text-foreground" disabled={busy}
-                    onClick={() => run(() => rotationApi.setMember({ personnel_id: u.id, crew_id: cr.id }), `Добавлен в вахту ${cr.name}`)}>
+                    onClick={() => run(() => rotationApi.setMember({ worker_id: u.id, crew_id: cr.id }), `Добавлен в вахту ${cr.name}`)}>
                     {cr.name}
                   </Button>
                 ))}
@@ -288,12 +327,24 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
             ))}
             {data.unassigned.length === 0 && (
               <p className="p-6 text-xs text-center text-muted-foreground">
-                Все сотрудники распределены. Если список пуст изначально — проверьте в «Настроить», какие подразделения из карточек сюда входят.
+                Все работники распределены. Новых добавляйте кнопкой «Добавить работника» или загрузкой из Excel (столбцы: ФИО, Должность, Табельный, Вахта, Пропуск до, Проживание).
               </p>
             )}
           </div>
         </div>
       </div>
+      <WorkerDialog
+        open={worker.open}
+        departmentId={id}
+        crews={data.crews.map((c) => ({ id: c.id, name: c.name }))}
+        positions={positionsAll}
+        initial={worker.initial}
+        onClose={() => setWorker({ open: false, initial: null })}
+        onSaved={() => {
+          load();
+          onChanged();
+        }}
+      />
     </div>
   );
 }

@@ -61,7 +61,7 @@ export default function RotationAbsences({ onChanged }: { onChanged: () => void 
     }
     setBusy(true);
     try {
-      await rotationApi.saveException({ personnel_id: person.id, ...form, date_to: form.date_to || form.date_from });
+      await rotationApi.saveException({ worker_id: person.id, ...form, date_to: form.date_to || form.date_from });
       toast({ title: "Отсутствие добавлено", description: "Графики и проверка укомплектованности пересчитаны" });
       setPerson(null);
       setQuery("");
@@ -95,7 +95,7 @@ export default function RotationAbsences({ onChanged }: { onChanged: () => void 
               setPerson(null);
               setQuery(e.target.value);
             }}
-            placeholder="ФИО сотрудника"
+            placeholder="ФИО работника из списков перевахтовки"
           />
           {found.length > 0 && (
             <div className="absolute z-20 mt-1 w-full rounded-lg border border-border bg-popover shadow-lg max-h-60 overflow-y-auto">
@@ -104,7 +104,7 @@ export default function RotationAbsences({ onChanged }: { onChanged: () => void 
                   <p className="text-sm text-foreground">{p.full_name}</p>
                   <p className="text-[11px] text-muted-foreground">
                     {p.position}
-                    {p.rotation_department ? ` · ${p.rotation_department}, вахта ${p.crew}` : " · не в вахте"}
+                    {` · ${p.rotation_department}${p.crew ? `, вахта ${p.crew}` : ", не в вахте"}`}
                   </p>
                 </button>
               ))}

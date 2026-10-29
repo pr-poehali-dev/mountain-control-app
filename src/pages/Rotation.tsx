@@ -77,7 +77,7 @@ export default function Rotation() {
             Инструкция
           </Button>
           {tab === "overview" && !deptId && data && data.departments.length > 0 && (
-            <Button size="sm" onClick={() => setDialog({ open: true, initial: null, departments: data?.personnel_departments || [] })} className="gap-1.5">
+            <Button size="sm" onClick={() => setDialog({ open: true, initial: null, departments: [] })} className="gap-1.5">
               <Icon name="Plus" size={14} />
               Подразделение
             </Button>
@@ -95,14 +95,14 @@ export default function Rotation() {
                 <DeptDetail
                   id={deptId}
                   onBack={() => setDeptId(null)}
-                  onEdit={(d, deps) => setDialog({ open: true, initial: d, departments: deps })}
+                  onEdit={(d) => setDialog({ open: true, initial: d, departments: [] })}
                   onChanged={load}
                 />
               ) : (
                 <RotationOverview
                   data={data}
                   onOpenDept={setDeptId}
-                  onAddDept={() => setDialog({ open: true, initial: null, departments: data?.personnel_departments || [] })}
+                  onAddDept={() => setDialog({ open: true, initial: null, departments: [] })}
                   onOpenChange={(date, id) => {
                     setFocus({ date, deptId: id });
                     setTab("changes");

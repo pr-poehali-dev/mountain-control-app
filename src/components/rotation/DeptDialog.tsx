@@ -42,24 +42,16 @@ interface Props {
   onSaved: (id: number) => void;
 }
 
-export default function DeptDialog({ open, initial, departments, onClose, onSaved }: Props) {
+export default function DeptDialog({ open, initial, onClose, onSaved }: Props) {
   const { toast } = useToast();
   const [f, setF] = useState<DeptForm>(emptyDept());
-  const [aliasInput, setAliasInput] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (open) {
       setF(initial || emptyDept());
-      setAliasInput("");
     }
   }, [open, initial]);
-
-  const addAlias = (v: string) => {
-    const t = v.trim();
-    if (t && !f.aliases.includes(t)) setF({ ...f, aliases: [...f.aliases, t] });
-    setAliasInput("");
-  };
 
   const save = async () => {
     if (!f.name.trim()) {
@@ -68,7 +60,7 @@ export default function DeptDialog({ open, initial, departments, onClose, onSave
     }
     setBusy(true);
     try {
-      const d = await rotationApi.saveDepartment({ ...f, aliases: aliasInput.trim() ? [...f.aliases, aliasInput.trim()] : f.aliases });
+      const d = await rotationApi.saveDepartment({ ...f });
       toast({ title: f.id ? "Подразделение обновлено" : "Подразделение добавлено" });
       onSaved(d.id);
     } catch (e) {
@@ -78,14 +70,13 @@ export default function DeptDialog({ open, initial, departments, onClose, onSave
     }
   };
 
-  const suggestions = departments.filter((d) => !f.aliases.includes(d) && d.toLowerCase().includes(aliasInput.toLowerCase())).slice(0, 8);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{f.id ? "Настройка подразделения" : "Новое подразделение"}</DialogTitle>
-          <DialogDescription>График вахт, схема смены и какие сотрудники из «Персонала» относятся к подразделению</DialogDescription>
+          <DialogDescription>График вахт и схема смены. Работников добавите в карточке подразделения.</DialogDescription>
         </DialogHeader>
 
         {!f.id && (
@@ -155,41 +146,6 @@ export default function DeptDialog({ open, initial, departments, onClose, onSave
               <p className="text-xs text-muted-foreground mt-0.5">{o.d}</p>
             </button>
           ))}
-        </div>
-
-        <div>
-          <label className="text-xs text-muted-foreground">Какие «подразделения» из карточек сотрудников сюда входят</label>
-          <div className="flex flex-wrap gap-1.5 mt-1">
-            {f.aliases.map((a) => (
-              <span key={a} className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-1 text-xs text-foreground">
-                {a}
-                <button type="button" onClick={() => setF({ ...f, aliases: f.aliases.filter((x) => x !== a) })}>
-                  <Icon name="X" size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-          <Input
-            className="mt-2"
-            value={aliasInput}
-            onChange={(e) => setAliasInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addAlias(aliasInput);
-              }
-            }}
-            placeholder="Начните вводить и нажмите Enter"
-          />
-          {suggestions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {suggestions.map((s) => (
-                <button key={s} type="button" onClick={() => addAlias(s)} className="text-xs rounded-md border border-dashed border-border px-2 py-1 text-muted-foreground hover:text-foreground">
-                  + {s}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         <div>

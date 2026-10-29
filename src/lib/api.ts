@@ -485,7 +485,13 @@ export const rotationApi = {
     request(API.rotation, "", { method: "POST", body: { id }, params: { action: "department-delete" } }),
   autoAssign: (department_id: number, rebalance = false) =>
     request(API.rotation, "", { method: "POST", body: { department_id, rebalance }, params: { action: "auto-assign" } }),
-  setMember: (body: { personnel_id: number; crew_id: number | null; is_key?: boolean }) =>
+  saveWorker: (body: Record<string, unknown>) =>
+    request(API.rotation, "", { method: "POST", body, params: { action: "worker" } }),
+  deleteWorker: (id: number) =>
+    request(API.rotation, "", { method: "POST", body: { id }, params: { action: "worker-delete" } }),
+  importWorkers: (department_id: number, file: string) =>
+    request(API.rotation, "", { method: "POST", body: { department_id, file }, params: { action: "workers-import" } }),
+  setMember: (body: { worker_id: number; crew_id?: number | null; is_key?: boolean }) =>
     request(API.rotation, "", { method: "PUT", body, params: { action: "member" } }),
   saveNorm: (department_id: number, position: string, min_count: number) =>
     request(API.rotation, "", { method: "PUT", body: { department_id, position, min_count }, params: { action: "norm" } }),

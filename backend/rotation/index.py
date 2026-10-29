@@ -93,26 +93,24 @@ def load_departments(cur, only_id=None):
 
 
 def load_members(cur, deps):
+    """Работники раздела (собственный список, не связан с «Персоналом»)"""
     crews = {c['id']: c for d in deps for c in d['crews']}
     if not crews:
         return {}
-    cur.execute("""SELECT m.personnel_id, m.crew_id, m.is_key, m.notes, p.full_name, COALESCE(p.position, ''), COALESCE(p.department, ''),
-                          p.status, COALESCE(p.personal_code, ''), COALESCE(p.phone, ''), p.pass_permanent, p.pass_valid_to,
-                          COALESCE(p.medical_status, ''), p.residence_room_id, COALESCE(p.residence, ''), COALESCE(p.room, ''),
-                          COALESCE(p.organization, '')
-                   FROM rotation_members m JOIN personnel p ON p.id = m.personnel_id
-                   WHERE m.crew_id IN (%s) AND p.status <> 'archived' AND p.is_demo_data = FALSE
-                   ORDER BY p.position, p.full_name""" % ','.join(str(i) for i in crews))
+    cur.execute("""SELECT id, crew_id, is_key, notes, full_name, COALESCE(NULLIF(position, ''), 'Без должности'), tab_number, phone,
+                          pass_valid_to, housing
+                   FROM rotation_workers
+                   WHERE crew_id IN (%s) AND is_active = TRUE
+                   ORDER BY position, full_name""" % ','.join(str(i) for i in crews))
     people = {}
     for r in cur.fetchall():
-        p = {'id': r[0], 'crew_id': r[1], 'is_key': r[2], 'notes': r[3], 'full_name': r[4], 'position': r[5] or 'Без должности',
-             'department': r[6], 'status': r[7], 'code': r[8], 'phone': r[9], 'pass_permanent': r[10], 'pass_valid_to': r[11],
-             'medical_status': r[12], 'room_id': r[13], 'residence': r[14], 'room': r[15], 'organization': r[16], 'exceptions': []}
+        p = {'id': r[0], 'crew_id': r[1], 'is_key': r[2], 'notes': r[3], 'full_name': r[4], 'position': r[5], 'tab_number': r[6],
+             'phone': r[7], 'pass_valid_to': r[8], 'housing': r[9], 'exceptions': []}
         crews[r[1]]['members'].append(p)
         people[r[0]] = p
     if people:
-        cur.execute("""SELECT id, personnel_id, kind, date_from, date_to, notes FROM rotation_exceptions
-                       WHERE personnel_id IN (%s) ORDER BY date_from""" % ','.join(str(i) for i in people))
+        cur.execute("""SELECT id, worker_id, kind, date_from, date_to, notes FROM rotation_absences
+                       WHERE worker_id IN (%s) ORDER BY date_from""" % ','.join(str(i) for i in people))
         for r in cur.fetchall():
             people[r[1]]['exceptions'].append({'id': r[0], 'kind': r[2], 'date_from': r[3], 'date_to': r[4], 'notes': r[5],
                                                'label': sch.EXC_LABELS.get(r[2], r[2])})
@@ -130,21 +128,12 @@ def load_norms(cur, dep_ids):
     return res
 
 
-def dep_match_sql(dep):
-    names = [dep['name']] + ([dep['code']] if dep['code'] else []) + list(dep['aliases'] or [])
-    names = [n.strip().lower() for n in names if n and n.strip()]
-    if not names:
-        return "FALSE"
-    return "(" + " OR ".join("LOWER(TRIM(COALESCE(p.department, ''))) = '%s'" % q(n) for n in names) + ")"
-
-
 def unassigned(cur, dep):
-    cur.execute("""SELECT p.id, p.full_name, COALESCE(NULLIF(p.position, ''), 'Без должности'), COALESCE(p.department, ''), p.status
-                   FROM personnel p
-                   WHERE p.status <> 'archived' AND p.is_demo_data = FALSE AND COALESCE(p.is_hidden, FALSE) = FALSE
-                     AND %s AND NOT EXISTS (SELECT 1 FROM rotation_members m WHERE m.personnel_id = p.id)
-                   ORDER BY 3, 2""" % dep_match_sql(dep))
-    return [{'id': r[0], 'full_name': r[1], 'position': r[2], 'department': r[3], 'status': r[4]} for r in cur.fetchall()]
+    cur.execute("""SELECT id, full_name, COALESCE(NULLIF(position, ''), 'Без должности'), tab_number
+                   FROM rotation_workers
+                   WHERE department_id = %d AND crew_id IS NULL AND is_active = TRUE
+                   ORDER BY 3, 2""" % int(dep['id']))
+    return [{'id': r[0], 'full_name': r[1], 'position': r[2], 'tab_number': r[3]} for r in cur.fetchall()]
 
 
 # ---------- расчёты ----------
@@ -199,48 +188,34 @@ def crew_summary(dep, crew, today):
 
 
 def readiness(person, arrive, period_end):
-    """Готовность работника к заезду на вахту"""
+    """Готовность работника к заезду на вахту (по данным самого раздела)"""
     issues = []
-    if not person['pass_permanent']:
-        vt = person['pass_valid_to']
-        if not vt:
-            issues.append({'code': 'pass_none', 'text': 'Не указан срок пропуска'})
-        elif vt < arrive:
+    vt = person['pass_valid_to']
+    if vt:
+        if vt < arrive:
             issues.append({'code': 'pass_expired', 'text': 'Пропуск истечёт до заезда (%s)' % vt.strftime('%d.%m.%Y')})
         elif vt < period_end:
             issues.append({'code': 'pass_mid', 'text': 'Пропуск истечёт во время вахты (%s)' % vt.strftime('%d.%m.%Y')})
-    if not person['room_id'] and not person['room']:
-        issues.append({'code': 'housing', 'text': 'Не назначено место проживания'})
-    exc = sch.overlaps(person['exceptions'], arrive, period_end)
-    for e in exc:
+    if not person['housing']:
+        issues.append({'code': 'housing', 'text': 'Не указано проживание'})
+    for e in sch.overlaps(person['exceptions'], arrive, period_end):
         issues.append({'code': 'exception', 'text': '%s %s–%s' % (e['label'], e['date_from'].strftime('%d.%m'),
                                                                   e['date_to'].strftime('%d.%m') if e['kind'] != 'dismissal' else '…')})
     return issues
 
 
-def load_moves(cur, pids, d_from, d_to):
-    if not pids:
+def load_moves(cur, ids, d_from, d_to):
+    if not ids:
         return {}
-    cur.execute("""SELECT personnel_id, change_date, direction, status, transport, notes FROM rotation_moves
-                   WHERE personnel_id IN (%s) AND change_date BETWEEN '%s' AND '%s'""" % (','.join(str(i) for i in pids), d_from, d_to))
+    cur.execute("""SELECT worker_id, change_date, direction, status, transport, notes FROM rotation_worker_moves
+                   WHERE worker_id IN (%s) AND change_date BETWEEN '%s' AND '%s'""" % (','.join(str(i) for i in ids), d_from, d_to))
     return {(r[0], r[1], r[2]): {'status': r[3], 'transport': r[4], 'notes': r[5]} for r in cur.fetchall()}
 
 
-def last_passes(cur, pids):
-    if not pids:
-        return {}
-    cur.execute("""SELECT DISTINCT ON (personnel_id) personnel_id, direction, created_at FROM checkpoint_passes
-                   WHERE personnel_id IN (%s) AND COALESCE(notes, '') NOT LIKE 'ОТКАЗ%%'
-                     AND (control_point_id IS NULL OR control_point_id IN (SELECT id FROM control_points WHERE is_main = TRUE OR (settings->>'counts_territory') = 'true'))
-                   ORDER BY personnel_id, created_at DESC""" % ','.join(str(i) for i in pids))
-    return {r[0]: {'direction': r[1], 'at': r[2]} for r in cur.fetchall()}
-
-
 def build_changes(cur, deps, d_from, d_to, dep_filter=None):
-    """Список перевахтовок с составами заезда/выезда, готовностью и фактом по КПП"""
+    """Список перевахтовок с составами заезда/выезда и готовностью"""
     pids = [m['id'] for d in deps for c in d['crews'] for m in c['members']]
     moves = load_moves(cur, pids, d_from - timedelta(days=1), d_to + timedelta(days=1))
-    passes = last_passes(cur, pids)
     today = date.today()
     result = []
     for dep in deps:
@@ -259,21 +234,13 @@ def build_changes(cur, deps, d_from, d_to, dep_filter=None):
                         mv = moves.get((m['id'], d, side), {})
                         exc = sch.exception_on(m['exceptions'], d if side == 'in' else d - timedelta(days=1))
                         issues = readiness(m, d, period_end) if side == 'in' else []
-                        lp = passes.get(m['id'])
-                        fact = ''
-                        if lp and lp['at'].date() >= d - timedelta(days=dep['handover_days'] + 1):
-                            fact = lp['direction']
                         status = mv.get('status') or ('cancelled' if exc and exc['kind'] == 'dismissal' else 'planned')
-                        if side == 'in' and fact == 'in' and status not in ('cancelled',):
-                            status = 'arrived'
-                        if side == 'out' and fact == 'out' and status not in ('cancelled',):
-                            status = 'departed'
                         overdue = d < today and status in ('planned', 'confirmed', 'tickets')
                         people.append({
                             'id': m['id'], 'full_name': m['full_name'], 'position': m['position'], 'is_key': m['is_key'],
                             'phone': m['phone'], 'status': status, 'transport': mv.get('transport', ''), 'notes': mv.get('notes', ''),
                             'issues': issues, 'exception': exc['label'] if exc else '', 'overdue': overdue,
-                            'residence': ('%s %s' % (m['residence'], m['room'])).strip(),
+                            'residence': m['housing'], 'tab_number': m['tab_number'],
                         })
                         entry['total'] += 1
                         if status in ('arrived', 'departed', 'cancelled'):
@@ -314,10 +281,10 @@ def overview(cur):
                                                                          g['date_from'].strftime('%d.%m'), g['date_to'].strftime('%d.%m'))})
         if un:
             alerts.append({'level': 'amber', 'department_id': dep['id'], 'kind': 'unassigned',
-                           'text': '%s: %d чел. не распределены по вахтам' % (dep['name'], len(un))})
-        if not dep['crews'] or all(len(c['members']) == 0 for c in dep['crews']):
+                           'text': '%s: %d чел. не распределены по вахтам — нажмите «Автосборка»' % (dep['name'], len(un))})
+        if (not dep['crews'] or all(len(c['members']) == 0 for c in dep['crews'])) and not un:
             alerts.append({'level': 'amber', 'department_id': dep['id'], 'kind': 'empty',
-                           'text': '%s: в вахтах нет людей — выполните автосборку' % dep['name']})
+                           'text': '%s: нет работников — добавьте или загрузите список' % dep['name']})
     changes = build_changes(cur, deps, today - timedelta(days=3), today + timedelta(days=30))
     for ch in changes:
         if ch['issues'] and ch['days_left'] <= 14:
@@ -333,9 +300,7 @@ def overview(cur):
     upcoming = [{k: v for k, v in c.items() if k not in ('in', 'out')} | {
         'in_count': sum(len(x['people']) for x in c['in']), 'out_count': sum(len(x['people']) for x in c['out'])}
         for c in changes if c['days_left'] >= -3][:12]
-    cur.execute("SELECT DISTINCT COALESCE(department, '') FROM personnel WHERE is_demo_data = FALSE AND status <> 'archived' AND COALESCE(department, '') <> '' ORDER BY 1")
-    pdeps = [r[0] for r in cur.fetchall()]
-    return resp(200, {'today': today, 'totals': totals, 'departments': cards, 'alerts': alerts, 'upcoming': upcoming, 'personnel_departments': pdeps})
+    return resp(200, {'today': today, 'totals': totals, 'departments': cards, 'alerts': alerts, 'upcoming': upcoming})
 
 
 def dept_save(cur, body):
@@ -388,14 +353,14 @@ def rebuild_crews(cur, dep_id, scheme, on_days, off_days):
             keep[name[0]] = keep.get(name[0], cid)
     for oid, oname in old[len(templates):]:
         target = keep.get(oname[0]) or list(keep.values())[0]
-        cur.execute("UPDATE rotation_members SET crew_id = %d WHERE crew_id = %d" % (target, oid))
+        cur.execute("UPDATE rotation_workers SET crew_id = %d WHERE crew_id = %d" % (target, oid))
         cur.execute("DELETE FROM rotation_crews WHERE id = %d" % oid)
 
 
 def dept_delete(cur, body):
     did = int(body.get('id') or 0)
     cur.execute("UPDATE rotation_departments SET is_active = FALSE, updated_at = NOW() WHERE id = %d" % did)
-    cur.execute("DELETE FROM rotation_members WHERE crew_id IN (SELECT id FROM rotation_crews WHERE department_id = %d)" % did)
+    cur.execute("UPDATE rotation_workers SET crew_id = NULL WHERE department_id = %d" % did)
     return resp(200, {'message': 'Подразделение удалено из перевахтовки'})
 
 
@@ -419,13 +384,11 @@ def dept_detail(cur, params):
         s['members'] = [{k: v for k, v in m.items() if k not in ('crew_id',)} for m in c['members']]
         s['periods'] = sch.periods(dep, c, today, today + timedelta(days=365))[:4]
         crews.append(s)
-    cur.execute("SELECT DISTINCT COALESCE(department, '') FROM personnel WHERE is_demo_data = FALSE AND status <> 'archived' AND COALESCE(department, '') <> '' ORDER BY 1")
-    all_deps = [r[0] for r in cur.fetchall()]
     dep_out = {k: v for k, v in dep.items() if k != 'crews'}
     return resp(200, {
         'department': dep_out, 'crews': crews, 'norms': norms, 'unassigned': unassigned(cur, dep),
         'positions': [{'position': p, 'by_crew': v} for p, v in sorted(positions.items())],
-        'gaps': coverage_gaps(dep, norms, today, 180), 'personnel_departments': all_deps,
+        'gaps': coverage_gaps(dep, norms, today, 180),
     })
 
 
@@ -444,37 +407,105 @@ def auto_assign(cur, body):
     load_members(cur, deps)
     cand = unassigned(cur, dep)
     if body.get('rebalance'):
-        cur.execute("DELETE FROM rotation_members WHERE crew_id IN (%s) AND is_key = FALSE" % ','.join(str(c['id']) for c in dep['crews']))
         for c in dep['crews']:
-            kept = [m for m in c['members'] if m['is_key']]
             cand += [{'id': m['id'], 'full_name': m['full_name'], 'position': m['position']} for m in c['members'] if not m['is_key']]
-            c['members'] = kept
+            c['members'] = [m for m in c['members'] if m['is_key']]
     crew_ids = [c['id'] for c in dep['crews']]
     plan = sch.balance({c['id']: c['members'] for c in dep['crews']}, cand, crew_ids)
-    for pid, cid in plan:
-        cur.execute("""INSERT INTO rotation_members (personnel_id, crew_id) VALUES (%d, %d)
-                       ON CONFLICT (personnel_id) DO UPDATE SET crew_id = EXCLUDED.crew_id, updated_at = NOW()""" % (pid, cid))
+    for wid, cid in plan:
+        cur.execute("UPDATE rotation_workers SET crew_id = %d, updated_at = NOW() WHERE id = %d" % (cid, wid))
     cur.execute("""INSERT INTO rotation_norms (department_id, position, min_count)
                    SELECT %d, x.position, GREATEST(1, FLOOR(x.cnt::numeric / %d))::int FROM (
-                       SELECT COALESCE(NULLIF(p.position, ''), 'Без должности') AS position, COUNT(*) AS cnt
-                       FROM rotation_members m JOIN personnel p ON p.id = m.personnel_id
-                       WHERE m.crew_id IN (%s) GROUP BY 1) x
-                   ON CONFLICT (department_id, position) DO NOTHING""" % (did, crews_total_ratio(dep), ','.join(str(i) for i in crew_ids)))
+                       SELECT COALESCE(NULLIF(position, ''), 'Без должности') AS position, COUNT(*) AS cnt
+                       FROM rotation_workers WHERE department_id = %d AND crew_id IS NOT NULL AND is_active = TRUE GROUP BY 1) x
+                   ON CONFLICT (department_id, position) DO NOTHING""" % (did, crews_total_ratio(dep), did))
     return resp(200, {'assigned': len(plan), 'message': 'Распределено: %d чел.' % len(plan)})
 
 
 def member_set(cur, body):
-    pid = int(body.get('personnel_id') or 0)
-    crew = body.get('crew_id')
-    if crew in (None, '', 0):
-        cur.execute("DELETE FROM rotation_members WHERE personnel_id = %d" % pid)
-        return resp(200, {'message': 'Исключён из вахт'})
-    cur.execute("""INSERT INTO rotation_members (personnel_id, crew_id, is_key) VALUES (%d, %d, %s)
-                   ON CONFLICT (personnel_id) DO UPDATE SET crew_id = EXCLUDED.crew_id,
-                   is_key = COALESCE(%s, rotation_members.is_key), updated_at = NOW()""" % (
-        pid, int(crew), 'TRUE' if body.get('is_key') else 'FALSE',
-        'NULL' if body.get('is_key') is None else ('TRUE' if body.get('is_key') else 'FALSE')))
+    """Перенос работника в вахту / снятие с вахты / закрепление"""
+    wid = int(body.get('worker_id') or body.get('personnel_id') or 0)
+    sets = ["updated_at = NOW()"]
+    if 'crew_id' in body:
+        crew = body.get('crew_id')
+        sets.append("crew_id = %s" % ('NULL' if crew in (None, '', 0) else int(crew)))
+    if body.get('is_key') is not None:
+        sets.append("is_key = %s" % ('TRUE' if body.get('is_key') else 'FALSE'))
+    cur.execute("UPDATE rotation_workers SET %s WHERE id = %d" % (', '.join(sets), wid))
     return resp(200, {'message': 'Сохранено'})
+
+
+def worker_save(cur, body):
+    """Добавление или изменение работника в списке подразделения"""
+    name = ' '.join((body.get('full_name') or '').split())
+    did = int(body.get('department_id') or 0)
+    if not name or not did:
+        return resp(400, {'error': 'Укажите ФИО и подразделение'})
+    pv = to_date(body.get('pass_valid_to'))
+    crew = body.get('crew_id')
+    crew_sql = 'NULL' if crew in (None, '', 0, '0') else str(int(crew))
+    vals = (q(name), q(body.get('position', '').strip()), q(body.get('tab_number', '').strip()), q(body.get('phone', '').strip()),
+            ("'%s'" % pv) if pv else 'NULL', q(body.get('housing', '').strip()), q(body.get('notes', '')))
+    if body.get('id'):
+        cur.execute("""UPDATE rotation_workers SET full_name = '%s', position = '%s', tab_number = '%s', phone = '%s', pass_valid_to = %s,
+                       housing = '%s', notes = '%s', crew_id = %s, updated_at = NOW() WHERE id = %d""" % (vals + (crew_sql, int(body['id']))))
+        return resp(200, {'id': int(body['id']), 'message': 'Работник обновлён'})
+    cur.execute("""INSERT INTO rotation_workers (full_name, position, tab_number, phone, pass_valid_to, housing, notes, crew_id, department_id)
+                   VALUES ('%s', '%s', '%s', '%s', %s, '%s', '%s', %s, %d) RETURNING id""" % (vals + (crew_sql, did)))
+    return resp(200, {'id': cur.fetchone()[0], 'message': 'Работник добавлен'})
+
+
+def worker_delete(cur, body):
+    cur.execute("UPDATE rotation_workers SET is_active = FALSE, crew_id = NULL, updated_at = NOW() WHERE id = %d" % int(body.get('id') or 0))
+    return resp(200, {'message': 'Работник удалён из списка'})
+
+
+def workers_import(cur, body):
+    """Загрузка списка работников из Excel: ФИО, должность, табельный №, телефон, вахта, пропуск до, проживание"""
+    from openpyxl import load_workbook
+    did = int(body.get('department_id') or 0)
+    deps = load_departments(cur, did)
+    if not deps:
+        return resp(404, {'error': 'Подразделение не найдено'})
+    crews = {c['name'].strip().upper(): c['id'] for c in deps[0]['crews']}
+    wb = load_workbook(BytesIO(base64.b64decode(body.get('file') or '')), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return resp(400, {'error': 'Файл пустой'})
+    keys = {'фио': 'full_name', 'ф.и.о.': 'full_name', 'сотрудник': 'full_name', 'должность': 'position', 'профессия': 'position',
+            'табельный': 'tab_number', 'таб': 'tab_number', 'телефон': 'phone', 'вахта': 'crew', 'пропуск': 'pass_valid_to',
+            'проживание': 'housing', 'общежитие': 'housing', 'комната': 'housing'}
+    header = [str(c or '').strip().lower() for c in rows[0]]
+    cols = {}
+    for idx, h in enumerate(header):
+        for k, f in keys.items():
+            if h.startswith(k) and f not in cols:
+                cols[f] = idx
+    data = rows[1:]
+    if 'full_name' not in cols:
+        cols = {'full_name': 0, 'position': 1, 'tab_number': 2, 'crew': 3}
+        data = rows
+    cur.execute("SELECT LOWER(full_name) FROM rotation_workers WHERE department_id = %d AND is_active = TRUE" % did)
+    exist = {r[0] for r in cur.fetchall()}
+    added = skipped = 0
+    for r in data:
+        get = lambda f: (r[cols[f]] if f in cols and cols[f] < len(r) else None)
+        name = ' '.join(str(get('full_name') or '').split())
+        if not name or name.lower() in exist:
+            skipped += 1 if name else 0
+            continue
+        pv = get('pass_valid_to')
+        pv = pv.date() if isinstance(pv, datetime) else (pv if isinstance(pv, date) else to_date(pv) if pv else None)
+        cname = str(get('crew') or '').strip().upper()
+        crew = crews.get(cname)
+        cur.execute("""INSERT INTO rotation_workers (department_id, crew_id, full_name, position, tab_number, phone, pass_valid_to, housing)
+                       VALUES (%d, %s, '%s', '%s', '%s', '%s', %s, '%s')""" % (
+            did, crew or 'NULL', q(name), q(str(get('position') or '').strip()), q(str(get('tab_number') or '').strip()),
+            q(str(get('phone') or '').strip()), ("'%s'" % pv) if pv else 'NULL', q(str(get('housing') or '').strip())))
+        exist.add(name.lower())
+        added += 1
+    return resp(200, {'added': added, 'skipped': skipped, 'message': 'Добавлено: %d, пропущено (уже есть): %d' % (added, skipped)})
 
 
 def norm_save(cur, body):
@@ -533,52 +564,50 @@ def move_set(cur, body, user):
     items = body.get('items') or [body]
     n = 0
     for it in items:
-        pid = int(it.get('personnel_id') or 0)
+        wid = int(it.get('worker_id') or it.get('personnel_id') or 0)
         d = to_date(it.get('change_date'))
         direction = 'out' if it.get('direction') == 'out' else 'in'
         status = it.get('status') if it.get('status') in MOVE_STATUSES else 'planned'
-        if not pid or not d:
+        if not wid or not d:
             continue
-        cur.execute("""INSERT INTO rotation_moves (personnel_id, change_date, direction, status, transport, notes)
+        cur.execute("""INSERT INTO rotation_worker_moves (worker_id, change_date, direction, status, transport, notes)
                        VALUES (%d, '%s', '%s', '%s', '%s', '%s')
-                       ON CONFLICT (personnel_id, change_date, direction) DO UPDATE SET status = EXCLUDED.status,
-                       transport = CASE WHEN EXCLUDED.transport <> '' THEN EXCLUDED.transport ELSE rotation_moves.transport END,
-                       notes = CASE WHEN EXCLUDED.notes <> '' THEN EXCLUDED.notes ELSE rotation_moves.notes END, updated_at = NOW()""" % (
-            pid, d, direction, status, q(it.get('transport', '')), q(it.get('notes', ''))))
+                       ON CONFLICT (worker_id, change_date, direction) DO UPDATE SET status = EXCLUDED.status,
+                       transport = CASE WHEN EXCLUDED.transport <> '' THEN EXCLUDED.transport ELSE rotation_worker_moves.transport END,
+                       notes = CASE WHEN EXCLUDED.notes <> '' THEN EXCLUDED.notes ELSE rotation_worker_moves.notes END, updated_at = NOW()""" % (
+            wid, d, direction, status, q(it.get('transport', '')), q(it.get('notes', ''))))
         n += 1
     return resp(200, {'updated': n})
 
 
 def exception_save(cur, body):
-    pid = int(body.get('personnel_id') or 0)
+    wid = int(body.get('worker_id') or body.get('personnel_id') or 0)
     a = to_date(body.get('date_from'))
     b = to_date(body.get('date_to'), a)
     kind = body.get('kind') if body.get('kind') in sch.EXC_LABELS else 'other'
-    if not pid or not a:
-        return resp(400, {'error': 'Укажите сотрудника и даты'})
+    if not wid or not a:
+        return resp(400, {'error': 'Укажите работника и даты'})
     if b < a:
         a, b = b, a
     if body.get('id'):
-        cur.execute("""UPDATE rotation_exceptions SET kind = '%s', date_from = '%s', date_to = '%s', notes = '%s' WHERE id = %d""" % (
+        cur.execute("""UPDATE rotation_absences SET kind = '%s', date_from = '%s', date_to = '%s', notes = '%s' WHERE id = %d""" % (
             kind, a, b, q(body.get('notes', '')), int(body['id'])))
     else:
-        cur.execute("""INSERT INTO rotation_exceptions (personnel_id, kind, date_from, date_to, notes) VALUES (%d, '%s', '%s', '%s', '%s')""" % (
-            pid, kind, a, b, q(body.get('notes', ''))))
+        cur.execute("""INSERT INTO rotation_absences (worker_id, kind, date_from, date_to, notes) VALUES (%d, '%s', '%s', '%s', '%s')""" % (
+            wid, kind, a, b, q(body.get('notes', ''))))
     return resp(200, {'message': 'Сохранено'})
 
 
 def exception_delete(cur, body):
-    cur.execute("DELETE FROM rotation_exceptions WHERE id = %d" % int(body.get('id') or 0))
+    cur.execute("DELETE FROM rotation_absences WHERE id = %d" % int(body.get('id') or 0))
     return resp(200, {'message': 'Удалено'})
 
 
 def exceptions_list(cur):
-    cur.execute("""SELECT e.id, e.personnel_id, p.full_name, COALESCE(p.position, ''), COALESCE(d.name, ''), e.kind, e.date_from, e.date_to, e.notes
-                   FROM rotation_exceptions e JOIN personnel p ON p.id = e.personnel_id
-                   LEFT JOIN rotation_members m ON m.personnel_id = p.id
-                   LEFT JOIN rotation_crews c ON c.id = m.crew_id
-                   LEFT JOIN rotation_departments d ON d.id = c.department_id
-                   WHERE e.date_to >= CURRENT_DATE - 60 OR e.kind = 'dismissal'
+    cur.execute("""SELECT e.id, e.worker_id, w.full_name, w.position, COALESCE(d.name, ''), e.kind, e.date_from, e.date_to, e.notes
+                   FROM rotation_absences e JOIN rotation_workers w ON w.id = e.worker_id
+                   LEFT JOIN rotation_departments d ON d.id = w.department_id
+                   WHERE w.is_active = TRUE AND (e.date_to >= CURRENT_DATE - 60 OR e.kind = 'dismissal')
                    ORDER BY e.date_from DESC LIMIT 500""")
     return resp(200, {'items': [{'id': r[0], 'personnel_id': r[1], 'full_name': r[2], 'position': r[3], 'department': r[4], 'kind': r[5],
                                  'label': sch.EXC_LABELS.get(r[5], r[5]), 'date_from': r[6], 'date_to': r[7], 'notes': r[8]}
@@ -589,12 +618,12 @@ def people_search(cur, params):
     s = (params.get('q') or '').strip()
     if len(s) < 2:
         return resp(200, {'items': []})
-    cur.execute("""SELECT p.id, p.full_name, COALESCE(p.position, ''), COALESCE(p.department, ''), c.name, d.name
-                   FROM personnel p LEFT JOIN rotation_members m ON m.personnel_id = p.id
-                   LEFT JOIN rotation_crews c ON c.id = m.crew_id LEFT JOIN rotation_departments d ON d.id = c.department_id
-                   WHERE p.is_demo_data = FALSE AND p.status <> 'archived' AND LOWER(p.full_name) LIKE '%%%s%%'
-                   ORDER BY p.full_name LIMIT 20""" % q(s.lower()))
-    return resp(200, {'items': [{'id': r[0], 'full_name': r[1], 'position': r[2], 'department': r[3], 'crew': r[4] or '', 'rotation_department': r[5] or ''}
+    cur.execute("""SELECT w.id, w.full_name, w.position, COALESCE(c.name, ''), d.name
+                   FROM rotation_workers w JOIN rotation_departments d ON d.id = w.department_id AND d.is_active = TRUE
+                   LEFT JOIN rotation_crews c ON c.id = w.crew_id
+                   WHERE w.is_active = TRUE AND LOWER(w.full_name) LIKE '%%%s%%'
+                   ORDER BY w.full_name LIMIT 20""" % q(s.lower()))
+    return resp(200, {'items': [{'id': r[0], 'full_name': r[1], 'position': r[2], 'crew': r[3], 'rotation_department': r[4]}
                                 for r in cur.fetchall()]})
 
 
@@ -690,6 +719,9 @@ def handler(event, context):
         ('POST', 'department-delete'): lambda: dept_delete(cur, body),
         ('POST', 'auto-assign'): lambda: auto_assign(cur, body),
         ('PUT', 'member'): lambda: member_set(cur, body),
+        ('POST', 'worker'): lambda: worker_save(cur, body),
+        ('POST', 'worker-delete'): lambda: worker_delete(cur, body),
+        ('POST', 'workers-import'): lambda: workers_import(cur, body),
         ('PUT', 'norm'): lambda: norm_save(cur, body),
         ('GET', 'calendar'): lambda: calendar(cur, params),
         ('GET', 'changes'): lambda: changes_list(cur, params),

@@ -32,7 +32,7 @@ function PersonRow({ p, side, onSet }: { p: MovePerson; side: "in" | "out"; onSe
         </p>
         {(p.issues.length > 0 || p.exception || p.overdue) && (
           <div className="flex flex-wrap gap-1 mt-1">
-            {p.overdue && <span className="text-[10px] rounded bg-mine-red text-white px-1.5 py-0.5 animate-alarm-blink">Нет отметки на КПП</span>}
+            {p.overdue && <span className="text-[10px] rounded bg-mine-red text-white px-1.5 py-0.5 animate-alarm-blink">Дата прошла — статус не отмечен</span>}
             {p.exception && <span className="text-[10px] rounded bg-mine-red/15 text-mine-red px-1.5 py-0.5">{p.exception}</span>}
             {p.issues.map((i) => (
               <span key={i.code + i.text} className="text-[10px] rounded border border-mine-amber/40 text-mine-amber px-1.5 py-0.5">{i.text}</span>
@@ -92,7 +92,7 @@ export default function RotationChanges({ departments, focus }: Props) {
 
   const setStatus = async (ch: Change, side: "in" | "out", people: MovePerson[], status: string, transport = "") => {
     try {
-      await rotationApi.setMoves(people.map((p) => ({ personnel_id: p.id, change_date: ch.date, direction: side, status, transport })));
+      await rotationApi.setMoves(people.map((p) => ({ worker_id: p.id, change_date: ch.date, direction: side, status, transport })));
       load();
     } catch (e) {
       toast({ title: "Не удалось сохранить", description: e instanceof Error ? e.message : "", variant: "destructive" });
@@ -208,7 +208,7 @@ export default function RotationChanges({ departments, focus }: Props) {
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Статус «Прибыл / Выехал» ставится автоматически по отметке на КПП. Замечания — пропуск, жильё, отпуск/больничный.
+          Статусы отмечаются вручную. Замечания — срок пропуска, проживание, отпуск/больничный (по данным раздела).
         </p>
       </div>
       {loading && items.length === 0 ? (
