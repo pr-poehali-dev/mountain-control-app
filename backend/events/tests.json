@@ -78,6 +78,12 @@
         "kind": "vehicle"
       },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Not passed list",
+      "method": "GET",
+      "path": "/?action=not-passed",
+      "expectedStatus": 200
     }
   ]
 }

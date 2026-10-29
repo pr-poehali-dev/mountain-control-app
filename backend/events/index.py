@@ -114,6 +114,8 @@ def _handler(event, context):
         return get_notifications(params)
     elif method == 'GET' and action == 'expiring-passes':
         return get_expiring_passes(params, event)
+    elif method == 'GET' and action == 'not-passed':
+        return get_not_passed(event)
     elif method == 'GET' and action == 'pass-registry':
         return get_pass_registry(params, event)
     elif method == 'GET' and action == 'pass-alert-settings':
@@ -161,6 +163,29 @@ def query_expiring(cur, days, demo_val='FALSE'):
         'valid_to': r[7].isoformat(), 'valid_from': r[8].isoformat() if r[8] else '',
         'days_left': (r[7] - today).days
     } for r in cur.fetchall()]
+
+
+def get_not_passed(event):
+    """Зарегистрированы в системе, но ни разу не прошли КПП (статус «Ожидается»)"""
+    demo_val = 'TRUE' if is_demo_request(event) else 'FALSE'
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT p.id, p.full_name, COALESCE(p.position, ''), COALESCE(p.department, ''), COALESCE(p.organization, ''),
+               p.created_at, COALESCE(p.residence, '')
+        FROM personnel p
+        WHERE p.status = 'expected' AND COALESCE(p.is_hidden, FALSE) = FALSE AND p.is_demo_data = %s
+          AND NOT EXISTS (SELECT 1 FROM checkpoint_passes c WHERE c.personnel_id = p.id AND COALESCE(c.notes, '') NOT LIKE 'ОТКАЗ%%')
+        ORDER BY p.created_at DESC
+        LIMIT 300
+    """ % demo_val)
+    today = date_type.today()
+    items = [{'personnel_id': r[0], 'full_name': r[1], 'position': r[2], 'department': r[3], 'organization': r[4],
+              'registered_at': r[5].isoformat() if r[5] else '', 'days': (today - r[5].date()).days if r[5] else 0,
+              'residence': r[6]} for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return json_response(200, {'items': items, 'total': len(items)})
 
 
 def get_expiring_passes(params, event):

@@ -7,6 +7,7 @@ import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import ShiftOverview from "@/components/dashboard/ShiftOverview";
 import LanternStatus from "@/components/dashboard/LanternStatus";
 import ExpiringPasses from "@/components/dashboard/ExpiringPasses";
+import NotPassedCheckpoint from "@/components/dashboard/NotPassedCheckpoint";
 import LiveSiteSummary from "@/components/dashboard/LiveSiteSummary";
 import ControlPointsSummary from "@/components/dashboard/ControlPointsSummary";
 import Icon from "@/components/ui/icon";
@@ -152,6 +153,8 @@ const Index = () => {
             <ControlPointsSummary />
 
             <LiveSiteSummary />
+
+            <NotPassedCheckpoint />
 
             <ExpiringPasses />
 
