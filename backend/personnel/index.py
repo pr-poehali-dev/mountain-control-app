@@ -318,7 +318,7 @@ def add_person(body):
 
     cur.execute("""
         INSERT INTO personnel (personal_code, full_name, position, department, category, phone, room, status, qr_code, shift, organization, organization_type, medical_status, tabular_number)
-        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'arrived', '%s', '%s', '%s', '%s', 'pending', '%s')
+        VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', 'expected', '%s', '%s', '%s', '%s', 'pending', '%s')
         RETURNING id, personal_code, qr_code
     """ % (
         personal_code,
@@ -357,7 +357,7 @@ def add_person(body):
 
     cur.execute("""
         INSERT INTO events (event_type, description, personnel_id)
-        VALUES ('arrival', '%s — добавлен в систему', %d)
+        VALUES ('registration', '%s — зарегистрирован в системе (ожидается, КПП не проходил)', %d)
     """ % (full_name.replace("'", "''"), row[0]))
 
     conn.commit()
@@ -768,6 +768,7 @@ def get_history(params):
         'medical_pass': 'Медосмотр пройден',
         'medical_fail': 'Медосмотр не пройден',
         'arrival': 'Прибытие',
+        'registration': 'Регистрация',
         'departure': 'Убытие',
         'status_change': 'Смена статуса',
         'edit': 'Изменение данных',

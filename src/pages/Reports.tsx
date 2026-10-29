@@ -73,7 +73,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   lamp_room_issue: "Выдача в ламповой", lamp_room_return: "Возврат в ламповую", lamp_room_denial: "Недопуск в ламповой",
   equipment_repair: "Оборудование в ремонт", equipment_repair_return: "Возврат из ремонта", equipment_decommission: "Списание оборудования",
   status_change: "Смена статуса", person_added: "Добавлен сотрудник", person_edited: "Редактирование сотрудника",
-  edit: "Редактирование", arrival: "Заезд", housing: "Расселение", aho_upload: "Загрузка списка АХО",
+  edit: "Редактирование", arrival: "Заезд", registration: "Регистрация", housing: "Расселение", aho_upload: "Загрузка списка АХО",
   security_check: "Проверка СБ", security_check_failed: "Проверка СБ не пройдена", valid: "Проверка пройдена",
   system_reset: "Сброс системы",
   point_in: "Вход на объект", point_out: "Выход с объекта", control_point: "Настройка объектов контроля",
