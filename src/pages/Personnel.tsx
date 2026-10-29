@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import Icon from "@/components/ui/icon";
+import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -252,6 +253,7 @@ const Personnel = () => {
 
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrPerson, setQrPerson] = useState<PersonnelItem | null>(null);
+  const { toast } = useToast();
   const printRef = useRef<HTMLDivElement>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -577,12 +579,15 @@ const Personnel = () => {
 
   const handlePrint = () => {
     if (!printRef.current) return;
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    if (!printWindow) return;
-    const svgEl = printRef.current.querySelector("svg");
-    const svgData = svgEl ? svgEl.outerHTML : "";
     const person = qrPerson;
     if (!person) return;
+    const svgEl = printRef.current.querySelector("svg");
+    const svgData = svgEl ? svgEl.outerHTML : "";
+    const printWindow = window.open("", "_blank", "width=480,height=720");
+    if (!printWindow) {
+      toast({ title: "Браузер заблокировал окно печати", description: "Разрешите всплывающие окна для этого сайта и нажмите ещё раз", variant: "destructive" });
+      return;
+    }
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -590,7 +595,14 @@ const Personnel = () => {
       <head><title>Бейдж — ${person.full_name}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Arial', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #fff; }
+        body { font-family: 'Arial', sans-serif; background: #fff; }
+        .wrap { display: flex; justify-content: center; align-items: center; min-height: calc(100vh - 70px); padding: 16px; }
+        .print-bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; background: #1f2430; color: #fff; font-family: Arial, sans-serif; }
+        .print-bar .hint { font-size: 13px; color: #c9ced8; }
+        .print-bar button { font-size: 15px; font-weight: bold; padding: 10px 22px; border-radius: 8px; border: none; cursor: pointer; }
+        .print-bar .btn-print { background: #f59e0b; color: #111; }
+        .print-bar .btn-close { background: transparent; color: #fff; border: 1px solid #6b7280; }
+        @media print { .print-bar { display: none !important; } }
         .badge { width: 320px; border: 2px solid #222; border-radius: 12px; padding: 24px; text-align: center; }
         .badge-header { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; color: #666; margin-bottom: 16px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
         .badge-name { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
@@ -604,6 +616,8 @@ const Personnel = () => {
       </style>
       </head>
       <body>
+        <div class="print-bar"><button class="btn-print" onclick="window.print()">&#128424; Печать</button><button class="btn-close" onclick="window.close()">Закрыть</button><span class="hint">Если окно печати не открылось — нажмите «Печать» или Ctrl+P (на Mac — Cmd+P)</span></div>
+        <div class="wrap">
         <div class="badge">
           <div class="badge-header">Горный контроль</div>
           <div class="badge-name">${person.full_name}</div>
@@ -612,7 +626,8 @@ const Personnel = () => {
           <div class="badge-dept">${person.department || ""}${person.organization ? " — " + person.organization : ""}</div>
           <div class="badge-info">Сканируйте QR для проверки данных</div>
         </div>
-        <script>setTimeout(function(){ window.print(); }, 300);<${"/"}>script>
+        </div>
+        <script>window.onload = function(){ setTimeout(function(){ window.focus(); window.print(); }, 400); };<${"/"}>script>
       </body>
       </html>
     `);
@@ -644,8 +659,11 @@ const Personnel = () => {
     const layout = layoutOptions.find((l) => l.value === printLayout) || layoutOptions[0];
     const size = sizeOptions.find((s) => s.value === printSize) || sizeOptions[1];
 
-    const printWindow = window.open("", "_blank", "width=900,height=700");
-    if (!printWindow) return;
+    const printWindow = window.open("", "_blank", "width=900,height=720");
+    if (!printWindow) {
+      toast({ title: "Браузер заблокировал окно печати", description: "Разрешите всплывающие окна для этого сайта и нажмите ещё раз", variant: "destructive" });
+      return;
+    }
 
     const escapeHtml = (str: string) =>
       str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -759,6 +777,12 @@ const Personnel = () => {
             border-top: 1px solid #eee;
             padding-top: ${cols === 3 ? "3px" : "5px"};
           }
+          .print-bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; background: #1f2430; color: #fff; font-family: Arial, sans-serif; }
+          .print-bar .hint { font-size: 13px; color: #c9ced8; }
+          .print-bar button { font-size: 15px; font-weight: bold; padding: 10px 22px; border-radius: 8px; border: none; cursor: pointer; }
+          .print-bar .btn-print { background: #f59e0b; color: #111; }
+          .print-bar .btn-close { background: transparent; color: #fff; border: 1px solid #6b7280; }
+          @media print { .print-bar { display: none !important; } }
           @media print {
             body { background: white; }
             .page-title { display: none; }
@@ -770,9 +794,10 @@ const Personnel = () => {
         </style>
       </head>
       <body>
+        <div class="print-bar"><button class="btn-print" onclick="window.print()">&#128424; Печать</button><button class="btn-close" onclick="window.close()">Закрыть</button><span class="hint">Если окно печати не открылось — нажмите «Печать» или Ctrl+P (на Mac — Cmd+P)</span></div>
         <div class="page-title no-print">Бейджи: ${selected.length} шт. | Раскладка: ${layout.label} | Размер: ${size.label}</div>
         <div class="grid">${badges}</div>
-        <script>setTimeout(function(){ window.print(); }, 300);</${"script"}>
+        <script>window.onload = function(){ setTimeout(function(){ window.focus(); window.print(); }, 400); };</${"script"}>
       </body>
       </html>
     `);
