@@ -123,6 +123,12 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
           <Icon name="UserPlus" size={14} />
           Добавить работника
         </Button>
+        <Button variant="ghost" size="sm" asChild className="gap-1.5 text-foreground">
+          <a href="/rotation-workers-template.xlsx" download="Шаблон_работники_перевахтовка.xlsx">
+            <Icon name="FileDown" size={14} />
+            Шаблон Excel
+          </a>
+        </Button>
         <Button variant="outline" size="sm" disabled={busy} onClick={() => fileRef.current?.click()} className="gap-1.5 text-foreground">
           <Icon name="FileUp" size={14} />
           Загрузить из Excel
@@ -327,7 +333,7 @@ export default function DeptDetail({ id, onBack, onEdit, onChanged }: Props) {
             ))}
             {data.unassigned.length === 0 && (
               <p className="p-6 text-xs text-center text-muted-foreground">
-                Все работники распределены. Новых добавляйте кнопкой «Добавить работника» или загрузкой из Excel (столбцы: ФИО, Должность, Табельный, Вахта, Пропуск до, Проживание).
+                Все работники распределены. Новых добавляйте кнопкой «Добавить работника» или загрузкой из Excel — скачайте «Шаблон Excel», заполните и нажмите «Загрузить из Excel».
               </p>
             )}
           </div>

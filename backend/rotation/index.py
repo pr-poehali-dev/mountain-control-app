@@ -492,6 +492,8 @@ def workers_import(cur, body):
     for r in data:
         get = lambda f: (r[cols[f]] if f in cols and cols[f] < len(r) else None)
         name = ' '.join(str(get('full_name') or '').split())
+        if name in ('Иванов Иван Иванович', 'Петров Пётр Петрович') and str(get('tab_number') or '') in ('1001', '1002'):
+            continue
         if not name or name.lower() in exist:
             skipped += 1 if name else 0
             continue
