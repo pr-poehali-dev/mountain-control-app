@@ -5,6 +5,7 @@ import LandingHeader from "@/components/landing/LandingHeader";
 import LandingHero from "@/components/landing/LandingHero";
 import LandingAbout from "@/components/landing/LandingAbout";
 import LandingStart from "@/components/landing/LandingStart";
+import LandingGallery from "@/components/landing/LandingGallery";
 import LandingModules from "@/components/landing/LandingModules";
 import LandingDetails from "@/components/landing/LandingDetails";
 import LandingBusiness from "@/components/landing/LandingBusiness";
@@ -15,6 +16,7 @@ const Landing = () => (
     <main>
       <LandingHero />
       <LandingAbout />
+      <LandingGallery />
       <LandingStart />
       <LandingModules />
       <LandingDetails />

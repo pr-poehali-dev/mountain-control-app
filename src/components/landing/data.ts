@@ -117,7 +117,15 @@ export const ADVANTAGES = [
 export const NAV = [
   { href: "#about", label: "О системе" },
   { href: "#features", label: "Возможности" },
+  { href: "#screens", label: "Интерфейс" },
   { href: "#modules", label: "Разделы" },
   { href: "#equipment", label: "Оборудование" },
   { href: "#advantages", label: "Преимущества" },
+];
+
+export const SCREENS = [
+  { key: "dashboard", icon: "LayoutDashboard", title: "Дашборд", src: "/screens/dashboard.webp", text: "Сводка по руднику: сколько людей на объекте, выданные фонари, медосмотры, жилой фонд и проходы через контрольные точки." },
+  { key: "checkpoint", icon: "DoorOpen", title: "КПП", src: "/screens/checkpoint.webp", text: "Вход и выход по QR-коду или личному коду, учёт автомобилей, журнал проходов и список тех, кто на территории." },
+  { key: "medical", icon: "HeartPulse", title: "Медконтроль", src: "/screens/medical.webp", text: "Текущая смена, допущенные и отстранённые отдельно по рабочим и ИТР, отметка медосмотра сканированием QR-кода." },
+  { key: "aho", icon: "Building2", title: "АХО", src: "/screens/aho.webp", text: "Загрузка списков заезда из Excel, въезд и выезд, расселение по комнатам и статистика жилого фонда." },
 ];
