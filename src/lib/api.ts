@@ -11,6 +11,7 @@ const API = {
   security: "https://functions.poehali.dev/e757ce9d-06e6-483d-9b96-0c73ce817029",
   checkpoint: "https://functions.poehali.dev/636f3e52-9c3b-4725-87bc-5d5cfcfebd50",
   ohs: "https://functions.poehali.dev/bbbb23f3-816f-4c4f-a010-571fbf96b0be",
+  rotation: "https://functions.poehali.dev/e2b9f8b6-faa4-498f-882a-5cb2fcdf2df0",
 };
 
 export const REPORTS_CRON_URL = `${API.reports}?action=cron`;
@@ -473,6 +474,32 @@ export const checkpointApi = {
     const qs = new URLSearchParams({ action: "export", ...authQuery(), ...cpParam(control_point_id), ...params }).toString();
     return `${API.checkpoint}?${qs}`;
   },
+};
+
+export const rotationApi = {
+  overview: () => request(API.rotation, "", { params: { action: "overview" } }),
+  department: (id: number) => request(API.rotation, "", { params: { action: "department", id: String(id) } }),
+  saveDepartment: (body: Record<string, unknown>) =>
+    request(API.rotation, "", { method: "POST", body, params: { action: "department" } }),
+  deleteDepartment: (id: number) =>
+    request(API.rotation, "", { method: "POST", body: { id }, params: { action: "department-delete" } }),
+  autoAssign: (department_id: number, rebalance = false) =>
+    request(API.rotation, "", { method: "POST", body: { department_id, rebalance }, params: { action: "auto-assign" } }),
+  setMember: (body: { personnel_id: number; crew_id: number | null; is_key?: boolean }) =>
+    request(API.rotation, "", { method: "PUT", body, params: { action: "member" } }),
+  saveNorm: (department_id: number, position: string, min_count: number) =>
+    request(API.rotation, "", { method: "PUT", body: { department_id, position, min_count }, params: { action: "norm" } }),
+  calendar: (params: Record<string, string>) => request(API.rotation, "", { params: { action: "calendar", ...params } }),
+  changes: (params: Record<string, string> = {}) => request(API.rotation, "", { params: { action: "changes", ...params } }),
+  setMoves: (items: Record<string, unknown>[]) =>
+    request(API.rotation, "", { method: "PUT", body: { items }, params: { action: "move" } }),
+  exceptions: () => request(API.rotation, "", { params: { action: "exceptions" } }),
+  saveException: (body: Record<string, unknown>) =>
+    request(API.rotation, "", { method: "POST", body, params: { action: "exception" } }),
+  deleteException: (id: number) =>
+    request(API.rotation, "", { method: "POST", body: { id }, params: { action: "exception-delete" } }),
+  people: (q: string) => request(API.rotation, "", { params: { action: "people", q } }),
+  exportXlsx: (params: Record<string, string>) => request(API.rotation, "", { params: { action: "export", ...params } }),
 };
 
 export const ohsApi = {

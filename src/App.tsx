@@ -24,6 +24,7 @@ const Ohs = lazy(() => import("./pages/Ohs"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Admin = lazy(() => import("./pages/Admin"));
 const DemoEntry = lazy(() => import("./pages/DemoEntry"));
+const Rotation = lazy(() => import("./pages/Rotation"));
 const Landing = lazy(() => import("./pages/Landing"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -71,6 +72,14 @@ function HomeRoute() {
   if (loading) return <PageLoader />;
   if (!user) return <Landing />;
   return <Index />;
+}
+
+function AdminOnlyRoute({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin" || localStorage.getItem("mc_demo") === "true") return <Navigate to="/" replace />;
+  return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: ReactNode }) {
@@ -138,6 +147,7 @@ const AppRoutes = () => {
       <Route path="/ohs" element={<PageRoute page="ohs"><Ohs /></PageRoute>} />
       <Route path="/reports" element={<PageRoute page="reports"><Reports /></PageRoute>} />
       <Route path="/profile" element={<PageRoute page="profile"><Profile /></PageRoute>} />
+      <Route path="/rotation" element={<AdminOnlyRoute><Rotation /></AdminOnlyRoute>} />
       <Route path="/admin" element={<PageRoute page="admin"><Admin /></PageRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>

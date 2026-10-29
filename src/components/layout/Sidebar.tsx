@@ -17,6 +17,7 @@ const navItems = [
   { path: "/aho", page: "aho", icon: "Building2", label: "АХО" },
   { path: "/ohs", page: "ohs", icon: "HardHat", label: "ОТ и ПБ" },
   { path: "/reports", page: "reports", icon: "BarChart3", label: "Отчёты" },
+  { path: "/rotation", page: "rotation", icon: "CalendarSync", label: "Перевахтовка", adminOnly: true },
   { path: "/profile", page: "profile", icon: "UserCircle", label: "Кабинет" },
   { path: "/admin", page: "admin", icon: "Shield", label: "Админ" },
 ];
@@ -47,6 +48,7 @@ export default function Sidebar() {
   });
 
   const visibleItems = allItems.filter((item) => {
+    if ("adminOnly" in item && item.adminOnly) return user?.role === "admin" && !isDemo;
     if (!allowedPages.includes(item.page)) return false;
     if (isDemo && (item.page === "admin" || item.page === "profile")) return false;
     return true;
