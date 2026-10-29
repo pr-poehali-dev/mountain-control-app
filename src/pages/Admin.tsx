@@ -14,6 +14,7 @@ import PassAlertSettings from "@/components/admin/PassAlertSettings";
 import ControlPointsManager from "@/components/admin/ControlPointsManager";
 import ReportMailings from "@/components/admin/ReportMailings";
 import { useToast } from "@/hooks/use-toast";
+import { useDemo } from "@/contexts/DemoContext";
 import {
   Select,
   SelectContent,
@@ -288,6 +289,19 @@ const Admin = () => {
   const openEditUser = (u: SystemUser) => {
     setEditUser(u);
     setEditFields({ full_name: u.full_name, email: u.email, position: u.position || "", department: u.department || "", password: "" });
+  };
+
+  const { startPreview } = useDemo();
+  const [previewing, setPreviewing] = useState(false);
+  const openDemoPreview = async () => {
+    setPreviewing(true);
+    try {
+      const data = await demoApi.preview();
+      startPreview(data);
+    } catch (e) {
+      toast({ title: "Не удалось открыть демо", description: e instanceof Error ? e.message : "", variant: "destructive" });
+      setPreviewing(false);
+    }
   };
 
   const loadDemoLinks = async () => {
@@ -838,14 +852,21 @@ const Admin = () => {
               <p className="text-xs text-muted-foreground">Ссылки для ознакомительного доступа к системе без возможности сохранения</p>
             </div>
           </div>
-          <Button
-            size="sm"
-            className="gap-1.5 h-8 bg-mine-cyan text-white hover:bg-mine-cyan/90"
-            onClick={() => setShowAddDemo(!showAddDemo)}
-          >
-            <Icon name={showAddDemo ? "X" : "Plus"} size={14} />
-            {showAddDemo ? "Отмена" : "Создать"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={openDemoPreview} disabled={previewing}>
+              <Icon name={previewing ? "Loader2" : "Eye"} size={14} className={previewing ? "animate-spin" : ""} />
+              <span className="hidden sm:inline">Посмотреть как демо</span>
+              <span className="sm:hidden">Демо</span>
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5 h-8 bg-mine-cyan text-white hover:bg-mine-cyan/90"
+              onClick={() => setShowAddDemo(!showAddDemo)}
+            >
+              <Icon name={showAddDemo ? "X" : "Plus"} size={14} />
+              {showAddDemo ? "Отмена" : "Создать"}
+            </Button>
+          </div>
         </div>
 
         {showAddDemo && (

@@ -207,6 +207,13 @@
         ]
       },
       "expectedStatus": 403
+    },
+    {
+      "name": "Demo preview admin only",
+      "method": "POST",
+      "path": "/?action=demo-preview",
+      "body": {},
+      "expectedStatus": 403
     }
   ]
 }

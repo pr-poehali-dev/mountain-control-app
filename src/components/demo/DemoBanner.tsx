@@ -5,15 +5,15 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 const DemoBanner = () => {
-  const { isDemo, exitDemo } = useDemo();
+  const { isDemo, exitDemo, isPreview } = useDemo();
   const navigate = useNavigate();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem("mc_admin_backup") !== null);
 
   if (!isDemo) return null;
 
   const handleExit = () => {
     exitDemo();
-    navigate("/login");
+    if (!isPreview) navigate("/login");
   };
 
   return (
@@ -36,7 +36,7 @@ const DemoBanner = () => {
             onClick={handleExit}
           >
             <Icon name="LogOut" size={14} className="mr-1" />
-            Выйти
+            {isPreview ? "Вернуться в админку" : "Выйти"}
           </Button>
         </div>
       </div>

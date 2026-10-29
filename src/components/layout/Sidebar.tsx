@@ -28,11 +28,12 @@ export default function Sidebar() {
   const { user, logout, allowedPages } = useAuth();
   const { points, extra } = useControlPoints(!!user);
   const mainPoint = points.find((p) => p.is_main);
-  const { isDemo, exitDemo } = useDemo();
+  const { isDemo, exitDemo, isPreview } = useDemo();
 
   const handleLogout = () => {
     if (isDemo) {
       exitDemo();
+      if (isPreview) return;
     } else {
       logout();
     }

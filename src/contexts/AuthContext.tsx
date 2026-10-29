@@ -70,8 +70,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isDemo = localStorage.getItem("mc_demo") === "true";
     const onDemoRoute = window.location.pathname.startsWith("/demo");
     const isFreshDemo = localStorage.getItem("mc_demo_fresh") === "true";
+    const previewBackup = localStorage.getItem("mc_admin_backup");
     if (isFreshDemo) {
       localStorage.removeItem("mc_demo_fresh");
+    } else if (isDemo && previewBackup) {
+      localStorage.removeItem("mc_demo");
+      localStorage.removeItem("mc_demo_name");
+      localStorage.removeItem("mc_admin_backup");
+      try {
+        Object.entries(JSON.parse(previewBackup) as Record<string, string | null>).forEach(([k, v]) => {
+          if (v !== null) localStorage.setItem(k, v);
+          else localStorage.removeItem(k);
+        });
+      } catch {
+        /* ignore */
+      }
+      window.location.reload();
+      return;
     } else if (isDemo && !onDemoRoute) {
       localStorage.removeItem("mc_demo");
       localStorage.removeItem("mc_demo_name");

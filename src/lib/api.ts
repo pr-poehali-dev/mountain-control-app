@@ -501,6 +501,8 @@ export const demoApi = {
     request(API.auth, "", { params: { action: "demo-validate", demo_token } }),
   getDefault: () =>
     request(API.auth, "", { params: { action: "demo-default" } }),
+  preview: () =>
+    request(API.auth, "", { method: "POST", params: { action: "demo-preview" } }),
 };
 
 export default API;

@@ -250,6 +250,8 @@ def _handler(event, context):
         return demo_toggle(event, body)
     elif method == 'DELETE' and action == 'demo-delete':
         return demo_delete(event, body)
+    elif method == 'POST' and action == 'demo-preview':
+        return demo_preview(event)
     elif method == 'POST' and action == 'demo-enter':
         return demo_enter(body)
     elif method == 'GET' and action == 'demo-validate':
@@ -1268,6 +1270,35 @@ def demo_enter(body):
             'role': 'admin',
             'organization': '',
             'organization_type': ''
+        },
+        'allowed_pages': demo_pages
+    })
+
+
+def demo_preview(event):
+    """Просмотр системы администратором глазами демо-пользователя, без расхода посещений демо-ссылок"""
+    caller = get_current_user(event)
+    if not caller or caller['role'] != 'admin':
+        return json_response(403, {'error': 'Доступ только для администраторов'})
+    conn = get_db()
+    cur = conn.cursor()
+    session_token = secrets.token_hex(32)
+    expires = datetime.now() + timedelta(hours=2)
+    cur.execute("""
+        INSERT INTO sessions (user_id, token, expires_at, is_demo)
+        VALUES (%d, '%s', '%s', TRUE)
+    """ % (int(caller['id']), session_token, expires.isoformat()))
+    demo_pages = full_pages(cur)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, {
+        'token': session_token,
+        'demo': True,
+        'user': {
+            'id': 0, 'email': 'demo@gornycontrol.ru', 'full_name': 'Демо-пользователь',
+            'position': 'Просмотр системы', 'department': 'Демо-доступ', 'personal_code': 'DEMO-001',
+            'qr_code': 'DEMO-QR-001', 'role': 'admin', 'organization': '', 'organization_type': ''
         },
         'allowed_pages': demo_pages
     })

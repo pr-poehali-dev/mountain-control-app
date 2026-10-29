@@ -5,8 +5,13 @@ interface DemoContextType {
   demoName: string;
   enterDemo: (token: string, name: string) => void;
   exitDemo: () => void;
+  isPreview: boolean;
+  startPreview: (session: { token: string; user: Record<string, unknown>; allowed_pages: string[] }) => void;
   blockAction: (actionName?: string) => boolean;
 }
+
+const BACKUP_KEY = "mc_admin_backup";
+const BACKUP_FIELDS = ["mc_token", "mc_user", "mc_pages", "mc_pending"];
 
 const DemoContext = createContext<DemoContextType | null>(null);
 
@@ -21,7 +26,24 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setDemoName(name);
   };
 
+  const isPreview = !!localStorage.getItem(BACKUP_KEY);
+
+  const startPreview = (session: { token: string; user: Record<string, unknown>; allowed_pages: string[] }) => {
+    const backup: Record<string, string | null> = {};
+    BACKUP_FIELDS.forEach((k) => (backup[k] = localStorage.getItem(k)));
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
+    localStorage.removeItem("mc_pending");
+    localStorage.setItem("mc_token", session.token);
+    localStorage.setItem("mc_user", JSON.stringify(session.user));
+    localStorage.setItem("mc_pages", JSON.stringify(session.allowed_pages));
+    localStorage.setItem("mc_demo_fresh", "true");
+    localStorage.setItem("mc_demo", "true");
+    localStorage.setItem("mc_demo_name", "");
+    window.location.href = "/";
+  };
+
   const exitDemo = () => {
+    const raw = localStorage.getItem(BACKUP_KEY);
     localStorage.removeItem("mc_demo");
     localStorage.removeItem("mc_demo_name");
     localStorage.removeItem("mc_token");
@@ -29,6 +51,19 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("mc_pages");
     setIsDemo(false);
     setDemoName("");
+    if (raw) {
+      localStorage.removeItem(BACKUP_KEY);
+      try {
+        const backup = JSON.parse(raw) as Record<string, string | null>;
+        Object.entries(backup).forEach(([k, v]) => {
+          if (v !== null) localStorage.setItem(k, v);
+          else localStorage.removeItem(k);
+        });
+      } catch {
+        /* ignore */
+      }
+      window.location.href = "/admin";
+    }
   };
 
   const blockAction = (actionName?: string) => {
@@ -37,7 +72,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DemoContext.Provider value={{ isDemo, demoName, enterDemo, exitDemo, blockAction }}>
+    <DemoContext.Provider value={{ isDemo, demoName, enterDemo, exitDemo, blockAction, isPreview, startPreview }}>
       {children}
     </DemoContext.Provider>
   );
