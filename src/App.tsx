@@ -24,6 +24,7 @@ const Ohs = lazy(() => import("./pages/Ohs"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Admin = lazy(() => import("./pages/Admin"));
 const DemoEntry = lazy(() => import("./pages/DemoEntry"));
+const Landing = lazy(() => import("./pages/Landing"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const PageLoader = () => (
@@ -63,6 +64,13 @@ function PageRoute({ page, children }: { page: string; children: ReactNode }) {
   if (isDemo && (page === "admin" || page === "profile")) return <Navigate to="/" replace />;
   if (page !== "profile" && !allowedPages.includes(page)) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+function HomeRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!user) return <Landing />;
+  return <Index />;
 }
 
 function PublicRoute({ children }: { children: ReactNode }) {
@@ -116,7 +124,8 @@ const AppRoutes = () => {
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/demo" element={<DemoEntry />} />
       <Route path="/demo/:token" element={<DemoEntry />} />
-      <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+      <Route path="/" element={<HomeRoute />} />
+      <Route path="/about" element={<Landing />} />
       <Route path="/personnel" element={<PageRoute page="personnel"><Personnel /></PageRoute>} />
       <Route path="/dispatcher" element={<PageRoute page="dispatcher"><Dispatcher /></PageRoute>} />
       <Route path="/medical" element={<PageRoute page="medical"><Medical /></PageRoute>} />

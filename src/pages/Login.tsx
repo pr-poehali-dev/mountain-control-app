@@ -1,5 +1,5 @@
 import { useState, useCallback, lazy, Suspense, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,8 @@ const Spinner = () => (
 const Login = () => {
   const { loginByEmailCode, loginByCode, register } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("login");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") === "register" ? "register" : "login");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -179,6 +180,10 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <ThemeToggle floating />
+      <Link to="/about" className="fixed top-4 left-4 z-10 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <Icon name="ArrowLeft" size={16} />
+        О системе
+      </Link>
       <div className="w-full max-w-md space-y-6 animate-fade-in">
         <div className="text-center space-y-2">
           <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto">
