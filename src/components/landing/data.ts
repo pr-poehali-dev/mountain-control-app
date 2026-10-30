@@ -2,6 +2,7 @@ export const IMG = {
   hero: "https://cdn.poehali.dev/projects/c046ac22-3554-423d-8e58-d4819b9bf077/files/9449cbd5-f199-4098-b19b-3a60911e2076.jpg",
   checkpoint: "https://cdn.poehali.dev/projects/c046ac22-3554-423d-8e58-d4819b9bf077/files/626113c7-90e0-4c42-8838-538ce413522c.jpg",
   site: "https://cdn.poehali.dev/projects/c046ac22-3554-423d-8e58-d4819b9bf077/files/bd37b7d3-a5a5-4cd7-9f9f-473730d776a5.jpg",
+  pit: "https://cdn.poehali.dev/projects/c046ac22-3554-423d-8e58-d4819b9bf077/files/bb3bbcd2-58d5-47b6-823b-b05281d7da43.jpg",
 };
 
 export const HERO_POINTS = [

@@ -29,9 +29,20 @@ const LandingAbout = () => (
             </div>
           </div>
         </div>
-        <div className="relative">
+        <div className="relative space-y-4">
           <div className="absolute -inset-4 bg-primary/10 blur-3xl rounded-full" />
-          <img src={IMG.site} alt="Схема рудника, связанного с системой" className="relative rounded-2xl border border-border shadow-2xl w-full" />
+          <figure className="relative">
+            <img src={IMG.site} alt="Подземные горные работы — шахта, связанная с системой" className="rounded-2xl border border-border shadow-2xl w-full" />
+            <figcaption className="absolute left-3 bottom-3 rounded-full bg-background/80 backdrop-blur px-3 py-1 text-xs font-medium text-foreground border border-border">
+              Подземные работы — шахта
+            </figcaption>
+          </figure>
+          <figure className="relative">
+            <img src={IMG.pit} alt="Открытые горные работы — карьер, связанный с системой" loading="lazy" className="rounded-2xl border border-border shadow-2xl w-full" />
+            <figcaption className="absolute left-3 bottom-3 rounded-full bg-background/80 backdrop-blur px-3 py-1 text-xs font-medium text-foreground border border-border">
+              Открытые работы — карьер
+            </figcaption>
+          </figure>
         </div>
       </div>
     </Section>
